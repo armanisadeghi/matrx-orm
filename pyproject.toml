@@ -1,0 +1,29 @@
+[project]
+name = "matrx-orm"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { email = "jatin.b.rx3@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "asyncpg==0.30.0",
+    "gitpython>=3.1.44",
+    "matrx-utils",
+    "psycopg2>=2.9.10",
+]
+
+[project.scripts]
+matrx-orm = "matrx_orm:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/matrx_orm"]
+
+[tool.uv.sources]
+matrx-utils = { git = "https://github.com/armanisadeghi/matrx-utils.git" }

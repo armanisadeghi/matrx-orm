@@ -192,3 +192,12 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# Ignore all files in any temp directory and all subdirectories (unlimited depth)
+**/temp/**/*
+
+# But allow all directories in any temp folder and all subdirectories (unlimited depth)
+!**/temp/**/
+
+src/matrx_orm/schema_builder/database/**
+src/matrx_orm/schema_builder/database
