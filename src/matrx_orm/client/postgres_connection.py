@@ -2,61 +2,21 @@ import json
 import os
 from typing import Any, Dict, List
 
-from dotenv import load_dotenv
 from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
-
 from matrx_utils import vcprint
+
 from matrx_orm.utils.sql_utils import sql_param_to_psycopg2
+from matrx_orm import get_database_config
 
 connection_pool = None
-
-database_project = {
-    "supabase_automation_matrix": {
-        "host": os.environ.get("SUPABASE_MATRIX_HOST"),
-        "port": os.environ.get("SUPABASE_MATRIX_PORT"),
-        "database_name": os.environ.get("SUPABASE_MATRIX_DATABASE_NAME"),
-        "user": os.environ.get("SUPABASE_MATRIX_USER"),
-        "password": os.environ.get("SUPABASE_MATRIX_PASSWORD"),
-    },
-    "supabase_ai-matrix": {
-        "host": os.environ.get("SUPABASE_AI_MATRIX_HOST"),
-        "port": os.environ.get("SUPABASE_AI_MATRIX_PORT"),
-        "database_name": os.environ.get("SUPABASE_AI_MATRIX_DATABASE_NAME"),
-        "user": os.environ.get("SUPABASE_AI_MATRIX_USER"),
-        "password": os.environ.get("SUPABASE_AI_MATRIX_PASSWORD"),
-    },
-    "supabase_sample_matrix": {
-        "host": os.environ.get("SUPABASE_SAMPLE_MATRIX_HOST"),
-        "port": os.environ.get("SUPABASE_SAMPLE_MATRIX_PORT"),
-        "database_name": os.environ.get("SUPABASE_SAMPLE_MATRIX_DATABASE_NAME"),
-        "user": os.environ.get("SUPABASE_SAMPLE_MATRIX_USER"),
-        "password": os.environ.get("SUPABASE_SAMPLE_MATRIX_PASSWORD"),
-    },
-    "supabase_matrix_django": {  # Fixed capitalization
-        "host": os.environ.get("SUPABASE_MATRIX_DJANGO_HOST"),
-        "port": os.environ.get("SUPABASE_MATRIX_DJANGO_PORT"),
-        "database_name": os.environ.get("SUPABASE_MATRIX_DJANGO_DATABASE_NAME"),
-        "user": os.environ.get("SUPABASE_MATRIX_DJANGO_USER"),
-        "password": os.environ.get("SUPABASE_MATRIX_DJANGO_PASSWORD"),
-    },
-}
-
-
-valid_projects = list(database_project.keys())
 
 
 def init_connection_details(config_name):
     global connection_pool
 
     if connection_pool is None:
-        load_dotenv()
-
-        try:
-            config = database_project[config_name]
-        except KeyError:
-            raise KeyError(f"Configuration '{config_name}' not found in database_project")
-
+        config = get_database_config(config_name=config_name)
         vcprint(f"\n[Matrx ORM] Using configuration for: {config_name}\n", color="green")
 
         db_host = config.get("host")
@@ -66,7 +26,8 @@ def init_connection_details(config_name):
         db_password = config.get("password")
 
         if not all([db_host, db_port, db_name, db_user, db_password]):
-            raise ValueError(f"Incomplete database configuration for '{config_name}'. " "Please check your environment variables.")
+            raise ValueError(
+                f"Incomplete database configuration for '{config_name}'. " "Please check your environment variables or settings.")
 
         connection_string = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
 
@@ -76,7 +37,7 @@ def init_connection_details(config_name):
 
 
 def get_postgres_connection(
-    database_project="this_will_cause_error_specify_the_database",
+        database_project="this_will_cause_error_specify_the_database",
 ):
     init_connection_details(database_project)
     conn = connection_pool.getconn()
@@ -138,11 +99,8 @@ def execute_transaction_query(query, params=None, database_project="this_will_ca
         connection_pool.putconn(conn)
 
 
-# database/client/postgres_connection.py
-# Add this function to your postgres_connection.py file
-
-
-def execute_batch_query(query: str, batch_params: List[Dict[str, Any]], batch_size: int = 50, database_project="supabase_automation_matrix"):
+def execute_batch_query(query: str, batch_params: List[Dict[str, Any]], batch_size: int = 50,
+                        database_project="supabase_automation_matrix"):
     """
     Executes a SQL query with batched parameters.
     """
@@ -152,8 +110,9 @@ def execute_batch_query(query: str, batch_params: List[Dict[str, Any]], batch_si
     try:
         # Process in batches
         for i in range(0, len(batch_params), batch_size):
-            batch = batch_params[i : i + batch_size]
-            vcprint(f"Processing batch {i//batch_size + 1}/{(len(batch_params) + batch_size - 1)//batch_size}", color="blue")
+            batch = batch_params[i: i + batch_size]
+            vcprint(f"Processing batch {i // batch_size + 1}/{(len(batch_params) + batch_size - 1) // batch_size}",
+                    color="blue")
 
             # Process each row individually within the batch
             for idx, row_params in enumerate(batch):

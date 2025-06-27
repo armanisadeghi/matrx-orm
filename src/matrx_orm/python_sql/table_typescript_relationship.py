@@ -147,8 +147,7 @@ if __name__ == "__main__":
 
     overview_analysis = analyze_relationships(relationships)
 
-    # You can now use vcprint or json.dumps to view the result
-    from common import vcprint
+    from matrx_utils import vcprint
 
     vcprint(
         data=overview_analysis,

@@ -1,13 +1,16 @@
 from typing import Dict, Any, List, Union, Tuple
 import asyncpg
 from matrx_orm.adapters.base_adapter import BaseAdapter
-from matrx_orm.core.config import get_orm_config
-
+from matrx_orm import get_database_config
+from matrx_utils.conf import settings
 
 class PostgreSQLAdapter(BaseAdapter):
     def __init__(self):
-        self.config = get_orm_config().database
+
+        self.config = get_database_config()
         self.connection = None
+        self.current_database = settings.DEFAULT_DB_PROJECT
+
 
     async def _get_connection(self):
         if self.connection is None or self.connection.is_closed():

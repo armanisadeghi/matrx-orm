@@ -1,6 +1,6 @@
 import json
 from matrx_utils import vcprint
-from matrx_orm.schema_builder.helpers.configs import MANAGER_CONFIG_OVERRIDES
+from matrx_orm import get_manager_config
 from matrx_orm.schema_builder.helpers.manager_dto_creator import generate_manager_class
 from matrx_orm.schema_builder.individual_managers.columns import Column
 from matrx_orm.schema_builder.individual_managers.common import (
@@ -1053,6 +1053,8 @@ class Table:
         return py_structure
 
     def to_python_manager_string(self):
+        MANAGER_CONFIG_OVERRIDES = get_manager_config(self.database_project)
+
         relations = self.get_all_relations_list()
         filter_fields = [column.name for column in self.columns if column.is_default_filter_field]
 

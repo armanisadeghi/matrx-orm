@@ -441,7 +441,7 @@ def analyze_many_to_many_relationships(all_relationships_list):
 
 
 if __name__ == "__main__":
-    from common import vcprint
+    from matrx_utils import vcprint
 
     schema = "public"
     database_project = "supabase_automation_matrix"
