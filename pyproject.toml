@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { email = "jatin.b.rx3@gmail.com" }
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 dependencies = [
     "asyncpg==0.30.0",
     "gitpython>=3.1.44",
