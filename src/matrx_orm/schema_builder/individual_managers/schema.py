@@ -10,8 +10,7 @@ from matrx_orm.schema_builder.individual_managers.common import (
 from matrx_utils.file_handling.specific_handlers.code_handler import CodeHandler
 from matrx_orm.schema_builder.helpers.manual_overrides import (
     SYSTEM_OVERRIDES_ENTITIES,
-    SYSTEM_OVERRIDES_FIELDS,
-    TABLE_ORDER_OVERRIDES,
+    SYSTEM_OVERRIDES_FIELDS
 )
 from matrx_orm.schema_builder.parts_generators.entity_field_override_generator import (
     generate_full_typescript_file,

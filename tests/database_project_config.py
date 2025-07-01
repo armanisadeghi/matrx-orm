@@ -174,7 +174,7 @@ CODE_BASICS_PYTHON_BASE_MANAGER = {
     "root": os.path.join(ADMIN_PYTHON_ROOT, "database/orm/extended/managers/"),
     "file_location": "# File: database/orm/extended/managers/all_managers.py",
     "import_lines": [
-        # "from common import vcprint",
+        "from matrx_utils import vcprint",
     ],
     "additional_top_lines": [],
     "additional_bottom_lines": [],
