@@ -619,20 +619,35 @@ class Schema:
         return model_registry_string
 
     def generate_models(self):
-        reference_count = defaultdict(int)
+        # Build dependency graph - map each table to tables it depends on
+        dependencies = defaultdict(set)
+
+        for table_name in self.tables.keys():
+            dependencies[table_name] = set()
+
         for table_name, table in self.tables.items():
-            reference_count[table_name] = len(table.referenced_by_relationships)
+            for relationship in table.referenced_by_relationships:
+                if relationship.source_table and relationship.source_table.name in self.tables:
+                    source_table_name = relationship.source_table.name
+                    dependencies[source_table_name].add(table_name)
 
-        boost_models = TABLE_ORDER_OVERRIDES
-        for model_name in reference_count:
-            if model_name in boost_models:
-                reference_count[model_name] += boost_models[model_name]
+        sorted_tables = []
+        remaining_tables = set(self.tables.keys())
 
-        sorted_tables = sorted(
-            self.tables.keys(),
-            key=lambda table_name: reference_count[table_name],
-            reverse=True,
-        )
+        while remaining_tables:
+            ready_tables = []
+            for table_name in remaining_tables:
+                if not dependencies[table_name] or dependencies[table_name].issubset(set(sorted_tables)):
+                    ready_tables.append(table_name)
+
+            if not ready_tables:
+                ready_tables = list(remaining_tables)
+
+            ready_tables.sort()
+            sorted_tables.extend(ready_tables)
+
+            for table_name in ready_tables:
+                remaining_tables.remove(table_name)
 
         py_structure = [self.get_string_user_model()]
         for table_name in sorted_tables:
@@ -651,7 +666,7 @@ class Schema:
 
             py_auto_config_entry = table.base_class_auto_config
             py_auto_config_string = f"{table.name}_auto_config = {repr(py_auto_config_entry)}\n\n"
-            py_auto_config_structure.append(py_auto_config_string)  # Append as valid Python code
+            py_auto_config_structure.append(py_auto_config_string)
 
             py_base_manager_entry = table.model_base_class_str
             py_base_manager_structure.append(py_base_manager_entry)
@@ -666,13 +681,17 @@ class Schema:
             print("python_models", get_code_config(self.database_project)["python_models"])
             print("-----------------------------\n")
 
-        self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["python_models"], main_code, additional_code)
+        self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["python_models"],
+                                                             main_code, additional_code)
 
         py_base_manager_code = "\n".join(py_base_manager_structure)
         py_auto_config_code = "\n".join(py_auto_config_structure)
 
-        self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["python_base_manager"], py_base_manager_code)
-        self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["python_auto_config"], py_auto_config_code)
+        self.code_handler.generate_and_save_code_from_object(
+            get_code_config(self.database_project)["python_base_manager"], py_base_manager_code)
+        self.code_handler.generate_and_save_code_from_object(
+            get_code_config(self.database_project)["python_auto_config"], py_auto_config_code)
+
 
     def save_analysis_json(self, analysis_dict):
         json_code_temp_path = "schemaAnalysis.json"
