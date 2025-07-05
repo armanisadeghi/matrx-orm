@@ -94,7 +94,7 @@ ai_settings_field_overrides = {
             "subComponent": "SLIDER",
             "className": "w-full",
             "min": 0,
-            "max": 5000,
+            "max": 16000,
             "step": 1,
             "numberType": "smallint",
         },
