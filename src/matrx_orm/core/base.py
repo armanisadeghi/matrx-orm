@@ -278,6 +278,34 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         return instance
 
     @classmethod
+    async def bulk_create(cls, objects_data):
+        """
+        Bulk create multiple instances using enhanced bulk operations.
+        Follows the same data processing pipeline as individual create().
+        """
+        from database.orm.operations.create import bulk_create
+
+        return await bulk_create(cls, objects_data)
+
+    @classmethod
+    async def bulk_update(cls, objects, fields):
+        """
+        Bulk update multiple instances with validation like individual operations.
+        """
+        from database.orm.operations.update import bulk_update
+
+        return await bulk_update(cls, objects, fields)
+
+    @classmethod
+    async def bulk_delete(cls, objects):
+        """
+        Bulk delete multiple instances.
+        """
+        from database.orm.operations.delete import bulk_delete
+
+        return await bulk_delete(cls, objects)
+
+    @classmethod
     async def get(cls, use_cache=True, **kwargs):
         if use_cache:
             return await StateManager.get(cls, **kwargs)

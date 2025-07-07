@@ -1,5 +1,7 @@
-from .update import update
+from matrx_orm.state import StateManager
+
 from ..query.builder import QueryBuilder
+from .update import update
 
 
 async def delete(model, **kwargs):
@@ -7,10 +9,27 @@ async def delete(model, **kwargs):
 
 
 async def bulk_delete(model, objects):
+    """
+    Enhanced bulk_delete that follows the same patterns as individual operations.
+    Now properly handles cache removal like individual delete operations do.
+    """
     if not objects:
         return 0
-    ids = [obj.id for obj in objects if obj.id is not None]
-    return await delete(model, id__in=ids)
+
+    ids = [obj.id for obj in objects if hasattr(obj, "id") and obj.id is not None]
+    if not ids:
+        return 0
+
+    # Perform bulk delete using the proven individual operation pattern
+    rows_affected = await delete(model, id__in=ids)
+
+    # Remove from cache like individual delete operations do
+    if rows_affected > 0:
+        for obj in objects:
+            if hasattr(obj, "id") and obj.id in ids:
+                await StateManager.remove(model, obj)
+
+    return rows_affected
 
 
 async def soft_delete(model, **kwargs):

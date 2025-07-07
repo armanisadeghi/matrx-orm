@@ -1,10 +1,12 @@
 import asyncio
-from typing import Any, Optional, Set
 from enum import Enum
+from typing import Any, Optional, Set
+from uuid import UUID
+
 from matrx_utils import vcprint
+
 from matrx_orm.core.base import RuntimeContainer
 from matrx_orm.extended.app_error_handler import AppError, handle_errors
-from uuid import UUID
 
 info = True
 debug = False
@@ -32,10 +34,14 @@ class BaseDTO:
         return {
             "dto": self.__class__.__name__,
             "id": self.id if hasattr(self, "id") else "Unknown",
-            "model": self._model.__class__.__name__ if self._model else "No model attached",
+            "model": self._model.__class__.__name__
+            if self._model
+            else "No model attached",
         }
 
-    def _report_error(self, message: str, error_type: str = "GenericError", client_visible: str = None):
+    def _report_error(
+            self, message: str, error_type: str = "GenericError", client_visible: str = None
+    ):
         return AppError(
             message=message,
             error_type=error_type,
@@ -46,7 +52,9 @@ class BaseDTO:
     def __getattr__(self, name):
         if self._model and hasattr(self._model, name):
             return getattr(self._model, name)
-        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+        raise AttributeError(
+            f"'{self.__class__.__name__}' object has no attribute '{name}'"
+        )
 
     @handle_errors
     async def fetch_fk(self, field_name):
@@ -109,7 +117,9 @@ class BaseDTO:
             return [self._serialize_value(item, visited.copy()) for item in value]
 
         if isinstance(value, dict):
-            return {k: self._serialize_value(v, visited.copy()) for k, v in value.items()}
+            return {
+                k: self._serialize_value(v, visited.copy()) for k, v in value.items()
+            }
 
         if isinstance(value, BaseDTO):
             return value.to_dict(visited=visited.copy())
@@ -140,7 +150,9 @@ class BaseDTO:
         print(f"\n{self.__class__.__name__} Keys:")
         for key in self.__annotations__.keys():
             data_type = self.__annotations__[key]
-            print(f"-> {key}: {data_type.__name__ if hasattr(data_type, '__name__') else str(data_type)}")
+            print(
+                f"-> {key}: {data_type.__name__ if hasattr(data_type, '__name__') else str(data_type)}"
+            )
         print()
 
     def __repr__(self) -> str:
@@ -149,11 +161,11 @@ class BaseDTO:
 
 class BaseManager:
     def __init__(
-        self,
-        model,
-        dto_class=None,
-        fetch_on_init_limit: int = 0,
-        FETCH_ON_INIT_WITH_WARNINGS_OFF: Optional[str] = None,
+            self,
+            model,
+            dto_class=None,
+            fetch_on_init_limit: int = 0,
+            FETCH_ON_INIT_WITH_WARNINGS_OFF: Optional[str] = None,
     ):
         self.model = model
         self.dto_class = dto_class
@@ -186,7 +198,9 @@ class BaseManager:
             "model": self.model.__name__ if self.model else "Unknown",
         }
 
-    def _report_error(self, message: str, error_type: str = "GenericError", client_visible: str = None):
+    def _report_error(
+            self, message: str, error_type: str = "GenericError", client_visible: str = None
+    ):
         return AppError(
             message=message,
             error_type=error_type,
@@ -287,22 +301,37 @@ class BaseManager:
         return await self._initialize_item_runtime(item)
 
     @handle_errors
-    async def _create_items(self, items_data):
-        """Create multiple items at once.
-
-        Args:
-            items_data: A list of dictionaries, where each dictionary contains
-                        the data for a single item to be created.
-
-        Returns:
-            A list of created and initialized items.
+    async def _create_items(
+            self, items_data: list, batch_size: int = 1000, ignore_conflicts: bool = False
+    ):
         """
-        created_items = []
-        for item_data in items_data:
-            created_item = await self._create_item(**item_data)
-            created_items.append(created_item)
+        Create multiple items using TRUE bulk operations.
+        Now uses the enhanced Model.bulk_create() method that follows the same
+        data processing pipeline as individual operations.
+        """
+        if not items_data:
+            return []
 
-        return created_items
+        try:
+            # Use the Model's bulk_create method which follows the same data pipeline as individual operations
+            created_items = await self.model.bulk_create(items_data)
+
+            # Initialize runtime for each created item (preserves manager functionality)
+            initialized_items = []
+            for item in created_items:
+                if item:
+                    await self._initialize_item_runtime(item)
+                    initialized_items.append(item)
+
+            vcprint(
+                f"✓ Created {len(initialized_items)} items with TRUE bulk operations",
+                color="green",
+            )
+            return initialized_items
+
+        except Exception as e:
+            vcprint(f"Error in _create_items: {e}", color="red")
+            raise
 
     @handle_errors
     async def _update_item(self, item, **updates):
@@ -395,7 +424,10 @@ class BaseManager:
     async def load_items(self, **kwargs):
         """Load and initialize multiple items."""
         items = await self._get_items(**kwargs)
-        vcprint("[WARNING! New feature added to BaseManager] load_items will now automatically add items to the active set.", color="yellow")
+        vcprint(
+            "[WARNING! New feature added to BaseManager] load_items will now automatically add items to the active set.",
+            color="yellow",
+        )
         self._active_items.update([item.id for item in items if item])
         return [await self._initialize_item_runtime(item) for item in items if item]
 
@@ -441,7 +473,9 @@ class BaseManager:
     @handle_errors
     async def get_active_items(self):
         """Get all active items, initialized."""
-        items = await asyncio.gather(*(self._get_item_or_raise(id=item_id) for item_id in self._active_items))
+        items = await asyncio.gather(
+            *(self._get_item_or_raise(id=item_id) for item_id in self._active_items)
+        )
         return items
 
     async def create_item(self, **data):
@@ -450,10 +484,83 @@ class BaseManager:
         vcprint(item, "BASE MANAGER Created item", verbose=debug, color="yellow")
         return await self._initialize_item_runtime(item)
 
+    async def create_items(self, items_data, batch_size=1000, ignore_conflicts=False):
+        """Create multiple items at once using TRUE bulk operations.
+
+        Args:
+            items_data: A list of dictionaries, where each dictionary contains
+                        the data for a single item to be created.
+            batch_size: Number of items to create in each batch (default: 1000)
+            ignore_conflicts: Whether to ignore conflicts during bulk creation (default: False)
+
+        Returns:
+            A list of created and initialized items.
+        """
+        return await self._create_items(
+            items_data, batch_size=batch_size, ignore_conflicts=ignore_conflicts
+        )
+
     async def update_item(self, item_id, **updates):
         """Update an item by ID."""
         item = await self._get_item_or_raise(id=item_id)
         return await self._update_item(item, **updates)
+
+    async def update_items(self, objects, fields, batch_size=1000):
+        """
+        Update multiple items at once using TRUE bulk operations.
+        Follows the same patterns as create_items().
+
+        Args:
+            objects: A list of model instances to update
+            fields: List of field names to update
+            batch_size: Number of items to update in each batch (default: 1000)
+
+        Returns:
+            Number of rows affected.
+        """
+        if not objects or not fields:
+            return 0
+
+        try:
+            # Use the Model's bulk_update method which follows the same patterns as individual operations
+            rows_affected = await self.model.bulk_update(objects, fields)
+
+            # Re-initialize runtime for each updated item (preserves manager functionality)
+            initialized_items = []
+            for item in objects:
+                initialized_item = await self._initialize_item_runtime(item)
+                initialized_items.append(initialized_item)
+
+            vcprint(
+                f"Updated {rows_affected} items with bulk operations through manager",
+                color="green",
+            )
+            return rows_affected
+
+        except Exception as e:
+            vcprint(f"Error in bulk update: {e}", color="red")
+            vcprint(
+                "Attempting fallback to individual updates...",
+                color="yellow",
+            )
+
+            # Fallback to individual updates
+            success_count = 0
+            for item in objects:
+                try:
+                    update_data = {
+                        field: getattr(item, field, None) for field in fields
+                    }
+                    await self._update_item(item, **update_data)
+                    success_count += 1
+                except Exception as individual_error:
+                    vcprint(
+                        f"Failed to update individual item: {individual_error}",
+                        color="red",
+                    )
+                    continue
+
+            return success_count
 
     async def delete_item(self, item_id):
         """Delete an item by ID or raises an error if items does not exist"""
@@ -464,12 +571,66 @@ class BaseManager:
             self._remove_from_active(item_id)
         return success
 
+    async def delete_items(self, objects, batch_size=1000):
+        """
+        Delete multiple items at once using TRUE bulk operations.
+        Follows the same patterns as create_items().
+
+        Args:
+            objects: A list of model instances to delete
+            batch_size: Number of items to delete in each batch (default: 1000)
+
+        Returns:
+            Number of rows affected.
+        """
+        if not objects:
+            return 0
+
+        try:
+            # Use the Model's bulk_delete method which follows the same patterns as individual operations
+            rows_affected = await self.model.bulk_delete(objects)
+
+            # Remove from active set for each deleted item
+            for item in objects:
+                if hasattr(item, "id") and item.id:
+                    self._remove_from_active(item.id)
+
+            vcprint(
+                f"Deleted {rows_affected} items with bulk operations through manager",
+                color="green",
+            )
+            return rows_affected
+
+        except Exception as e:
+            vcprint(f"Error in bulk delete: {e}", color="red")
+            vcprint(
+                "Attempting fallback to individual deletes...",
+                color="yellow",
+            )
+
+            # Fallback to individual deletes
+            success_count = 0
+            for item in objects:
+                try:
+                    success = await self._delete_item(item)
+                    if success and hasattr(item, "id") and item.id:
+                        self._remove_from_active(item.id)
+                        success_count += 1
+                except Exception as individual_error:
+                    vcprint(
+                        f"Failed to delete individual item: {individual_error}",
+                        color="red",
+                    )
+                    continue
+
+            return success_count
+
     async def exists(self, item_id):
         """Check if an item exists."""
         return bool(await self._get_item_or_none(id=item_id))
 
     async def get_or_create(self, defaults=None, **kwargs):
-        """Get an item or create it if it doesn’t exist."""
+        """Get an item or create it if it doesn't exist."""
         item = await self._get_item_or_none(**kwargs)
         if not item and defaults:
             item = await self._create_item(**{**kwargs, **defaults})
@@ -492,7 +653,9 @@ class BaseManager:
         if hasattr(item, "__annotations__"):
             for key in item.__annotations__.keys():
                 data_type = item.__annotations__[key]
-                print(f"-> {key}: {data_type.__name__ if hasattr(data_type, '__name__') else str(data_type)}")
+                print(
+                    f"-> {key}: {data_type.__name__ if hasattr(data_type, '__name__') else str(data_type)}"
+                )
         elif hasattr(item, "to_dict"):
             # If no annotations but has to_dict, try getting keys from that
             item_dict = item.to_dict()
@@ -581,7 +744,9 @@ class BaseManager:
     async def get_items_with_related(self, relation_name):
         """Get all active items with a specific relationship."""
         items = await self.load_items()
-        await asyncio.gather(*(self._fetch_related(item, relation_name) for item in items if item))
+        await asyncio.gather(
+            *(self._fetch_related(item, relation_name) for item in items if item)
+        )
         return items
 
     async def get_item_with_all_related(self, item_id):
@@ -604,7 +769,9 @@ class BaseManager:
         items = await self.get_active_items()
         for item in items:
             if item:
-                await asyncio.gather(*(self._fetch_related(item, name) for name in relation_names))
+                await asyncio.gather(
+                    *(self._fetch_related(item, name) for name in relation_names)
+                )
         return items
 
     async def get_item_through_fk(self, item_id, first_relation, second_relation):
@@ -744,7 +911,9 @@ class BaseManager:
 
     async def get_active_items_with_ifks_dict(self):
         """Get dicts for active items with all inverse foreign key relations."""
-        return [item.to_dict() for item in await self.get_active_items_with_ifks() if item]
+        return [
+            item.to_dict() for item in await self.get_active_items_with_ifks() if item
+        ]
 
     async def get_active_item_with_all_related(self):
         """Get an active item with all relations."""
@@ -763,7 +932,11 @@ class BaseManager:
 
     async def get_active_items_with_all_related_dict(self):
         """Get dicts for active items with all relations."""
-        return [item.to_dict() for item in await self.get_active_items_with_all_related() if item]
+        return [
+            item.to_dict()
+            for item in await self.get_active_items_with_all_related()
+            if item
+        ]
 
     @handle_errors
     async def get_active_item_with_one_relation(self, relation_name):
@@ -785,7 +958,11 @@ class BaseManager:
 
     async def get_active_item_with_one_relation_dict(self, relation_name):
         """Get dicts for an active item with one specific relation."""
-        return [item.to_dict() for item in await self.get_active_item_with_one_relation(relation_name) if item]
+        return [
+            item.to_dict()
+            for item in await self.get_active_item_with_one_relation(relation_name)
+            if item
+        ]
 
     @handle_errors
     async def get_active_item_with_related_models_list(self, related_models_list):
@@ -807,11 +984,21 @@ class BaseManager:
 
     async def get_active_item_with_related_models_list_dict(self, related_models_list):
         """Get dicts for an active item with multiple specific related models."""
-        return [item.to_dict() for item in await self.get_active_item_with_related_models_list(related_models_list) if item]
+        return [
+            item.to_dict()
+            for item in await self.get_active_item_with_related_models_list(
+                related_models_list
+            )
+            if item
+        ]
 
-    async def get_active_item_with_through_fk(self, item_id, first_relationship, second_relationship):
+    async def get_active_item_with_through_fk(
+            self, item_id, first_relationship, second_relationship
+    ):
         """Get an active item through two FK hops."""
-        item, fk_instance = await self.get_active_item_with_fk(item_id, first_relationship)
+        item, fk_instance = await self.get_active_item_with_fk(
+            item_id, first_relationship
+        )
         if fk_instance:
             target_instance = await fk_instance.fetch_fk(second_relationship)
             return item, fk_instance, target_instance
@@ -821,9 +1008,13 @@ class BaseManager:
             return None, None, None
 
     @handle_errors
-    async def get_active_item_through_ifk(self, item_id, first_relationship, second_relationship):
+    async def get_active_item_through_ifk(
+            self, item_id, first_relationship, second_relationship
+    ):
         """Get an active item through two inverse FK hops."""
-        item, ifk_instance = await self.get_active_item_with_ifk(item_id, first_relationship)
+        item, ifk_instance = await self.get_active_item_with_ifk(
+            item_id, first_relationship
+        )
         if ifk_instance:
             target_instance = await ifk_instance.fetch_ifk(second_relationship)
             return item, ifk_instance, target_instance
@@ -841,7 +1032,9 @@ class BaseManager:
         """Get all non-method attributes of the manager instance."""
         attributes = {"model": self.model}
         if hasattr(self, "__dict__"):
-            attributes.update({k: v for k, v in self.__dict__.items() if not callable(v)})
+            attributes.update(
+                {k: v for k, v in self.__dict__.items() if not callable(v)}
+            )
         for attr in dir(self):
             if not attr.startswith("__") and attr not in attributes:
                 value = getattr(self, attr)
@@ -873,7 +1066,9 @@ class BaseManager:
 
         # Fetch items with the specified limit
         items = await self.model.filter().limit(self.fetch_on_init_limit).all()
-        initialized_items = [await self._initialize_item_runtime(item) for item in items]
+        initialized_items = [
+            await self._initialize_item_runtime(item) for item in items
+        ]
         count = len(initialized_items)
 
         # Always print fetched items immediately in red
@@ -895,8 +1090,12 @@ class BaseManager:
             suppression_prefix = "YES_I_KNOW_WHAT_IM_DOING_TURN_OFF_WARNINGS_FOR_LIMIT_"
             if self._FETCH_ON_INIT_WITH_WARNINGS_OFF.startswith(suppression_prefix):
                 try:
-                    warning_limit_threshold = int(self._FETCH_ON_INIT_WITH_WARNINGS_OFF[len(suppression_prefix) :])
-                    warnings_suppressed = warning_limit_threshold >= self.fetch_on_init_limit
+                    warning_limit_threshold = int(
+                        self._FETCH_ON_INIT_WITH_WARNINGS_OFF[len(suppression_prefix):]
+                    )
+                    warnings_suppressed = (
+                            warning_limit_threshold >= self.fetch_on_init_limit
+                    )
                 except ValueError:
                     vcprint(
                         f"Invalid FETCH_ON_INIT_WITH_WARNINGS_OFF format: {self._FETCH_ON_INIT_WITH_WARNINGS_OFF}",
@@ -910,12 +1109,16 @@ class BaseManager:
 
         # Trigger count-based warnings if not suppressed
         if not warnings_suppressed and count > warning_limit_threshold:
-            await self._trigger_fetch_warnings(count, initialized_items, warning_limit_threshold)
+            await self._trigger_fetch_warnings(
+                count, initialized_items, warning_limit_threshold
+            )
 
         # Cache or store items
         self._active_items.update(initialized_items)
 
-    async def _trigger_fetch_warnings(self, count: int, items: list, warning_limit_threshold: int):
+    async def _trigger_fetch_warnings(
+            self, count: int, items: list, warning_limit_threshold: int
+    ):
         """Trigger escalating warnings based on the number of fetched items."""
         if count <= warning_limit_threshold:
             return  # No warning if below or at the custom threshold
@@ -938,10 +1141,14 @@ class BaseManager:
             warning_lines = [
                 "=" * 80,
                 f" AUTOFETCH COUNT: {count} ".center(80, "="),
-                f"[WARNING!!!!] INIT method for model {self.model.__name__} fetched {count} items (>500)!".center(80),
+                f"[WARNING!!!!] INIT method for model {self.model.__name__} fetched {count} items (>500)!".center(
+                    80
+                ),
                 f"Threshold was {warning_limit_threshold}. ARE YOU SURE?".center(80),
                 "To suppress this warning, set:".center(80),
-                f"FETCH_ON_INIT_WITH_WARNINGS_OFF='YES_I_KNOW_WHAT_IM_DOING_TURN_OFF_WARNINGS_FOR_LIMIT_{self.fetch_on_init_limit}'".center(80),
+                f"FETCH_ON_INIT_WITH_WARNINGS_OFF='YES_I_KNOW_WHAT_IM_DOING_TURN_OFF_WARNINGS_FOR_LIMIT_{self.fetch_on_init_limit}'".center(
+                    80
+                ),
                 "=" * 80,
                 "ITEMS FETCHED:".center(80),
             ]
@@ -952,11 +1159,17 @@ class BaseManager:
             scary_warning = [
                 "!" * 80,
                 f"!!! AUTOFETCH COUNT: {count} !!!".center(80),
-                f"!!! [DANGER ZONE] INIT method for model {self.model.__name__} fetched {count} items (>1000) !!!".center(80),
+                f"!!! [DANGER ZONE] INIT method for model {self.model.__name__} fetched {count} items (>1000) !!!".center(
+                    80
+                ),
                 "!!! THIS IS INSANE! YOU MIGHT CRASH EVERYTHING !!!".center(80),
-                f"!!! Threshold was {warning_limit_threshold}. PROCEED WITH EXTREME CAUTION !!!".center(80),
+                f"!!! Threshold was {warning_limit_threshold}. PROCEED WITH EXTREME CAUTION !!!".center(
+                    80
+                ),
                 "To suppress this madness, set:".center(80),
-                f"FETCH_ON_INIT_WITH_WARNINGS_OFF='YES_I_KNOW_WHAT_IM_DOING_TURN_OFF_WARNINGS_FOR_LIMIT_{self.fetch_on_init_limit}'".center(80),
+                f"FETCH_ON_INIT_WITH_WARNINGS_OFF='YES_I_KNOW_WHAT_IM_DOING_TURN_OFF_WARNINGS_FOR_LIMIT_{self.fetch_on_init_limit}'".center(
+                    80
+                ),
                 "!" * 80,
                 "FETCHED ITEMS (GOOD LUCK):".center(80),
             ]
@@ -967,11 +1180,17 @@ class BaseManager:
         """Trigger a non-suppressible warning if the fetch count approaches or hits the limit."""
         warning_lines = [
             "*" * 80,
-            f"!!! AUTOFETCH LIMIT REACHED OR NEAR: {count} vs LIMIT {self.fetch_on_init_limit} !!!".center(80),
-            f"!!! [CRITICAL ERROR] INIT method for model {self.model.__name__} fetched {count} items !!!".center(80),
+            f"!!! AUTOFETCH LIMIT REACHED OR NEAR: {count} vs LIMIT {self.fetch_on_init_limit} !!!".center(
+                80
+            ),
+            f"!!! [CRITICAL ERROR] INIT method for model {self.model.__name__} fetched {count} items !!!".center(
+                80
+            ),
             "!!! THIS IS WITHIN 5 OF YOUR SET LIMIT OR AT IT !!!".center(80),
             "!!! YOU MAY NOT HAVE ALL DATA - THIS IS DANGEROUS !!!".center(80),
-            "!!! THIS WARNING CANNOT BE SUPPRESSED - FIX YOUR LIMIT OR LOGIC !!!".center(80),
+            "!!! THIS WARNING CANNOT BE SUPPRESSED - FIX YOUR LIMIT OR LOGIC !!!".center(
+                80
+            ),
             "*" * 80,
             "FETCHED ITEMS (CHECK FOR COMPLETENESS):".center(80),
         ]

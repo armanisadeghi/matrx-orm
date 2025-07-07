@@ -1,5 +1,5 @@
 from .core.config import DatabaseProjectConfig, register_database, get_database_config, get_connection_string, \
-    get_manager_config, get_code_config
+    get_manager_config, get_code_config, get_all_database_project_names
 from .core.extended import BaseManager, BaseDTO
 from .core.base import Model
 from .core.registry import model_registry

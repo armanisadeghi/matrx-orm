@@ -67,10 +67,10 @@ import {
     WcInjuryData,
     WcReportData,
 } from "@/types";
-import { MatrxRecordId, QuickReferenceRecord } from "../types/stateTypes";
+import { FilterPayload, MatrxRecordId, QuickReferenceRecord } from "../types/stateTypes";
 import { EntitySelectors } from "../selectors";
 import { EntityActions } from "../slice";
-import { FetchMode } from "../actions";
+import { FetchMode, SortPayload } from "../actions";
 import { useEntityWithFetch } from "./useAllData";
 """
 
@@ -93,6 +93,7 @@ def generate_entity_main_hook(entity_name_snake):
     {camel_case}Selectors: EntitySelectors<"{camel_case}">;
     {camel_case}Actions: EntityActions<"{camel_case}">;
     {camel_case}Records: Record<MatrxRecordId, {pascal_case}Data>;
+    {camel_case}RecordsById: Record<string, {pascal_case}Data>;
     {camel_case}UnsavedRecords: Record<MatrxRecordId, Partial<{pascal_case}Data>>;
     {camel_case}SelectedRecordIds: MatrxRecordId[];
     {camel_case}IsLoading: boolean;
@@ -113,7 +114,11 @@ def generate_entity_main_hook(entity_name_snake):
     fetch{pascal_case}One: (recordId: MatrxRecordId) => void;
     fetch{pascal_case}OneWithFkIfk: (recordId: MatrxRecordId) => void;
     fetch{pascal_case}All: () => void;
-    fetch{pascal_case}Paginated: (page: number, pageSize: number) => void;
+    fetch{pascal_case}Paginated: (page: number, pageSize: number, options?: {{
+        maxCount?: number;
+        filters?: FilterPayload;
+        sort?: SortPayload;
+    }}) => void
 }};
 
 export const use{pascal_case}WithFetch = (): Use{pascal_case}WithFetchReturn => {{
@@ -121,6 +126,7 @@ export const use{pascal_case}WithFetch = (): Use{pascal_case}WithFetchReturn => 
         selectors: {camel_case}Selectors,
         actions: {camel_case}Actions,
         allRecords: {camel_case}Records,
+        recordsById: {camel_case}RecordsById,
         unsavedRecords: {camel_case}UnsavedRecords,
         selectedRecordIds: {camel_case}SelectedRecordIds,
         isLoading: {camel_case}IsLoading,
@@ -149,6 +155,7 @@ export const use{pascal_case}WithFetch = (): Use{pascal_case}WithFetchReturn => 
         {camel_case}Selectors,
         {camel_case}Actions,
         {camel_case}Records,
+        {camel_case}RecordsById,
         {camel_case}UnsavedRecords,
         {camel_case}SelectedRecordIds,
         {camel_case}IsLoading,
@@ -200,11 +207,11 @@ def generate_main_hook_imports(entity_names):
     complete_imports = f"""import {{
 {all_data_imports}
 }} from "@/types";
-import {{ MatrxRecordId, QuickReferenceRecord }} from "../types/stateTypes";
-import {{ EntitySelectors }} from "../selectors";
-import {{ EntityActions }} from "../slice";
-import {{ FetchMode }} from "../actions";
-import {{ useEntityWithFetch }} from "./useAllData";"""
+import {{ MatrxRecordId, QuickReferenceRecord, FilterPayload, SortPayload }} from "@/lib/redux/entity/types/stateTypes";
+import {{ EntitySelectors }} from "@/lib/redux/entity/selectors";
+import {{ EntityActions }} from "@/lib/redux/entity/slice";
+import {{ FetchMode }} from "@/lib/redux/entity/actions";
+import {{ useEntityWithFetch }} from "@/lib/redux/entity/hooks/useAllData";"""
 
     return complete_imports
 

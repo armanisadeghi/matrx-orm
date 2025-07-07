@@ -82,6 +82,24 @@ class DatabaseRegistry:
         config = self._configs[config_name]
         return config.manager_config_overrides
 
+    def get_all_database_configs(self) -> Dict[str, dict]:
+        all_configs = {}
+        for config_name, config in self._configs.items():
+            all_configs[config_name] = {
+                "host": config.host,
+                "port": config.port,
+                "database_name": config.database_name,
+                "user": config.user,
+                "password": config.password,
+                "code_basics": config.code_basics,
+                "manager_config_overrides": config.manager_config_overrides
+            }
+        return all_configs
+
+    def get_all_database_project_names(self) -> list[str]:
+        all_configs = self.get_all_database_configs()
+        return list(all_configs.keys())
+
 
 registry = DatabaseRegistry()
 
@@ -106,3 +124,7 @@ def get_connection_string(config_name: str) -> str:
     config = get_database_config(config_name)
     connection_string = f"postgresql://{config['user']}:{config['password']}@{config['host']}:{config['port']}/{config['database_name']}"
     return connection_string
+
+
+def get_all_database_project_names() -> list[str]:
+    return registry.get_all_database_project_names()
