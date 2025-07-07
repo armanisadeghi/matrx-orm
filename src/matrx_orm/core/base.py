@@ -283,7 +283,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         Bulk create multiple instances using enhanced bulk operations.
         Follows the same data processing pipeline as individual create().
         """
-        from database.orm.operations.create import bulk_create
+        from matrx_orm.operations.create import bulk_create
 
         return await bulk_create(cls, objects_data)
 
@@ -292,7 +292,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         """
         Bulk update multiple instances with validation like individual operations.
         """
-        from database.orm.operations.update import bulk_update
+        from matrx_orm.operations.update import bulk_update
 
         return await bulk_update(cls, objects, fields)
 
@@ -301,7 +301,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         """
         Bulk delete multiple instances.
         """
-        from database.orm.operations.delete import bulk_delete
+        from matrx_orm.operations.delete import bulk_delete
 
         return await bulk_delete(cls, objects)
 
