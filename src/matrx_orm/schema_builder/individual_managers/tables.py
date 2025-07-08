@@ -1039,6 +1039,7 @@ class Table:
 
         # Add _inverse_foreign_keys to the model fields
         py_fields.append(f"_inverse_foreign_keys = {inverse_foreign_keys}")
+        py_fields.append(f'_database = "{self.database_project}"')
 
         if py_enum_classes:
             enum_string = "\n\n".join(py_enum_classes)

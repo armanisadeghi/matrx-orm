@@ -21,7 +21,8 @@ from matrx_orm.schema_builder.parts_generators.entity_main_hook_generator import
 from matrx_orm.schema_builder.parts_generators.entity_override_generator import (
     generate_multiple_entities,
 )
-from matrx_orm import get_code_config
+from matrx_orm import get_code_config, get_default_code_config
+
 import re
 
 LOCAL_DEBUG_MODE = False
@@ -34,6 +35,32 @@ def format_ts_object(ts_object_str):
     Ensures TypeScript-style object notation.
     """
     return re.sub(r'"(\w+)"\s*:', r"\1:", ts_object_str)
+
+
+def get_code_save_config(database_project):
+    try:
+        config = get_code_config(database_project)
+        if config:
+            return config
+        else:
+            if LOCAL_DEBUG_MODE:
+                vcprint(
+                    f"code_basics not found in config for project {database_project}, using default config",
+                    title="Config Fallback",
+                    pretty=True,
+                    color="yellow",
+                )
+            return get_default_code_config(database_project)
+
+    except Exception as e:
+        if LOCAL_DEBUG_MODE:
+            vcprint(
+                f"Error retrieving config for project {database_project}: {str(e)}, using default config",
+                title="Config Error",
+                pretty=True,
+                color="red",
+            )
+        return get_default_code_config(database_project)
 
 
 class Schema:
@@ -227,7 +254,7 @@ class Schema:
         result += "};\n"
 
         main_code = result
-        self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["primary_keys"], main_code)
+        self.code_handler.generate_and_save_code_from_object(get_default_code_config(self.database_project)["primary_keys"], main_code)
 
     # Method to generate TypeBrand utility type
     def generate_type_brand_util(self):
@@ -469,7 +496,7 @@ class Schema:
             f"{ts_view_name_lookup_code}"
         )
 
-        self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["typescript_lookup"], main_code)
+        self.code_handler.generate_and_save_code_from_object(get_default_code_config(self.database_project)["typescript_lookup"], main_code)
 
     def generate_entity_typescript_types_file(self):
         ts_type_entries = []
@@ -477,16 +504,16 @@ class Schema:
             ts_type_entries.append(table.to_typescript_type_entry())
 
         main_code = "\n".join(ts_type_entries)
-        self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["entity_typescript_types"], main_code)
+        self.code_handler.generate_and_save_code_from_object(get_default_code_config(self.database_project)["entity_typescript_types"], main_code)
 
     def generate_schema_file(self):
         ts_structure, const_structure = self.generate_schema_structure()
         table_schema_structure = self.generate_static_ts_Initial_table_schema()
         ts_code_content = f"{ts_structure}\n\n{table_schema_structure}"
 
-        self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["typescript_schema"], ts_code_content)
+        self.code_handler.generate_and_save_code_from_object(get_default_code_config(self.database_project)["typescript_schema"], ts_code_content)
 
-        self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["typescript_individual_table_schemas"], const_structure)
+        self.code_handler.generate_and_save_code_from_object(get_default_code_config(self.database_project)["typescript_individual_table_schemas"], const_structure)
 
     # Method to generate and save the types file (AutomationSchemaTypes.ts)
     def generate_types_file(self):
@@ -514,7 +541,7 @@ class Schema:
             f"{type_inference_entries}\n\n"
         )
 
-        self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["typescript_types"], ts_code_content)
+        self.code_handler.generate_and_save_code_from_object(get_default_code_config(self.database_project)["typescript_types"], ts_code_content)
 
         self.generate_field_name_list()
 
@@ -551,7 +578,7 @@ class Schema:
 
         main_code = self.convert_to_typescript(entity_field_names)
 
-        self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["typescript_entity_fields"], main_code)
+        self.code_handler.generate_and_save_code_from_object(get_default_code_config(self.database_project)["typescript_entity_fields"], main_code)
 
         self.generate_entity_overrides()
 
@@ -562,7 +589,7 @@ class Schema:
 
         overrides_code = generate_multiple_entities(entity_names, SYSTEM_OVERRIDES_ENTITIES)
 
-        self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["typescript_entity_overrides"], overrides_code)
+        self.code_handler.generate_and_save_code_from_object(get_default_code_config(self.database_project)["typescript_entity_overrides"], overrides_code)
 
         self.generate_entity_main_hooks()
         self.generate_entity_field_overrides()
@@ -570,7 +597,7 @@ class Schema:
     def generate_entity_main_hooks(self):
         all_table_snake_names = [table.name for table in self.tables.values()]
         main_hook_code = generate_complete_main_hooks_file(all_table_snake_names)
-        self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["typescript_entity_main_hooks"], main_hook_code)
+        self.code_handler.generate_and_save_code_from_object(get_default_code_config(self.database_project)["typescript_entity_main_hooks"], main_hook_code)
 
     def generate_entity_field_overrides(self):
         entity_names = []
@@ -579,7 +606,7 @@ class Schema:
 
         overrides_code = generate_full_typescript_file(entity_names, SYSTEM_OVERRIDES_FIELDS)
 
-        self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["typescript_entity_field_overrides"], overrides_code)
+        self.code_handler.generate_and_save_code_from_object(get_default_code_config(self.database_project)["typescript_entity_field_overrides"], overrides_code)
 
         self.generate_entity_typescript_types_file()
 
@@ -602,9 +629,11 @@ class Schema:
 
     def get_string_user_model(self):
         # Returns the string for the Users model
-        users_model = """class Users(Model):
-        id = UUIDField(primary_key=True, null=False)
-        email = CharField(null=False)\n\n"""
+        users_model = f"""class Users(Model):
+    id = UUIDField(primary_key=True, null=False)
+    email = CharField(null=False)\n\n
+    
+    _database = \"{self.database_project}\"\n\n"""
         return users_model
 
     def get_string_model_registry(self):
@@ -677,19 +706,19 @@ class Schema:
 
         if LOCAL_DEBUG_MODE:
             print("DEBUG.....")
-            print("python_models", get_code_config(self.database_project)["python_models"])
+            print("python_models", get_default_code_config(self.database_project)["python_models"])
             print("-----------------------------\n")
 
-        self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["python_models"],
+        self.code_handler.generate_and_save_code_from_object(get_default_code_config(self.database_project)["python_models"],
                                                              main_code, additional_code)
 
         py_base_manager_code = "\n".join(py_base_manager_structure)
         py_auto_config_code = "\n".join(py_auto_config_structure)
 
         self.code_handler.generate_and_save_code_from_object(
-            get_code_config(self.database_project)["python_base_manager"], py_base_manager_code)
+            get_default_code_config(self.database_project)["python_base_manager"], py_base_manager_code)
         self.code_handler.generate_and_save_code_from_object(
-            get_code_config(self.database_project)["python_auto_config"], py_auto_config_code)
+            get_default_code_config(self.database_project)["python_auto_config"], py_auto_config_code)
 
 
     def save_analysis_json(self, analysis_dict):

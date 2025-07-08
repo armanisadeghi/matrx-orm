@@ -250,11 +250,14 @@ class ModelState:
 class StateManager:
     _states = {}
 
+
+
     @classmethod
     def register_model(cls, model_class):
         """Register a model class with error handling."""
         try:
-            cls._states[model_class.__name__] = ModelState(model_class)
+            database = model_class.get_database_name()
+            cls._states[(database, model_class.__name__)] = ModelState(model_class)
         except Exception as e:
             raise ConfigurationError(
                 model=model_class,
@@ -266,14 +269,15 @@ class StateManager:
     async def get(cls, model_class, **kwargs):
         """Fetch a single record with comprehensive error handling."""
         try:
-            if model_class.__name__ not in cls._states:
+            database = model_class.get_database_name()
+            if (database, model_class.__name__) not in cls._states:
                 raise StateError(
                     model=model_class,
                     operation="get",
                     reason="Model not registered with StateManager",
                 )
 
-            state = cls._states[model_class.__name__]
+            state = cls._states[(database, model_class.__name__)]
 
             # Try cache first
             record = await state.get(**kwargs)
@@ -315,14 +319,15 @@ class StateManager:
         Includes comprehensive error handling.
         """
         try:
-            if model_class.__name__ not in cls._states:
+            database = model_class.get_database_name()
+            if (database, model_class.__name__) not in cls._states:
                 raise StateError(
                     model=model_class,
                     operation="get_or_none",
                     reason="Model not registered with StateManager",
                 )
 
-            state = cls._states[model_class.__name__]
+            state = cls._states[(database, model_class.__name__)]
 
             # Try cache first
             try:
@@ -361,7 +366,9 @@ class StateManager:
     @classmethod
     async def get_all(cls, model_class, **kwargs):
         """Fetch multiple records, ensuring they are cached."""
-        state = cls._states[model_class.__name__]
+
+        database = model_class.get_database_name()
+        state = cls._states[(database, model_class.__name__)]
 
         # Step 1: Try getting cached records with the given filter
         cached_records = [record for record in state.get_all_cached() if all(getattr(record, key) == value for key, value in kwargs.items())]
@@ -385,7 +392,8 @@ class StateManager:
     @classmethod
     async def cache(cls, model_class, record):
         """Caches a record to ensure it's always accessible."""
-        state = cls._states[model_class.__name__]
+        database = model_class.get_database_name()
+        state = cls._states[(database, model_class.__name__)]
         await state.cache(record)
 
     @classmethod
@@ -395,7 +403,8 @@ class StateManager:
             if not records:
                 return
 
-            state = cls._states.get(model_class.__name__)
+            database = model_class.get_database_name()
+            state = cls._states[(database, model_class.__name__)]
             if not state:
                 raise StateError(
                     model=model_class,
@@ -423,30 +432,35 @@ class StateManager:
     @classmethod
     async def remove(cls, model_class, record):
         """Removes a specific record from the cache."""
-        state = cls._states[model_class.__name__]
+        database = model_class.get_database_name()
+        state = cls._states[(database, model_class.__name__)]
         await state.remove(record)
 
     @classmethod
     async def remove_bulk(cls, model_class, records):
         """Removes multiple records from the cache."""
-        state = cls._states[model_class.__name__]
+        database = model_class.get_database_name()
+        state = cls._states[(database, model_class.__name__)]
         for record in records:
             await state.remove(record)
 
     @classmethod
     async def update(cls, model_class, record):
         """Ensures updates reflect in cache instantly."""
-        state = cls._states[model_class.__name__]
+        database = model_class.get_database_name()
+        state = cls._states[(database, model_class.__name__)]
         await state.cache(record)
 
     @classmethod
     async def clear_cache(cls, model_class):
         """Clears the cache for a specific model."""
-        state = cls._states[model_class.__name__]
+        database = model_class.get_database_name()
+        state = cls._states[(database, model_class.__name__)]
         state.clear_cache()
 
     @classmethod
     async def count(cls, model_class):
         """Returns the number of cached records for a model."""
-        state = cls._states[model_class.__name__]
+        database = model_class.get_database_name()
+        state = cls._states[(database, model_class.__name__)]
         return state.count()

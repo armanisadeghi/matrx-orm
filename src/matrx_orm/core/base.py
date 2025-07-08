@@ -272,6 +272,12 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         self._extra_data = {k: v for k, v in kwargs.items() if k not in self._fields}
 
     @classmethod
+    def get_database_name(cls):
+        if not cls._database:
+            raise ValueError(f"Database name not set for model {cls.__name__}")
+        return cls._database
+
+    @classmethod
     async def create(cls, **kwargs):
         instance = await create.create_instance(cls, **kwargs)
         await StateManager.cache(cls, instance)

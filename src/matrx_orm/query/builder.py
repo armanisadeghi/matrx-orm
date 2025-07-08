@@ -10,12 +10,14 @@ from ..exceptions import (
 )
 from ..state import StateManager
 
+
+
 debug = False
 
 class QueryBuilder:
-    def __init__(self, model, database="supabase_automation_matrix"):
+    def __init__(self, model, database=None):
         self.model = model
-        self.database = database
+        self.database = self._set_database(model)
         self.filters = []
         self.excludes = []
         self.order_by_fields = []
@@ -27,6 +29,14 @@ class QueryBuilder:
         self.group_by_fields = []
         self.having_filters = []
         self.aggregations = []
+
+    def _set_database(self, model):
+        if hasattr(model, '_database') and model._database:
+            self.database = model._database
+            return self.database
+        
+        raise ValueError(f"Database not found for model {model.__name__}")
+
 
     def filter(self, **kwargs):
         """Applies SQL filters before execution."""
