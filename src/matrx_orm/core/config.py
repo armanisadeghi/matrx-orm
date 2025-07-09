@@ -130,7 +130,7 @@ def get_code_config(db_project):
         "root": ADMIN_PYTHON_ROOT,
         "file_location": f"# File: database/{db_project}/models.py",
         "import_lines": [
-            "import database.db_registry"
+            "import database.db_registry",
             "from matrx_orm import CharField, EnumField, DateField, TextField, IntegerField, FloatField, BooleanField, DateTimeField, UUIDField, JSONField, DecimalField, BigIntegerField, SmallIntegerField, JSONBField, UUIDArrayField, JSONBArrayField, ForeignKey, Model, model_registry, BaseDTO, BaseManager",
             "from enum import Enum",
             "from dataclasses import dataclass"
