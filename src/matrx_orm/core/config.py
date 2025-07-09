@@ -147,7 +147,7 @@ def get_code_config(db_project):
 
     usable_name = get_database_alias(db_project)
     ADMIN_PYTHON_ROOT = os.path.join(python_root, "database", usable_name)
-    ADMIN_TS_ROOT = os.path.join(ts_root, usable_name)
+    ADMIN_TS_ROOT = ts_root
 
     CODE_BASICS_PYTHON_MODELS = {
         "temp_path": "models.py",
