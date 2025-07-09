@@ -77,7 +77,8 @@ MANAGER_CONFIG_OVERRIDES = {
 
 ####
 
-config = DatabaseProjectConfig(name="matrx",
+config = DatabaseProjectConfig(name="supabase_automation_matrix",
+                               alias="main",
                                user=settings.DB_USER,
                                password=settings.DB_PASS,
                                host=settings.DB_HOST,
@@ -86,6 +87,3 @@ config = DatabaseProjectConfig(name="matrx",
                                manager_config_overrides=MANAGER_CONFIG_OVERRIDES)
 
 register_database(config)
-
-
-

@@ -8,7 +8,7 @@ from matrx_orm.schema_builder import SchemaManager
 clear_terminal()
 
 schema = "public"
-database_project = "matrx"
+database_project = "supabase_automation_matrix"
 additional_schemas = ["auth"]
 save_direct = True
 
