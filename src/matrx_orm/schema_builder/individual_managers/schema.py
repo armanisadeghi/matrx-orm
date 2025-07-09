@@ -37,31 +37,6 @@ def format_ts_object(ts_object_str):
     return re.sub(r'"(\w+)"\s*:', r"\1:", ts_object_str)
 
 
-def get_code_save_config(database_project):
-    try:
-        config = get_code_config(database_project)
-        if config:
-            return config
-        else:
-            if LOCAL_DEBUG_MODE:
-                vcprint(
-                    f"code_basics not found in config for project {database_project}, using default config",
-                    title="Config Fallback",
-                    pretty=True,
-                    color="yellow",
-                )
-            return get_code_config(database_project)
-
-    except Exception as e:
-        if LOCAL_DEBUG_MODE:
-            vcprint(
-                f"Error retrieving config for project {database_project}: {str(e)}, using default config",
-                title="Config Error",
-                pretty=True,
-                color="red",
-            )
-        return get_code_config(database_project)
-
 
 class Schema:
     def __init__(
@@ -631,9 +606,8 @@ class Schema:
         # Returns the string for the Users model
         users_model = f"""class Users(Model):
     id = UUIDField(primary_key=True, null=False)
-    email = CharField(null=False)\n\n
-    
-    _database = \"{self.database_project}\"\n\n"""
+    email = CharField(null=False)\n
+    _database = \"{self.database_project}\"\n"""
         return users_model
 
     def get_string_model_registry(self):
@@ -684,8 +658,9 @@ class Schema:
             py_structure.append(py_table_entry)
 
         py_manager_structure = []
-        py_base_manager_structure = []
         py_auto_config_structure = []
+
+        py_all_manager_import_names_str = ""
 
         for table_name in sorted_tables:
             table = self.tables[table_name]
@@ -697,7 +672,13 @@ class Schema:
             py_auto_config_structure.append(py_auto_config_string)
 
             py_base_manager_entry = table.model_base_class_str
-            py_base_manager_structure.append(py_base_manager_entry)
+
+            default_manager_config = get_code_config(self.database_project)["python_base_manager"]
+            default_manager_config["temp_path"] += f"{table.name}.py"
+            default_manager_config["file_location"] += f"{table.name}.py"
+
+            self.code_handler.generate_and_save_code_from_object(default_manager_config, py_base_manager_entry)
+            py_all_manager_import_names_str+= f"from .{table.name} import {table.python_model_name}DTO, {table.python_model_name}Base\n"
 
         py_structure.append(self.get_string_model_registry())
 
@@ -712,13 +693,13 @@ class Schema:
         self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["python_models"],
                                                              main_code, additional_code)
 
-        py_base_manager_code = "\n".join(py_base_manager_structure)
+        
         py_auto_config_code = "\n".join(py_auto_config_structure)
 
         self.code_handler.generate_and_save_code_from_object(
-            get_code_config(self.database_project)["python_base_manager"], py_base_manager_code)
-        self.code_handler.generate_and_save_code_from_object(
             get_code_config(self.database_project)["python_auto_config"], py_auto_config_code)
+        
+        self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["python_all_managers"], py_all_manager_import_names_str)
 
 
     def save_analysis_json(self, analysis_dict):

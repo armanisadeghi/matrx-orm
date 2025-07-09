@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Dict
-from matrx_utils import settings
+from matrx_utils import settings, vcprint
 import os
 
 class DatabaseConfigError(Exception):
@@ -17,8 +17,7 @@ class DatabaseProjectConfig:
     user: str
     password: str
 
-    # Config section related to file saving, manager override : dto , manager creation
-    code_basics: Dict = field(default_factory=dict)
+    alias: str = ""
     manager_config_overrides: Dict = field(default_factory=dict)
 
 
@@ -34,16 +33,30 @@ class DatabaseRegistry:
     def __init__(self):
         if not self._initialized:
             self._configs: Dict[str, DatabaseProjectConfig] = {}
+            self._used_aliases: list[str] = []
             self._initialized = True
 
     def register(self, config: DatabaseProjectConfig) -> None:
         if config.name in self._configs:
-            raise DatabaseConfigError(f"Database configuration '{config.name}' already registered")
+            vcprint(f"[Matrx ORM] WARNING! Database configuration '{config.name}' already registered. Ignoring new registration.", color="yellow")
+            return
+        
+        if config.alias == "":
+            vcprint(f"[Matrx ORM] Error! Database alias cannot be empty. Please use a different alias.", color="red")
+            raise DatabaseConfigError(f"Database alias cannot be empty. Please use a different alias.")
 
-        required_fields = [config.host, config.port, config.database_name, config.user, config.password]
+        if config.alias in self._used_aliases:
+            vcprint(f"[Matrx ORM] Error! Database alias '{config.alias}' already registered. Ignoring new registration.", color="red")
+            raise DatabaseConfigError(f"Database alias '{config.alias}' already used. Please use a different alias.")
+
+        self._used_aliases.append(config.alias)
+
+        required_fields = [config.host, config.port, config.database_name, config.user, config.password, config.alias]
+
         if not all(required_fields):
             missing = []
             if not config.host: missing.append("host")
+            if not config.alias: missing.append("alias")
             if not config.port: missing.append("port")
             if not config.database_name: missing.append("database_name")
             if not config.user: missing.append("user")
@@ -63,19 +76,14 @@ class DatabaseRegistry:
             "port": config.port,
             "database_name": config.database_name,
             "user": config.user,
-            "password": config.password
+            "password": config.password,
+            "alias": config.alias
         }
 
     def get_config_dataclass(self, config_name: str) -> DatabaseProjectConfig:
         if config_name not in self._configs:
             raise DatabaseConfigError(f"Configuration '{config_name}' not found in registered databases")
         return self._configs[config_name]
-
-    def get_code_config_by_project_name(self, config_name):
-        if config_name not in self._configs:
-            raise DatabaseConfigError(f"Configuration '{config_name}' not found in registered databases")
-        config = self._configs[config_name]
-        return config.code_basics
 
     def get_manager_config_by_project_name(self, config_name):
         if config_name not in self._configs:
@@ -92,8 +100,8 @@ class DatabaseRegistry:
                 "database_name": config.database_name,
                 "user": config.user,
                 "password": config.password,
-                "code_basics": config.code_basics,
-                "manager_config_overrides": config.manager_config_overrides
+                "manager_config_overrides": config.manager_config_overrides,
+                "alias": config.alias
             }
         return all_configs
 
@@ -101,16 +109,17 @@ class DatabaseRegistry:
         all_configs = self.get_all_database_configs()
         return list(all_configs.keys())
 
+    def get_database_alias(self, db_project):
+        if db_project not in self._configs:
+            raise DatabaseConfigError(f"Database project '{db_project}' not found in registered databases")
+        return self._configs[db_project].alias
+
 
 registry = DatabaseRegistry()
 
 
 def get_database_config(config_name: str) -> dict:
     return registry.get_database_config(config_name)
-
-
-def get_code_config(config_name: str) -> dict:
-    return registry.get_code_config_by_project_name(config_name)
 
 
 def get_manager_config(config_name: str) -> dict:
@@ -130,24 +139,25 @@ def get_connection_string(config_name: str) -> str:
 def get_all_database_project_names() -> list[str]:
     return registry.get_all_database_project_names()
 
+def get_database_alias(db_project):
+    return registry.get_database_alias(db_project)
 
-def get_default_code_config(db_project):
+def get_code_config(db_project):
     python_root, ts_root = settings.ADMIN_PYTHON_ROOT, settings.ADMIN_TS_ROOT
 
-    ADMIN_PYTHON_ROOT = os.path.join(python_root, "database", db_project)
-    ADMIN_TS_ROOT = os.path.join(ts_root, db_project)
+    usable_name = get_database_alias(db_project)
+    ADMIN_PYTHON_ROOT = os.path.join(python_root, "database", usable_name)
+    ADMIN_TS_ROOT = ts_root
 
     CODE_BASICS_PYTHON_MODELS = {
         "temp_path": "models.py",
         "root": ADMIN_PYTHON_ROOT,
-        "file_location": f"# File: database/{db_project}/models.py",
+        "file_location": f"# File: database/{usable_name}/models.py",
         "import_lines": [
-            "from matrx_orm import (CharField, EnumField, DateField, TextField, IntegerField, FloatField, BooleanField, DateTimeField, UUIDField, JSONField, DecimalField, BigIntegerField, SmallIntegerField, JSONBField, UUIDArrayField, JSONBArrayField, ForeignKey)",
-            "from matrx_orm import Model",
-            "from matrx_orm import model_registry",
+            "import database_registry",
+            "from matrx_orm import CharField, EnumField, DateField, TextField, IntegerField, FloatField, BooleanField, DateTimeField, UUIDField, JSONField, DecimalField, BigIntegerField, SmallIntegerField, JSONBField, UUIDArrayField, JSONBArrayField, ForeignKey, Model, model_registry, BaseDTO, BaseManager",
             "from enum import Enum",
-            "from dataclasses import dataclass",
-            "from matrx_orm import BaseDTO, BaseManager",
+            "from dataclasses import dataclass"
         ],
         "additional_top_lines": [
             "verbose = False",
@@ -270,11 +280,21 @@ def get_default_code_config(db_project):
     }
 
     CODE_BASICS_PYTHON_BASE_MANAGER = {
-        "temp_path": "all_managers.py",
-        "root": os.path.join(ADMIN_PYTHON_ROOT, "managers/"),
-        "file_location": f"# File: database/{db_project}/managers/all_managers.py",
+        "temp_path": "",
+        "root": os.path.join(ADMIN_PYTHON_ROOT, "managers"),
+        "file_location": f"# File: database/{usable_name}/managers/",
         "import_lines": [
             "from matrx_utils import vcprint",
+        ],
+        "additional_top_lines": [],
+        "additional_bottom_lines": [],
+    }
+
+    CODE_BASICS_PYTHON_BASE_ALL_MANAGERS = {
+        "temp_path": "__init__.py",
+        "root": os.path.join(ADMIN_PYTHON_ROOT, "managers"),
+        "file_location": f"# File: database/{usable_name}/managers/__init__.py",
+        "import_lines": [
         ],
         "additional_top_lines": [],
         "additional_bottom_lines": [],
@@ -323,6 +343,7 @@ def get_default_code_config(db_project):
         "typescript_entity_main_hooks": CODE_BASICS_TS_ENTITY_MAIN_HOOKS,
         "python_base_manager": CODE_BASICS_PYTHON_BASE_MANAGER,
         "python_auto_config": CODE_BASICS_PYTHON_AUTO_CONFIG,
+        "python_all_managers": CODE_BASICS_PYTHON_BASE_ALL_MANAGERS
     }
 
     return CODE_BASICS

@@ -1,6 +1,6 @@
 import json
 from matrx_utils import vcprint
-from matrx_orm import get_manager_config
+from matrx_orm import get_manager_config, get_database_alias
 from matrx_orm.schema_builder.helpers.manager_dto_creator import generate_manager_class
 from matrx_orm.schema_builder.individual_managers.columns import Column
 from matrx_orm.schema_builder.individual_managers.common import (
@@ -1059,8 +1059,10 @@ class Table:
         relations = self.get_all_relations_list()
         filter_fields = [column.name for column in self.columns if column.is_default_filter_field]
 
+        alias = get_database_alias(self.database_project)
         # Default configuration with all options explicitly set
         base_config = {
+            "models_module_path": f"database.{alias}.models",
             "model_pascal": self.python_model_name,
             "model_name": self.name,
             "model_name_plural": self.name_plural,
