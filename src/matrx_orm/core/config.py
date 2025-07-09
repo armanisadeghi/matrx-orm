@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Dict
-from matrx_utils import settings, vcprint
+from matrx_utils import settings, vcprint, redact_object, redact_string
 import os
 
 class DatabaseConfigError(Exception):
@@ -108,6 +108,19 @@ class DatabaseRegistry:
     def get_all_database_project_names(self) -> list[str]:
         all_configs = self.get_all_database_configs()
         return list(all_configs.keys())
+    
+    def get_all_database_projects(self) -> list[dict]:
+        items =[]
+        all_configs = self.get_all_database_configs()
+        for project, config in all_configs.items():
+            config["database_project"] = project
+            items.append(config)
+        return items
+    
+    def get_all_database_projects_redacted(self) -> list[dict]:
+        items = self.get_all_database_projects()
+        return redact_object(items)
+
 
     def get_database_alias(self, db_project):
         if db_project not in self._configs:
@@ -132,12 +145,16 @@ def register_database(config: DatabaseProjectConfig) -> None:
 
 def get_connection_string(config_name: str) -> str:
     config = get_database_config(config_name)
-    connection_string = f"postgresql://{config['user']}:{config['password']}@{config['host']}:{config['port']}/{config['database_name']}"
+    connection_string = f"postgresql://{config['user']}:{redact_string(config['password'])}@{config['host']}:{config['port']}/{config['database_name']}"
     return connection_string
 
 
 def get_all_database_project_names() -> list[str]:
     return registry.get_all_database_project_names()
+
+
+def get_all_database_projects_redacted() -> list[str]:
+    return registry.get_all_database_projects_redacted()
 
 def get_database_alias(db_project):
     return registry.get_database_alias(db_project)
