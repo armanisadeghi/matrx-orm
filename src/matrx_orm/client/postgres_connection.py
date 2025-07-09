@@ -9,13 +9,13 @@ from matrx_utils import vcprint
 from matrx_orm.utils.sql_utils import sql_param_to_psycopg2
 from matrx_orm import get_database_config
 
-connection_pool = None
+connection_pools = {}
 
 
 def init_connection_details(config_name):
-    global connection_pool
+    global connection_pools
 
-    if connection_pool is None:
+    if config_name not in connection_pools:
         config = get_database_config(config_name=config_name)
         vcprint(f"\n[Matrx ORM] Using configuration for: {config_name}\n", color="green")
 
@@ -33,14 +33,14 @@ def init_connection_details(config_name):
 
         vcprint(f"\n[Matrx ORM] Connection String:\n{connection_string}\n", color="green")
 
-        connection_pool = pool.SimpleConnectionPool(1, 10, dsn=connection_string, sslmode="require")
+        connection_pools[config_name] = pool.SimpleConnectionPool(1, 10, dsn=connection_string, sslmode="require")
 
 
 def get_postgres_connection(
         database_project="this_will_cause_error_specify_the_database",
 ):
     init_connection_details(database_project)
-    conn = connection_pool.getconn()
+    conn = connection_pools[database_project].getconn()
     return conn
 
 
@@ -56,7 +56,7 @@ def execute_sql_query(query, params=None, database_project="this_will_cause_erro
             cur.execute(query, params)
             return cur.fetchall()
     finally:
-        connection_pool.putconn(conn)
+        connection_pools[database_project].putconn(conn)
 
 
 def execute_sql_file(filename, params=None, database_project="this_will_cause_error_specify_the_database"):
@@ -96,7 +96,7 @@ def execute_transaction_query(query, params=None, database_project="this_will_ca
                 # If no results to fetch, return an empty list instead of raising an error
                 return []
     finally:
-        connection_pool.putconn(conn)
+        connection_pools[database_project].putconn(conn)
 
 
 def execute_batch_query(query: str, batch_params: List[Dict[str, Any]], batch_size: int = 50,
@@ -139,6 +139,6 @@ def execute_batch_query(query: str, batch_params: List[Dict[str, Any]], batch_si
                             # No results to fetch
                             pass
     finally:
-        connection_pool.putconn(conn)
+        connection_pools[database_project].putconn(conn)
 
     return all_results
