@@ -153,7 +153,7 @@ def get_all_database_project_names() -> list[str]:
     return registry.get_all_database_project_names()
 
 
-def get_all_database_projects_redacted() -> list[str]:
+def get_all_database_projects_redacted() -> list[dict]:
     return registry.get_all_database_projects_redacted()
 
 def get_database_alias(db_project):
