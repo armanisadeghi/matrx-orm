@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Dict
-from matrx_utils import settings
+from matrx_utils import settings, vcprint
 import os
 
 class DatabaseConfigError(Exception):
@@ -17,8 +17,6 @@ class DatabaseProjectConfig:
     user: str
     password: str
 
-    # Config section related to file saving, manager override : dto , manager creation
-    code_basics: Dict = field(default_factory=dict)
     manager_config_overrides: Dict = field(default_factory=dict)
 
 
@@ -38,7 +36,8 @@ class DatabaseRegistry:
 
     def register(self, config: DatabaseProjectConfig) -> None:
         if config.name in self._configs:
-            raise DatabaseConfigError(f"Database configuration '{config.name}' already registered")
+            vcprint(f"[WARNING!!] Database configuration '{config.name}' already registered", color="yellow")
+            return
 
         required_fields = [config.host, config.port, config.database_name, config.user, config.password]
         if not all(required_fields):
@@ -71,12 +70,6 @@ class DatabaseRegistry:
             raise DatabaseConfigError(f"Configuration '{config_name}' not found in registered databases")
         return self._configs[config_name]
 
-    def get_code_config_by_project_name(self, config_name):
-        if config_name not in self._configs:
-            raise DatabaseConfigError(f"Configuration '{config_name}' not found in registered databases")
-        config = self._configs[config_name]
-        return config.code_basics
-
     def get_manager_config_by_project_name(self, config_name):
         if config_name not in self._configs:
             raise DatabaseConfigError(f"Configuration '{config_name}' not found in registered databases")
@@ -92,7 +85,6 @@ class DatabaseRegistry:
                 "database_name": config.database_name,
                 "user": config.user,
                 "password": config.password,
-                "code_basics": config.code_basics,
                 "manager_config_overrides": config.manager_config_overrides
             }
         return all_configs
@@ -107,10 +99,6 @@ registry = DatabaseRegistry()
 
 def get_database_config(config_name: str) -> dict:
     return registry.get_database_config(config_name)
-
-
-def get_code_config(config_name: str) -> dict:
-    return registry.get_code_config_by_project_name(config_name)
 
 
 def get_manager_config(config_name: str) -> dict:
@@ -131,7 +119,7 @@ def get_all_database_project_names() -> list[str]:
     return registry.get_all_database_project_names()
 
 
-def get_default_code_config(db_project):
+def get_code_config(db_project):
     python_root, ts_root = settings.ADMIN_PYTHON_ROOT, settings.ADMIN_TS_ROOT
 
     ADMIN_PYTHON_ROOT = os.path.join(python_root, "database", db_project)
@@ -142,12 +130,10 @@ def get_default_code_config(db_project):
         "root": ADMIN_PYTHON_ROOT,
         "file_location": f"# File: database/{db_project}/models.py",
         "import_lines": [
-            "from matrx_orm import (CharField, EnumField, DateField, TextField, IntegerField, FloatField, BooleanField, DateTimeField, UUIDField, JSONField, DecimalField, BigIntegerField, SmallIntegerField, JSONBField, UUIDArrayField, JSONBArrayField, ForeignKey)",
-            "from matrx_orm import Model",
-            "from matrx_orm import model_registry",
+            "import database.db_registry"
+            "from matrx_orm import CharField, EnumField, DateField, TextField, IntegerField, FloatField, BooleanField, DateTimeField, UUIDField, JSONField, DecimalField, BigIntegerField, SmallIntegerField, JSONBField, UUIDArrayField, JSONBArrayField, ForeignKey, Model, model_registry, BaseDTO, BaseManager",
             "from enum import Enum",
-            "from dataclasses import dataclass",
-            "from matrx_orm import BaseDTO, BaseManager",
+            "from dataclasses import dataclass"
         ],
         "additional_top_lines": [
             "verbose = False",
@@ -270,11 +256,21 @@ def get_default_code_config(db_project):
     }
 
     CODE_BASICS_PYTHON_BASE_MANAGER = {
-        "temp_path": "all_managers.py",
-        "root": os.path.join(ADMIN_PYTHON_ROOT, "managers/"),
-        "file_location": f"# File: database/{db_project}/managers/all_managers.py",
+        "temp_path": "",
+        "root": os.path.join(ADMIN_PYTHON_ROOT, "managers"),
+        "file_location": f"# File: database/{db_project}/managers/",
         "import_lines": [
             "from matrx_utils import vcprint",
+        ],
+        "additional_top_lines": [],
+        "additional_bottom_lines": [],
+    }
+
+    CODE_BASICS_PYTHON_BASE_ALL_MANAGERS = {
+        "temp_path": "__init__.py",
+        "root": os.path.join(ADMIN_PYTHON_ROOT, "managers"),
+        "file_location": f"# File: database/{db_project}/managers/__init__.py",
+        "import_lines": [
         ],
         "additional_top_lines": [],
         "additional_bottom_lines": [],
@@ -323,6 +319,7 @@ def get_default_code_config(db_project):
         "typescript_entity_main_hooks": CODE_BASICS_TS_ENTITY_MAIN_HOOKS,
         "python_base_manager": CODE_BASICS_PYTHON_BASE_MANAGER,
         "python_auto_config": CODE_BASICS_PYTHON_AUTO_CONFIG,
+        "python_all_managers": CODE_BASICS_PYTHON_BASE_ALL_MANAGERS
     }
 
     return CODE_BASICS

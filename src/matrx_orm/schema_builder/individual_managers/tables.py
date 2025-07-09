@@ -1061,6 +1061,7 @@ class Table:
 
         # Default configuration with all options explicitly set
         base_config = {
+            "models_module_path": f"database.{self.database_project}.models",
             "model_pascal": self.python_model_name,
             "model_name": self.name,
             "model_name_plural": self.name_plural,

@@ -2,12 +2,12 @@ import os
 from matrx_utils.fancy_prints.fancy_prints import plt
 
 
-def generate_base_manager_class(model_pascal: str, model_name: str, model_name_plural: str, model_name_snake: str) -> str:
+def generate_base_manager_class(models_module_path:str , model_pascal: str, model_name: str, model_name_plural: str, model_name_snake: str) -> str:
     """Generate the minimal core manager class without optional method sets."""
     return f"""
 from dataclasses import dataclass
 from matrx_orm import BaseManager, BaseDTO
-from database.orm.models import {model_pascal}
+from {models_module_path} import {model_pascal}
 from typing import Optional, Type, Any
 
 @dataclass
@@ -309,6 +309,7 @@ class {model_pascal}Manager({model_pascal}Base):
 
 
 def generate_manager_class(
+    models_module_path: str,
     model_pascal: str,
     model_name: str,
     model_name_plural: str,
@@ -324,7 +325,7 @@ def generate_manager_class(
     include_to_dict_relations: bool = False,
 ) -> str:
     """Combine all parts into the full class with fine-grained configuration and singleton manager."""
-    base = generate_base_manager_class(model_pascal, model_name, model_name_plural, model_name_snake)
+    base = generate_base_manager_class(models_module_path, model_pascal, model_name, model_name_plural, model_name_snake)
     parts = [base]
 
     # Core relation methods
