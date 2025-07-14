@@ -12,6 +12,7 @@ dependencies = [
     "gitpython>=3.1.44",
     "matrx-utils",
     "psycopg2>=2.9.10",
+    "matrx-utils @ git+https://github.com/armanisadeghi/matrx-utils.git@v1.0.0"
 ]
 
 [project.scripts]
@@ -25,5 +26,5 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/matrx_orm"]
 
-[tool.uv.sources]
-matrx-utils = { git = "https://github.com/armanisadeghi/matrx-utils.git" }
+[tool.hatch.metadata]
+allow-direct-references = true
