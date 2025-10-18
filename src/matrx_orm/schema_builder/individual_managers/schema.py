@@ -136,7 +136,7 @@ class Schema:
         elif code_version == "types_file":
             return "import {AutomationEntity, EntityData, EntityDataMixed, EntityDataOptional, EntityDataWithKey, ProcessedEntityData} from '@/types/entityTypes';"
         elif code_version == "table_schema_file":
-            return "import {AutomationEntity, TypeBrand} from '@/types/entityTypes';"
+            return "import {AutomationEntity, TypeBrand} from '@/types';"
 
         elif code_version == "lookup_schema_file":
             return "import {EntityNameToCanonicalMap,FieldNameToCanonicalMap,EntityNameFormatMap,FieldNameFormatMap} from '@/types/entityTypes';"

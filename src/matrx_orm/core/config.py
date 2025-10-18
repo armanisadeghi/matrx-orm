@@ -231,7 +231,7 @@ def get_code_config(db_project):
         "temp_path": "initialTableSchemas.ts",
         "root": os.path.join(ADMIN_TS_ROOT, "utils/schema/"),
         "file_location": "// File: utils/schema/initialTableSchemas.ts",
-        "import_lines": ["import {AutomationEntity, TypeBrand} from '@/types/entityTypes';"],
+        "import_lines": ["import {AutomationEntity, TypeBrand} from '@/types';"],
         "additional_top_lines": [],
         "additional_bottom_lines": [],
     }
