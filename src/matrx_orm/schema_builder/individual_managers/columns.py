@@ -398,6 +398,11 @@ class Column:
             self.update_component(component="INPUT", priority=3)
             self.update_prop(prop="subComponent", value="default", priority=1)
 
+        elif self.full_type.startswith("character varying"):
+            # Catch any character varying with any number (e.g., character varying(75), character varying(1000), etc.)
+            self.update_component(component="INPUT", priority=3)
+            self.update_prop(prop="subComponent", value="default", priority=1)
+
         elif self.full_type == "character varying":
             self.update_component(component="INPUT", priority=3)
             self.update_prop(prop="subComponent", value="default", priority=1)
@@ -407,6 +412,10 @@ class Column:
             self.update_component(component="TEXTAREA", priority=5)
             self.update_prop(prop="subComponent", value="default", priority=1)
             self.update_prop(prop="rows", value=5, priority=1)
+
+        elif self.full_type == "text[]":
+            self.update_component(component="JSON_EDITOR", priority=8)
+            self.update_prop(prop="subComponent", value="jsonArray", priority=5)
 
         elif self.full_type == "boolean":
             self.update_component(component="SWITCH", priority=8)
