@@ -526,6 +526,12 @@ class Column:
             self.update_prop(prop="subComponent", value="default", priority=1)
             self.update_prop(prop="rows", value=3, priority=1)
 
+        # Handle PostgreSQL-specific types (full-text search, geometry, etc.)
+        elif self.full_type in ["tsvector", "tsquery", "geometry", "geography", "box", "circle", "line", "lseg", "path", "point", "polygon"]:
+            self.update_component(component="INPUT", priority=1)
+            self.update_prop(prop="subComponent", value="special", priority=1)
+            self.update_prop(prop="readOnly", value=True, priority=5)
+
         else:
             if self.enum_labels:
                 return
@@ -659,6 +665,38 @@ class Column:
         return self.ts_full_schema_entry, self.json_schema_entry
 
     def parse_default_value(self):
+        # Handle generated/computed columns - skip default value parsing
+        if self.is_generated:
+            self.clean_default = {
+                "python": "",
+                "database": "",
+                "json": "",
+                "typescript": "",
+            }
+            self.calc_default_generator_functions = {
+                "python": "",
+                "database": "",
+                "json": "",
+                "typescript": "",
+            }
+            return self.clean_default
+
+        # Handle PostgreSQL-specific types that don't need default values
+        if self.full_type in ["tsvector", "tsquery", "geometry", "geography", "box", "circle", "line", "lseg", "path", "point", "polygon"]:
+            self.clean_default = {
+                "python": "",
+                "database": "null",
+                "json": "null",
+                "typescript": "",
+            }
+            self.calc_default_generator_functions = {
+                "python": "",
+                "database": "",
+                "json": "",
+                "typescript": "",
+            }
+            return self.clean_default
+
         # Define static outcomes at the top
         outcomes = {
             None: {"default": {"blank": "", "generator": ""}},
@@ -727,6 +765,10 @@ class Column:
             },
             "::text": lambda value: {
                 "blank": value.split("'")[1].strip(),  # Extract the text value
+                "generator": "",
+            },
+            "::text[]": lambda value: {
+                "blank": "[]",  # Empty text array
                 "generator": "",
             },
             "::boolean": lambda value: {
@@ -834,6 +876,18 @@ class Column:
             elif value == "'{}'::jsonb":
                 return callable_outcomes["empty_jsonb"](value)
 
+            # Handle empty array defaults: '{}'::text[], '{}'::integer[], etc.
+            elif value.startswith("'{}'::") and value.endswith("[]"):
+                return {"blank": "[]", "generator": ""}
+
+            # Handle ARRAY[] syntax: ARRAY[]::text[], ARRAY[]::integer[], etc.
+            elif value.startswith("ARRAY[]::") and value.endswith("[]"):
+                return {"blank": "[]", "generator": ""}
+
+            # Handle simple numeric defaults (no quotes, no casting)
+            elif value.isdigit() or (value.startswith("-") and value[1:].replace(".", "", 1).isdigit()):
+                return {"blank": value, "generator": ""}
+
             # Handle nextval (PostgreSQL sequence values)
             elif value.startswith("nextval("):
                 sequence_name = value.split("'")[1]  # Extract the sequence name
@@ -891,7 +945,8 @@ class Column:
                 return callable_outcomes["::jsonb"](value)
 
             # Handle enums
-            if "::" in value and hasattr(self, "enum_labels"):
+            # if "::" in value and hasattr(self, "enum_labels"):
+            if "::" in value and self.enum_labels:
                 enum_value = value.split("::")[0].strip("'")
                 if enum_value in self.enum_labels:
                     return callable_outcomes["enum"]["default_enum"](enum_value)
