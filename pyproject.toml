@@ -10,9 +10,8 @@ requires-python = ">=3.10"
 dependencies = [
     "asyncpg==0.30.0",
     "gitpython>=3.1.44",
-    "matrx-utils",
     "psycopg2>=2.9.10",
-    "matrx-utils @ git+https://github.com/armanisadeghi/matrx-utils.git@v1.0.0"
+    "matrx-utils @ git+https://github.com/armanisadeghi/matrx-utils.git"
 ]
 
 [project.scripts]

@@ -424,10 +424,6 @@ class BaseManager:
     async def load_items(self, **kwargs):
         """Load and initialize multiple items."""
         items = await self._get_items(**kwargs)
-        vcprint(
-            "[WARNING! New feature added to BaseManager] load_items will now automatically add items to the active set.",
-            color="yellow",
-        )
         self._active_items.update([item.id for item in items if item])
         return [await self._initialize_item_runtime(item) for item in items if item]
 

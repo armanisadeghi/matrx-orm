@@ -1,7 +1,5 @@
 # matrx-orm
 
-
-
 ## Updating to a new version
 
 1. Make local updates, test them and confirm they are good.
