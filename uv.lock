@@ -211,7 +211,7 @@ wheels = [
 
 [[package]]
 name = "matrx-orm"
-version = "0.1.0"
+version = "1.0.4"
 source = { editable = "." }
 dependencies = [
     { name = "asyncpg" },
@@ -224,19 +224,23 @@ dependencies = [
 requires-dist = [
     { name = "asyncpg", specifier = "==0.30.0" },
     { name = "gitpython", specifier = ">=3.1.44" },
-    { name = "matrx-utils", git = "https://github.com/armanisadeghi/matrx-utils.git" },
+    { name = "matrx-utils", specifier = ">=1.0.2" },
     { name = "psycopg2", specifier = ">=2.9.10" },
 ]
 
 [[package]]
 name = "matrx-utils"
-version = "0.1.0"
-source = { git = "https://github.com/armanisadeghi/matrx-utils.git#2d4a9ea1f465558830943038777cd701bd5ba1d3" }
+version = "1.0.2"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dotenv" },
     { name = "inflect" },
     { name = "pillow" },
     { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9e/58/cf159058adaf691bddd74d3d8c7a8e84a10ed35dc95b561dcb434b0fab83/matrx_utils-1.0.2.tar.gz", hash = "sha256:359a16d1b2c8dde344b87952b40ffc093004134d3b5f749c71a26e19b9b7d6c1", size = 70307, upload-time = "2025-12-30T17:16:05.183Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b3/06/9d2db431e9e59dbbc727e6f294651680f54e165832568abcc870cfeab549/matrx_utils-1.0.2-py3-none-any.whl", hash = "sha256:94ebdf691e87f14603580384ad5e5cab11a98d6931089969a2639df42ada74e9", size = 61274, upload-time = "2025-12-30T17:16:03.659Z" },
 ]
 
 [[package]]
