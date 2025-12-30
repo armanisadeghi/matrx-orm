@@ -11,7 +11,7 @@ dependencies = [
     "asyncpg==0.30.0",
     "gitpython>=3.1.44",
     "psycopg2>=2.9.10",
-    "matrx-utils @ git+https://github.com/armanisadeghi/matrx-utils.git"
+    "matrx-utils>=1.0.2",
 ]
 
 [project.scripts]
