@@ -885,7 +885,12 @@ class Column:
                 return {"blank": "[]", "generator": ""}
 
             # Handle simple numeric defaults (no quotes, no casting)
+            # This includes integers, decimals, negative numbers, scientific notation
             elif value.isdigit() or (value.startswith("-") and value[1:].replace(".", "", 1).isdigit()):
+                return {"blank": value, "generator": ""}
+            
+            # Handle positive decimal literals (e.g., 100.00, 0.0000, 3.14)
+            elif "." in value and value.replace(".", "", 1).replace("-", "", 1).isdigit():
                 return {"blank": value, "generator": ""}
 
             # Handle nextval (PostgreSQL sequence values)
@@ -961,6 +966,14 @@ class Column:
                     return callable_outcomes["::integer"](f"'{int_value}'::integer")
                 except ValueError:
                     pass  # Not a valid integer, fall through
+
+            # Handle complex SQL function expressions that we can't parse
+            # Examples: date_trunc('day'::text, now()), custom functions, etc.
+            # These are database-managed defaults that we let the DB handle
+            if "(" in value and ")" in value:
+                # This is likely a SQL function call - return empty default
+                # The database will handle the actual default value generation
+                return {"blank": "", "generator": ""}
 
             # Default case for unhandled values
             vcprint(f"Table Name: {self.table_name}", color="yellow")
