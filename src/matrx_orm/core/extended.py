@@ -1,4 +1,5 @@
 import asyncio
+import time
 from enum import Enum
 from typing import Any, Optional, Set
 from uuid import UUID
@@ -179,18 +180,16 @@ class BaseManager:
     def _initialize_manager(self):
         """Initialize the manager and trigger auto-fetch if configured."""
         if self.fetch_on_init_limit > 0:
-            # Run the auto-fetch in an async context if possible, but since __init__ is sync,
-            # we'll defer to an async method and warn if not handled properly elsewhere
-
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                loop.create_task(self._auto_fetch_on_init())
-                vcprint("Auto-fetching on init", verbose=info, color="yellow")
-            else:
-                vcprint(
-                    "[WARNING] Auto-fetching on init deferred | Auto-fetch requires an async context.",
-                    color="yellow",
-                )
+            try:
+                # Check if we're in an async context
+                asyncio.get_running_loop()
+                # We're in an async context - schedule async version
+                asyncio.create_task(self._auto_fetch_on_init_async())
+                vcprint("Auto-fetching on init (async)", verbose=info, color="yellow")
+            except RuntimeError:
+                # No running loop - use sync version directly
+                vcprint("Auto-fetching on init (sync)", verbose=info, color="yellow")
+                self._auto_fetch_on_init_sync()
 
     def _get_error_context(self) -> dict:
         return {
@@ -404,11 +403,6 @@ class BaseManager:
     async def load_item(self, use_cache=True, **kwargs):
         """Load and initialize a single item."""
         return await self._get_item_or_raise(use_cache=use_cache, **kwargs)
-
-    @handle_errors
-    async def load_item_or_none(self, use_cache=True, **kwargs):
-        """Load and initialize a single item or None."""
-        return await self._get_item_or_none(use_cache=use_cache, **kwargs)
 
     @handle_errors
     async def load_item_or_none(self, use_cache=True, **kwargs):
@@ -1055,10 +1049,24 @@ class BaseManager:
         return attributes
 
     @handle_errors
-    async def _auto_fetch_on_init(self):
-        """Fetch items on initialization if fetch_on_init_limit is set."""
+    def _auto_fetch_on_init_sync(self):
+        """Fetch items on initialization (synchronous version).
+        Runs the async fetch using asyncio.run() since we're in a pure sync context.
+        All logic is handled by the async version.
+        """
         if self.fetch_on_init_limit <= 0:
             return
+
+        # Simply run the async version - we're in a sync context so asyncio.run() is safe
+        asyncio.run(self._auto_fetch_on_init_async())
+
+    async def _auto_fetch_on_init_async(self):
+        """Fetch items on initialization (async version with full DTO support)."""
+        if self.fetch_on_init_limit <= 0:
+            return
+
+        # Start high-precision timer
+        start_time = time.perf_counter()
 
         # Fetch items with the specified limit
         items = await self.model.filter().limit(self.fetch_on_init_limit).all()
@@ -1067,13 +1075,21 @@ class BaseManager:
         ]
         count = len(initialized_items)
 
+        # Calculate elapsed time
+        elapsed_time = time.perf_counter() - start_time
+        
+        # Format time nicely (ms if < 1s, otherwise seconds)
+        if elapsed_time < 1.0:
+            time_str = f"{elapsed_time * 1000:.2f}ms"
+        else:
+            time_str = f"{elapsed_time:.3f}s"
+
         # Always print fetched items immediately in red
         if not self._FETCH_ON_INIT_WITH_WARNINGS_OFF:
             vcprint(initialized_items, "FETCHED ITEMS:", color="red", pretty=True)
 
         vcprint(
-            count,
-            "AUTOMATED FETCH ON INIT RESULTED IN THIS MANY ITEMS",
+            f"[{self.model.__name__}] AUTOMATED FETCH ON INIT: {count} items in {time_str}",
             color="red",
             background="yellow",
             style="bold",
@@ -1101,18 +1117,18 @@ class BaseManager:
 
         # Check if count approaches or hits the limit (within 5)
         if count >= (self.fetch_on_init_limit - 5):
-            await self._trigger_limit_reached_warning(count, initialized_items)
+            self._trigger_limit_reached_warning(count, initialized_items)
 
         # Trigger count-based warnings if not suppressed
         if not warnings_suppressed and count > warning_limit_threshold:
-            await self._trigger_fetch_warnings(
+            self._trigger_fetch_warnings(
                 count, initialized_items, warning_limit_threshold
             )
 
         # Cache or store items
         self._active_items.update(initialized_items)
 
-    async def _trigger_fetch_warnings(
+    def _trigger_fetch_warnings(
             self, count: int, items: list, warning_limit_threshold: int
     ):
         """Trigger escalating warnings based on the number of fetched items."""
@@ -1172,7 +1188,7 @@ class BaseManager:
             vcprint("\n".join(scary_warning), color="red")
             vcprint(items, pretty=True, color="yellow")
 
-    async def _trigger_limit_reached_warning(self, count: int, items: list):
+    def _trigger_limit_reached_warning(self, count: int, items: list):
         """Trigger a non-suppressible warning if the fetch count approaches or hits the limit."""
         warning_lines = [
             "*" * 80,
@@ -1203,3 +1219,135 @@ class BaseManager:
         )
         vcprint("Sorry. Here comes the ugly part:\n", verbose=True, color="yellow")
         raise ValueError(message)
+
+    # ==================== SYNCHRONOUS WRAPPER METHODS ====================
+
+    def load_item_sync(self, use_cache=True, **kwargs):
+        """Synchronous wrapper for load_item()."""
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError("load_item_sync() called in async context. Use await load_item() instead.")
+        except RuntimeError as e:
+            if "no running event loop" not in str(e):
+                raise
+        return asyncio.run(self.load_item(use_cache=use_cache, **kwargs))
+
+    def load_item_or_none_sync(self, use_cache=True, **kwargs):
+        """Synchronous wrapper for load_item_or_none()."""
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError("load_item_or_none_sync() called in async context. Use await load_item_or_none() instead.")
+        except RuntimeError as e:
+            if "no running event loop" not in str(e):
+                raise
+        return asyncio.run(self.load_item_or_none(use_cache=use_cache, **kwargs))
+
+    def load_items_sync(self, **kwargs):
+        """Synchronous wrapper for load_items()."""
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError("load_items_sync() called in async context. Use await load_items() instead.")
+        except RuntimeError as e:
+            if "no running event loop" not in str(e):
+                raise
+        return asyncio.run(self.load_items(**kwargs))
+
+    def load_by_id_sync(self, item_id):
+        """Synchronous wrapper for load_by_id()."""
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError("load_by_id_sync() called in async context. Use await load_by_id() instead.")
+        except RuntimeError as e:
+            if "no running event loop" not in str(e):
+                raise
+        return asyncio.run(self.load_by_id(item_id))
+
+    def filter_items_sync(self, **kwargs):
+        """Synchronous wrapper for filter_items()."""
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError("filter_items_sync() called in async context. Use await filter_items() instead.")
+        except RuntimeError as e:
+            if "no running event loop" not in str(e):
+                raise
+        return asyncio.run(self.filter_items(**kwargs))
+
+    def create_item_sync(self, **data):
+        """Synchronous wrapper for create_item()."""
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError("create_item_sync() called in async context. Use await create_item() instead.")
+        except RuntimeError as e:
+            if "no running event loop" not in str(e):
+                raise
+        return asyncio.run(self.create_item(**data))
+
+    def update_item_sync(self, item_id, **updates):
+        """Synchronous wrapper for update_item()."""
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError("update_item_sync() called in async context. Use await update_item() instead.")
+        except RuntimeError as e:
+            if "no running event loop" not in str(e):
+                raise
+        return asyncio.run(self.update_item(item_id, **updates))
+
+    def delete_item_sync(self, item_id):
+        """Synchronous wrapper for delete_item()."""
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError("delete_item_sync() called in async context. Use await delete_item() instead.")
+        except RuntimeError as e:
+            if "no running event loop" not in str(e):
+                raise
+        return asyncio.run(self.delete_item(item_id))
+
+    def get_or_create_sync(self, defaults=None, **kwargs):
+        """Synchronous wrapper for get_or_create()."""
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError("get_or_create_sync() called in async context. Use await get_or_create() instead.")
+        except RuntimeError as e:
+            if "no running event loop" not in str(e):
+                raise
+        return asyncio.run(self.get_or_create(defaults=defaults, **kwargs))
+
+    def exists_sync(self, item_id):
+        """Synchronous wrapper for exists()."""
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError("exists_sync() called in async context. Use await exists() instead.")
+        except RuntimeError as e:
+            if "no running event loop" not in str(e):
+                raise
+        return asyncio.run(self.exists(item_id))
+
+    def get_active_items_sync(self):
+        """Synchronous wrapper for get_active_items()."""
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError("get_active_items_sync() called in async context. Use await get_active_items() instead.")
+        except RuntimeError as e:
+            if "no running event loop" not in str(e):
+                raise
+        return asyncio.run(self.get_active_items())
+
+    def get_item_dict_sync(self, item_id):
+        """Synchronous wrapper for get_item_dict()."""
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError("get_item_dict_sync() called in async context. Use await get_item_dict() instead.")
+        except RuntimeError as e:
+            if "no running event loop" not in str(e):
+                raise
+        return asyncio.run(self.get_item_dict(item_id))
+
+    def get_items_dict_sync(self, **kwargs):
+        """Synchronous wrapper for get_items_dict()."""
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError("get_items_dict_sync() called in async context. Use await get_items_dict() instead.")
+        except RuntimeError as e:
+            if "no running event loop" not in str(e):
+                raise
+        return asyncio.run(self.get_items_dict(**kwargs))

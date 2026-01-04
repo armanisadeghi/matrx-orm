@@ -326,7 +326,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         """
         # Check if there's an active event loop
         try:
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
             # If we're in an async context, warn the user to use async get
             raise RuntimeError("Model.get_sync() called in an async context. Use await Model.get() instead.")
         except RuntimeError as e:
@@ -350,14 +350,59 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             return None
 
     @classmethod
+    def get_or_none_sync(cls, use_cache=True, **kwargs):
+        """
+        Synchronous wrapper for get_or_none().
+        Use this in synchronous contexts to avoid RuntimeWarning for unawaited coroutines.
+        """
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError("Model.get_or_none_sync() called in an async context. Use await Model.get_or_none() instead.")
+        except RuntimeError as e:
+            if "no running event loop" not in str(e):
+                raise
+
+        return asyncio.run(cls.get_or_none(use_cache=use_cache, **kwargs))
+
+    @classmethod
     def filter(cls, **kwargs):
         return QueryBuilder(model=cls).filter(**kwargs)
+
+    @classmethod
+    def filter_sync(cls, **kwargs):
+        """
+        Synchronous wrapper for filter().all().
+        Use this in synchronous contexts to fetch filtered results without async/await.
+        """
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError("Model.filter_sync() called in an async context. Use await Model.filter().all() instead.")
+        except RuntimeError as e:
+            if "no running event loop" not in str(e):
+                raise
+
+        return asyncio.run(cls.filter(**kwargs).all())
 
     @classmethod
     async def all(cls):
         results = await QueryBuilder(model=cls).all()
         await StateManager.cache_bulk(cls, results)
         return results
+
+    @classmethod
+    def all_sync(cls):
+        """
+        Synchronous wrapper for all().
+        Use this in synchronous contexts to fetch all results without async/await.
+        """
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError("Model.all_sync() called in an async context. Use await Model.all() instead.")
+        except RuntimeError as e:
+            if "no running event loop" not in str(e):
+                raise
+
+        return asyncio.run(cls.all())
 
     async def save(self, **kwargs):
         """Save the current state of the model instance."""
