@@ -178,17 +178,21 @@ class BaseManager:
         self._initialize_manager()
 
     def _initialize_manager(self):
-        """Initialize the manager and trigger auto-fetch if configured."""
+        """Initialize the manager and trigger auto-fetch if configured.
+        
+        Auto-fetch now works correctly in all contexts thanks to automatic
+        event loop detection and pool recreation in AsyncDatabaseManager.
+        """
         if self.fetch_on_init_limit > 0:
             try:
                 # Check if we're in an async context
                 asyncio.get_running_loop()
                 # We're in an async context - schedule async version
                 asyncio.create_task(self._auto_fetch_on_init_async())
-                vcprint("Auto-fetching on init (async)", verbose=info, color="yellow")
+                vcprint(f"[{self.model.__name__}] Auto-fetching on init (async)", verbose=info, color="yellow")
             except RuntimeError:
                 # No running loop - use sync version directly
-                vcprint("Auto-fetching on init (sync)", verbose=info, color="yellow")
+                vcprint(f"[{self.model.__name__}] Auto-fetching on init (sync)", verbose=info, color="yellow")
                 self._auto_fetch_on_init_sync()
 
     def _get_error_context(self) -> dict:
@@ -222,6 +226,34 @@ class BaseManager:
             item.runtime.dto = dto
             item.dto = dto  # Direct shortcut
         return item
+
+    async def initialize(self):
+        """Explicitly initialize the manager with auto-fetch in async contexts.
+        
+        This should be called after manager creation if you want to trigger auto-fetch
+        in an async context.
+        
+        Example:
+            manager = MyManager()
+            await manager.initialize()
+        """
+        if self.fetch_on_init_limit > 0:
+            await self._auto_fetch_on_init_async()
+        return self
+
+    def initialize_sync(self):
+        """Explicitly initialize the manager with auto-fetch in sync contexts.
+        
+        This should be called after manager creation if you want to trigger auto-fetch
+        in a synchronous context.
+        
+        Example:
+            manager = MyManager()
+            manager.initialize_sync()
+        """
+        if self.fetch_on_init_limit > 0:
+            self._auto_fetch_on_init_sync()
+        return self
 
     def add_computed_field(self, field):
         self.computed_fields.add(field)

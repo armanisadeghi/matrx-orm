@@ -22,6 +22,7 @@ from matrx_orm.error_handling import handle_orm_operation
 class AsyncDatabaseManager:
     _instance = None
     _pools = {}
+    _pool_loops = {}  # Track which event loop each pool belongs to
     _locks = {}
 
     def __new__(cls):
@@ -31,11 +32,43 @@ class AsyncDatabaseManager:
 
     @classmethod
     async def get_pool(cls, config_name):
-        """Get or create a connection pool for the specified database with error handling."""
+        """Get or create a connection pool for the specified database with error handling.
+        
+        Automatically detects event loop changes and recreates pools as needed.
+        This allows sync methods (using asyncio.run()) to work correctly in scripts/tests
+        where multiple sequential event loops may be created.
+        """
         if config_name not in cls._locks:
             cls._locks[config_name] = asyncio.Lock()
 
         async with cls._locks[config_name]:
+            # Get the current event loop
+            try:
+                current_loop = asyncio.get_running_loop()
+                current_loop_id = id(current_loop)
+            except RuntimeError:
+                # No running loop (shouldn't happen in async context, but be safe)
+                current_loop_id = None
+
+            # Check if pool exists and belongs to a different event loop
+            if config_name in cls._pools and current_loop_id is not None:
+                pool_loop_id = cls._pool_loops.get(config_name)
+                
+                if pool_loop_id != current_loop_id:
+                    # Pool is from a different event loop - close and recreate
+                    # This happens when using sync methods that create new loops via asyncio.run()
+                    try:
+                        old_pool = cls._pools[config_name]
+                        await old_pool.close()
+                    except Exception:
+                        # Ignore errors closing old pool (it might already be closed)
+                        pass
+                    
+                    # Remove the old pool so we can create a new one
+                    del cls._pools[config_name]
+                    if config_name in cls._pool_loops:
+                        del cls._pool_loops[config_name]
+
             if config_name not in cls._pools:
                 async with handle_orm_operation(
                     operation_name="create_connection_pool",
@@ -57,6 +90,13 @@ class AsyncDatabaseManager:
                             statement_cache_size=0,
                         )
                         cls._pools[config_name] = pool
+                        
+                        # Track which event loop this pool belongs to
+                        try:
+                            current_loop = asyncio.get_running_loop()
+                            cls._pool_loops[config_name] = id(current_loop)
+                        except RuntimeError:
+                            cls._pool_loops[config_name] = None
                     except DatabaseConfigError as e:
                         raise ConfigurationError(
                             model=None,
@@ -184,6 +224,7 @@ class AsyncDatabaseManager:
                         original_error=e,
                     )
             cls._pools.clear()
+            cls._pool_loops.clear()
             cls._locks.clear()
 
 
