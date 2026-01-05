@@ -1,3 +1,5 @@
+import asyncio
+
 from matrx_utils import vcprint
 from matrx_orm.error_handling import handle_orm_operation
 from ..query.executor import QueryExecutor
@@ -222,16 +224,36 @@ class QueryBuilder:
             raise DatabaseError(model=self.model, operation="exists", original_error=e)
 
     async def values(self, *fields):
-        exec_ = self._get_executor()
         if fields:
-            exec_.select(*fields)
+            self.select_fields = list(fields)
+        exec_ = self._get_executor()
         return await exec_.values()
 
     async def values_list(self, *fields, flat=False):
-        exec_ = self._get_executor()
         if fields:
-            exec_.select(*fields)
+            self.select_fields = list(fields)
+        exec_ = self._get_executor()
         return await exec_.values_list(flat=flat)
+
+    def values_sync(self, *fields):
+        """Synchronous wrapper for values()."""
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError("QueryBuilder.values_sync() called in async context. Use await .values() instead.")
+        except RuntimeError as e:
+            if "no running event loop" not in str(e):
+                raise
+        return asyncio.run(self.values(*fields))
+
+    def values_list_sync(self, *fields, flat=False):
+        """Synchronous wrapper for values_list()."""
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError("QueryBuilder.values_list_sync() called in async context. Use await .values_list() instead.")
+        except RuntimeError as e:
+            if "no running event loop" not in str(e):
+                raise
+        return asyncio.run(self.values_list(*fields, flat=flat))
 
     async def __aiter__(self):
         executor = self._get_executor()

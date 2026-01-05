@@ -362,6 +362,36 @@ class QueryExecutor:
         results = await self._execute()
         return len(results) > 0
 
+    async def values(self):
+        """Returns results as a list of dictionaries."""
+        results = await self._execute()
+        if not results:
+            return []
+        return [dict(row) for row in results]
+
+    async def values_list(self, flat=False):
+        """Returns results as a list of tuples, or flat list if flat=True."""
+        results = await self._execute()
+        if not results:
+            return []
+        
+        if flat:
+            # For flat=True, return a flat list of the first column
+            select_fields = self._full_query_dict.get("select", ["*"])
+            if select_fields == ["*"] or len(select_fields) != 1:
+                raise ValueError("values_list with flat=True requires exactly one field to be selected")
+            field_name = select_fields[0]
+            return [row[field_name] for row in results]
+        else:
+            # Return list of tuples
+            if self._full_query_dict.get("select") == ["*"]:
+                # If selecting all fields, return all values as tuples
+                return [tuple(row.values()) for row in results]
+            else:
+                # Return only selected fields in order
+                select_fields = self._full_query_dict.get("select", [])
+                return [tuple(row[field] for field in select_fields) for row in results]
+
     def __aiter__(self):
         self._iter_index = 0
         return self
