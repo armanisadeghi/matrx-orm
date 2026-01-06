@@ -1,13 +1,16 @@
 import asyncio
 import time
 from enum import Enum
-from typing import Any, Optional, Set
+from typing import Any, Optional, Set, TypeVar, Generic, Type, List
 from uuid import UUID
 
 from matrx_utils import vcprint
 
 from matrx_orm.core.base import RuntimeContainer
 from matrx_orm.extended.app_error_handler import AppError, handle_errors
+
+# Type variable for the model type
+ModelT = TypeVar('ModelT')
 
 info = True
 debug = False
@@ -160,10 +163,10 @@ class BaseDTO:
         return str(self.to_dict())
 
 
-class BaseManager:
+class BaseManager(Generic[ModelT]):
     def __init__(
             self,
-            model,
+            model: Type[ModelT],
             dto_class=None,
             fetch_on_init_limit: int = 0,
             FETCH_ON_INIT_WITH_WARNINGS_OFF: Optional[str] = None,
@@ -215,7 +218,7 @@ class BaseManager:
         """Hook for subclasses to add runtime data to DTO"""
         pass
 
-    async def _initialize_item_runtime(self, item):
+    async def _initialize_item_runtime(self, item: Optional[ModelT]) -> Optional[ModelT]:
         if not item:
             return None
         if not hasattr(item, "runtime"):
@@ -262,14 +265,14 @@ class BaseManager:
         self.relation_fields.add(field)
 
     @handle_errors
-    async def _process_item(self, item):
+    async def _process_item(self, item: Optional[ModelT]) -> Optional[ModelT]:
         if item:
             await self._initialize_item_runtime(item)
             self._add_to_active(item.id)
         return item
 
     @handle_errors
-    async def _get_item_or_raise(self, use_cache=True, **kwargs):
+    async def _get_item_or_raise(self, use_cache=True, **kwargs) -> ModelT:
         """Fetch a single item from the model and raise"""
         item = await self.model.get(use_cache=use_cache, **kwargs)
         if not item:
@@ -281,7 +284,7 @@ class BaseManager:
         return await self._initialize_item_runtime(item)
 
     @handle_errors
-    async def _get_item_or_none(self, use_cache=True, **kwargs):
+    async def _get_item_or_none(self, use_cache=True, **kwargs) -> Optional[ModelT]:
         """Fetch a single item from the model."""
         item = await self.model.get_or_none(use_cache=use_cache, **kwargs)
         if not item:
@@ -289,7 +292,7 @@ class BaseManager:
         return await self._initialize_item_runtime(item)
 
     @handle_errors
-    async def _get_item_with_retry(self, use_cache=True, **kwargs):
+    async def _get_item_with_retry(self, use_cache=True, **kwargs) -> ModelT:
         """Fetch a single item from the model with retry."""
         item = await self.model.get_or_none(use_cache=use_cache, **kwargs)
         if not item:
@@ -302,7 +305,7 @@ class BaseManager:
         return await self._initialize_item_runtime(item)
 
     @handle_errors
-    async def _get_items(self, order_by: str = None, **kwargs):
+    async def _get_items(self, order_by: str = None, **kwargs) -> List[ModelT]:
         """Fetch multiple items from the model with filters."""
         if order_by:
             items = await self.model.filter(**kwargs).order_by(order_by).all()
@@ -311,7 +314,7 @@ class BaseManager:
         return [await self._initialize_item_runtime(item) for item in items]
 
     @handle_errors
-    async def _get_first_item(self, order_by: str = None, **kwargs):
+    async def _get_first_item(self, order_by: str = None, **kwargs) -> Optional[ModelT]:
         """Fetch first item from the model with filters."""
         if order_by:
             item = await self.model.filter(**kwargs).order_by(order_by).first()
@@ -320,13 +323,13 @@ class BaseManager:
         return await self._process_item(item)
 
     @handle_errors
-    async def _get_last_item(self, order_by: str = None, **kwargs):
+    async def _get_last_item(self, order_by: str = None, **kwargs) -> Optional[ModelT]:
         """Fetch last item from the model with filters."""
         item = await self.model.filter(**kwargs).order_by(order_by).last()
         return await self._process_item(item)
 
     @handle_errors
-    async def _create_item(self, **data):
+    async def _create_item(self, **data) -> ModelT:
         """Create a new item."""
         item = await self.model.create(**data)
         return await self._initialize_item_runtime(item)
@@ -334,7 +337,7 @@ class BaseManager:
     @handle_errors
     async def _create_items(
             self, items_data: list, batch_size: int = 1000, ignore_conflicts: bool = False
-    ):
+    ) -> List[ModelT]:
         """
         Create multiple items using TRUE bulk operations.
         Now uses the enhanced Model.bulk_create() method that follows the same
@@ -365,7 +368,7 @@ class BaseManager:
             raise
 
     @handle_errors
-    async def _update_item(self, item, **updates):
+    async def _update_item(self, item: ModelT, **updates) -> ModelT:
         """Update an existing item."""
         if not item:
             raise AppError(
@@ -432,36 +435,36 @@ class BaseManager:
         return await item.fetch_all_related()
 
     @handle_errors
-    async def load_item(self, use_cache=True, **kwargs):
+    async def load_item(self, use_cache=True, **kwargs) -> ModelT:
         """Load and initialize a single item."""
         return await self._get_item_or_raise(use_cache=use_cache, **kwargs)
 
     @handle_errors
-    async def load_item_or_none(self, use_cache=True, **kwargs):
+    async def load_item_or_none(self, use_cache=True, **kwargs) -> Optional[ModelT]:
         """Load and initialize a single item or None."""
         return await self._get_item_or_none(use_cache=use_cache, **kwargs)
 
     @handle_errors
-    async def load_item_with_retry(self, use_cache=True, **kwargs):
+    async def load_item_with_retry(self, use_cache=True, **kwargs) -> ModelT:
         """Load and initialize a single item with retry."""
         return await self._get_item_with_retry(use_cache=use_cache, **kwargs)
 
     @handle_errors
-    async def load_items(self, **kwargs):
+    async def load_items(self, **kwargs) -> List[ModelT]:
         """Load and initialize multiple items."""
         items = await self._get_items(**kwargs)
         self._active_items.update([item.id for item in items if item])
         return [await self._initialize_item_runtime(item) for item in items if item]
 
-    async def load_by_id(self, item_id):
+    async def load_by_id(self, item_id) -> ModelT:
         """Load an item by ID."""
         return await self.load_item(id=item_id)
 
-    async def load_by_id_with_retry(self, item_id):
+    async def load_by_id_with_retry(self, item_id) -> ModelT:
         """Load an item by ID with retry."""
         return await self.load_item_with_retry(id=item_id)
 
-    async def load_items_by_ids(self, item_ids):
+    async def load_items_by_ids(self, item_ids) -> List[ModelT]:
         """Load multiple items by IDs."""
         # TODO: FAULTY METHOD : Does not work.
 
@@ -493,20 +496,20 @@ class BaseManager:
         self._active_items.clear()
 
     @handle_errors
-    async def get_active_items(self):
+    async def get_active_items(self) -> List[ModelT]:
         """Get all active items, initialized."""
         items = await asyncio.gather(
             *(self._get_item_or_raise(id=item_id) for item_id in self._active_items)
         )
         return items
 
-    async def create_item(self, **data):
+    async def create_item(self, **data) -> ModelT:
         """Create and initialize an item."""
         item = await self._create_item(**data)
         vcprint(item, "BASE MANAGER Created item", verbose=debug, color="yellow")
         return await self._initialize_item_runtime(item)
 
-    async def create_items(self, items_data, batch_size=1000, ignore_conflicts=False):
+    async def create_items(self, items_data, batch_size=1000, ignore_conflicts=False) -> List[ModelT]:
         """Create multiple items at once using TRUE bulk operations.
 
         Args:
@@ -522,7 +525,7 @@ class BaseManager:
             items_data, batch_size=batch_size, ignore_conflicts=ignore_conflicts
         )
 
-    async def update_item(self, item_id, **updates):
+    async def update_item(self, item_id, **updates) -> ModelT:
         """Update an item by ID."""
         item = await self._get_item_or_raise(id=item_id)
         return await self._update_item(item, **updates)
@@ -883,12 +886,12 @@ class BaseManager:
         return [item.to_dict() for item in items if item]
 
     @handle_errors
-    async def filter_items(self, **kwargs):
+    async def filter_items(self, **kwargs) -> List[ModelT]:
         """Filter items directly from the model."""
         items = await self.model.filter(**kwargs).all()
         return [await self._process_item(item) for item in items if item]
 
-    async def filter_items_by_ids(self, item_ids):
+    async def filter_items_by_ids(self, item_ids) -> List[ModelT]:
         """Filter items by IDs directly from the model."""
         items = await self.model.filter(id__in=item_ids).all()
         return [await self._process_item(item) for item in items if item]
@@ -1254,7 +1257,7 @@ class BaseManager:
 
     # ==================== SYNCHRONOUS WRAPPER METHODS ====================
 
-    def load_item_sync(self, use_cache=True, **kwargs):
+    def load_item_sync(self, use_cache=True, **kwargs) -> ModelT:
         """Synchronous wrapper for load_item()."""
         try:
             asyncio.get_running_loop()
@@ -1264,7 +1267,7 @@ class BaseManager:
                 raise
         return asyncio.run(self.load_item(use_cache=use_cache, **kwargs))
 
-    def load_item_or_none_sync(self, use_cache=True, **kwargs):
+    def load_item_or_none_sync(self, use_cache=True, **kwargs) -> Optional[ModelT]:
         """Synchronous wrapper for load_item_or_none()."""
         try:
             asyncio.get_running_loop()
@@ -1274,7 +1277,7 @@ class BaseManager:
                 raise
         return asyncio.run(self.load_item_or_none(use_cache=use_cache, **kwargs))
 
-    def load_items_sync(self, **kwargs):
+    def load_items_sync(self, **kwargs) -> List[ModelT]:
         """Synchronous wrapper for load_items()."""
         try:
             asyncio.get_running_loop()
@@ -1284,7 +1287,7 @@ class BaseManager:
                 raise
         return asyncio.run(self.load_items(**kwargs))
 
-    def load_by_id_sync(self, item_id):
+    def load_by_id_sync(self, item_id) -> ModelT:
         """Synchronous wrapper for load_by_id()."""
         try:
             asyncio.get_running_loop()
@@ -1294,7 +1297,7 @@ class BaseManager:
                 raise
         return asyncio.run(self.load_by_id(item_id))
 
-    def filter_items_sync(self, **kwargs):
+    def filter_items_sync(self, **kwargs) -> List[ModelT]:
         """Synchronous wrapper for filter_items()."""
         try:
             asyncio.get_running_loop()
@@ -1304,7 +1307,7 @@ class BaseManager:
                 raise
         return asyncio.run(self.filter_items(**kwargs))
 
-    def create_item_sync(self, **data):
+    def create_item_sync(self, **data) -> ModelT:
         """Synchronous wrapper for create_item()."""
         try:
             asyncio.get_running_loop()
@@ -1314,7 +1317,7 @@ class BaseManager:
                 raise
         return asyncio.run(self.create_item(**data))
 
-    def update_item_sync(self, item_id, **updates):
+    def update_item_sync(self, item_id, **updates) -> ModelT:
         """Synchronous wrapper for update_item()."""
         try:
             asyncio.get_running_loop()
@@ -1354,7 +1357,7 @@ class BaseManager:
                 raise
         return asyncio.run(self.exists(item_id))
 
-    def get_active_items_sync(self):
+    def get_active_items_sync(self) -> List[ModelT]:
         """Synchronous wrapper for get_active_items()."""
         try:
             asyncio.get_running_loop()

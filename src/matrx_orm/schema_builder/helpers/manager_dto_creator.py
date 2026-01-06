@@ -48,7 +48,7 @@ class {model_pascal}DTO(BaseDTO):
 
 
 
-class {model_pascal}Base(BaseManager):
+class {model_pascal}Base(BaseManager[{model_pascal}]):
     def __init__(self, dto_class: Optional[Type[Any]] = None):
         self.dto_class = dto_class or {model_pascal}DTO
         super().__init__({model_pascal}, self.dto_class)
