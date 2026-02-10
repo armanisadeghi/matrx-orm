@@ -2,8 +2,8 @@ import json
 import os
 from typing import Any, Dict, List
 
-from psycopg2 import pool
-from psycopg2.extras import RealDictCursor
+from psycopg_pool import ConnectionPool
+from psycopg.rows import dict_row
 from matrx_utils import vcprint
 
 from matrx_orm.utils.sql_utils import sql_param_to_psycopg2
@@ -33,7 +33,12 @@ def init_connection_details(config_name):
 
         vcprint(f"\n[Matrx ORM] Connection String:\n{connection_string}\n", color="green")
 
-        connection_pools[config_name] = pool.SimpleConnectionPool(1, 10, dsn=connection_string, sslmode="require")
+        connection_pools[config_name] = ConnectionPool(
+            connection_string,
+            min_size=1,
+            max_size=10,
+            kwargs={"sslmode": "require"}
+        )
 
 
 def get_postgres_connection(
@@ -50,7 +55,7 @@ def execute_sql_query(query, params=None, database_project="this_will_cause_erro
     """
     conn = get_postgres_connection(database_project)
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with conn.cursor(row_factory=dict_row) as cur:
             if params and isinstance(params, dict):
                 query, params = sql_param_to_psycopg2(query, params)
             cur.execute(query, params)
@@ -83,17 +88,16 @@ def execute_transaction_query(query, params=None, database_project="this_will_ca
     """
     conn = get_postgres_connection(database_project)
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with conn.cursor(row_factory=dict_row) as cur:
             if params and isinstance(params, dict):
                 query, params = sql_param_to_psycopg2(query, params)
             cur.execute(query, params)
-            conn.commit()  # Explicitly commit the transaction
+            conn.commit()
 
             # Try to fetch results if any are available
             try:
                 return cur.fetchall()
             except:
-                # If no results to fetch, return an empty list instead of raising an error
                 return []
     finally:
         connection_pools[database_project].putconn(conn)
@@ -126,7 +130,7 @@ def execute_batch_query(query: str, batch_params: List[Dict[str, Any]], batch_si
                         processed_params[key] = value
 
                 # Execute the query for this row
-                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                with conn.cursor(row_factory=dict_row) as cur:
                     if processed_params:
                         query_with_names, params = sql_param_to_psycopg2(query, processed_params)
                         cur.execute(query_with_names, params)
@@ -136,7 +140,6 @@ def execute_batch_query(query: str, batch_params: List[Dict[str, Any]], batch_si
                             if result:
                                 all_results.extend(result)
                         except:
-                            # No results to fetch
                             pass
     finally:
         connection_pools[database_project].putconn(conn)

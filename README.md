@@ -65,13 +65,10 @@ The package automatically publishes to PyPI when you push a version tag. Here's 
 
 Check current tags: `git tag`
 
-Example output:
-```
-v1.0.0
-v1.0.2
-v1.0.3
-v1.0.4
-```
+**Latest Versions:**
+- **v1.2.0** - Upgraded to psycopg3 (modern PostgreSQL adapter, no pg_config build required)
+- v1.1.3 - Legacy version (psycopg2)
+- v1.0.x - Earlier releases
 
 ### Important Notes
 
