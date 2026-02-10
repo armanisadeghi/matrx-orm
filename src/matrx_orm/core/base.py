@@ -316,7 +316,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         if use_cache:
             return await StateManager.get(cls, **kwargs)
         else:
-            return await QueryBuilder(model=cls).filter(**kwargs).get()
+            return await QueryBuilder(cls).filter(**kwargs).get()
 
     @classmethod
     def get_sync(cls, use_cache=True, **kwargs):
@@ -342,7 +342,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             if use_cache:
                 return await StateManager.get_or_none(cls, **kwargs)
             else:
-                return await QueryBuilder(model=cls).filter(**kwargs).get_or_none()
+                return await QueryBuilder(cls).filter(**kwargs).get_or_none()
         except DoesNotExist:
             return None
         except Exception as e:
@@ -366,7 +366,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
 
     @classmethod
     def filter(cls, **kwargs):
-        return QueryBuilder(model=cls).filter(**kwargs)
+        return QueryBuilder(cls).filter(**kwargs)
 
     @classmethod
     def filter_sync(cls, **kwargs):
@@ -385,7 +385,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
 
     @classmethod
     async def all(cls):
-        results = await QueryBuilder(model=cls).all()
+        results = await QueryBuilder(cls).all()
         await StateManager.cache_bulk(cls, results)
         return results
 
@@ -705,4 +705,4 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
 
     @classmethod
     async def get_many(cls, **kwargs):
-        return await QueryBuilder(model=cls).filter(**kwargs).all()
+        return await QueryBuilder(cls).filter(**kwargs).all()

@@ -5,8 +5,8 @@ from ..query.builder import QueryBuilder
 from ..query.executor import QueryExecutor
 
 
-async def create(model, **kwargs):
-    instance = model(**kwargs)
+async def create(model_cls, **kwargs):
+    instance = model_cls(**kwargs)
     return await save(instance)
 
 
@@ -36,7 +36,7 @@ async def save(instance):
     return instance
 
 
-async def bulk_create(model, objects_data):
+async def bulk_create(model_cls, objects_data):
     """
     Enhanced bulk_create that follows the same data processing pipeline as individual operations.
     Now properly handles the fact that bulk_insert() returns model instances, not raw dicts.
@@ -49,12 +49,12 @@ async def bulk_create(model, objects_data):
     data_list = []
 
     for obj_data in objects_data:
-        instance = model(**obj_data)
+        instance = model_cls(**obj_data)
         instances.append(instance)
 
         # Process data exactly like save() does
         data = {}
-        for field_name, field in model._fields.items():
+        for field_name, field in model_cls._fields.items():
             if isinstance(field, Field):
                 value = getattr(instance, field_name)
                 if value is None and field.default is not None:
@@ -67,7 +67,7 @@ async def bulk_create(model, objects_data):
     from ..query.executor import QueryExecutor
 
     query = {
-        "table": model._table_name,
+        "table": model_cls._table_name,
         "data": data_list,
     }
 
@@ -78,41 +78,41 @@ async def bulk_create(model, objects_data):
 
     # Cache all created instances like individual operations do
     for instance in created_instances:
-        await StateManager.cache(model, instance)
+        await StateManager.cache(model_cls, instance)
 
     return created_instances
 
 
-async def get_or_create(model, defaults=None, **kwargs):
+async def get_or_create(model_cls, defaults=None, **kwargs):
     """Fixed to use proper Model methods instead of non-existent model.objects"""
     defaults = defaults or {}
     try:
-        instance = await model.get(**kwargs)
+        instance = await model_cls.get(**kwargs)
         return instance, False
-    except model.DoesNotExist:
+    except model_cls.DoesNotExist:
         params = {**kwargs, **defaults}
-        instance = await create(model, **params)
+        instance = await create(model_cls, **params)
         return instance, True
 
 
-async def update_or_create(model, defaults=None, **kwargs):
+async def update_or_create(model_cls, defaults=None, **kwargs):
     """Fixed to use proper Model methods instead of non-existent model.objects"""
     defaults = defaults or {}
     try:
-        instance = await model.get(**kwargs)
+        instance = await model_cls.get(**kwargs)
         for key, value in defaults.items():
             setattr(instance, key, value)
         await save(instance)
         return instance, False
-    except model.DoesNotExist:
+    except model_cls.DoesNotExist:
         params = {**kwargs, **defaults}
-        instance = await create(model, **params)
+        instance = await create(model_cls, **params)
         return instance, True
 
 
-async def create_instance(model_class, **kwargs):
+async def create_instance(model_cls, **kwargs):
     """
     This matches the reference in Model.save() for creating a brand new record.
     Uses the existing 'create' function to do the heavy lifting.
     """
-    return await create(model_class, **kwargs)
+    return await create(model_cls, **kwargs)

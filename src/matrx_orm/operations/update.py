@@ -7,11 +7,11 @@ from ..query.builder import QueryBuilder
 debug = False
 
 
-async def update(model, filters, **kwargs):
-    return await QueryBuilder(model).filter(**filters).update(**kwargs)
+async def update(model_cls, filters, **kwargs):
+    return await QueryBuilder(model_cls).filter(**filters).update(**kwargs)
 
 
-async def bulk_update(model, objects, fields):
+async def bulk_update(model_cls, objects, fields):
     """
     Enhanced bulk_update that works within the current ORM limitations.
     Uses controlled batch processing since the ORM doesn't support __in operators yet.
@@ -20,10 +20,10 @@ async def bulk_update(model, objects, fields):
         return 0
 
     # Validate fields like individual operations do
-    invalid_fields = [k for k in fields if k not in model._fields]
+    invalid_fields = [k for k in fields if k not in model_cls._fields]
     if invalid_fields:
-        vcprint(model._fields, "Model Fields", color="yellow")
-        raise ValueError(f"Invalid fields for {model.__name__}: {invalid_fields}")
+        vcprint(model_cls._fields, "Model Fields", color="yellow")
+        raise ValueError(f"Invalid fields for {model_cls.__name__}: {invalid_fields}")
 
     # Extract objects with valid IDs
     valid_objects = [
@@ -44,8 +44,8 @@ async def bulk_update(model, objects, fields):
             # Prepare update data with proper field processing
             update_data = {}
             for field_name in fields:
-                if field_name in model._fields and hasattr(obj, field_name):
-                    field = model._fields[field_name]
+                if field_name in model_cls._fields and hasattr(obj, field_name):
+                    field = model_cls._fields[field_name]
                     value = getattr(obj, field_name)
                     if value is not None:
                         update_data[field_name] = field.get_db_prep_value(value)
@@ -53,13 +53,13 @@ async def bulk_update(model, objects, fields):
             if update_data:
                 # Use individual update through QueryBuilder (proven method)
                 result = (
-                    await QueryBuilder(model).filter(id=obj.id).update(**update_data)
+                    await QueryBuilder(model_cls).filter(id=obj.id).update(**update_data)
                 )
                 if result.get("rows_affected", 0) > 0:
                     rows_affected += 1
 
                     # Update cache like individual operations do
-                    await StateManager.cache(model, obj)
+                    await StateManager.cache(model_cls, obj)
 
             # Progress indicator for large batches
             if (i + 1) % 10 == 0:
@@ -89,58 +89,58 @@ async def bulk_update(model, objects, fields):
     return rows_affected
 
 
-async def update_or_create(model, defaults=None, **kwargs):
+async def update_or_create(model_cls, defaults=None, **kwargs):
     """Fixed to use proper Model methods instead of non-existent model.objects"""
     defaults = defaults or {}
     try:
-        instance = await model.get(**kwargs)
+        instance = await model_cls.get(**kwargs)
         for key, value in defaults.items():
             setattr(instance, key, value)
         await instance.save()
         return instance, False
-    except model.DoesNotExist:
+    except model_cls.DoesNotExist:
         params = {**kwargs, **defaults}
-        instance = await model.create(**params)
+        instance = await model_cls.create(**params)
         return instance, True
 
 
-async def increment(model, filters, **kwargs):
+async def increment(model_cls, filters, **kwargs):
     updates = {}
     for field, amount in kwargs.items():
         updates[field] = F(field) + amount
-    return await update(model, filters, **updates)
+    return await update(model_cls, filters, **updates)
 
 
-async def decrement(model, filters, **kwargs):
+async def decrement(model_cls, filters, **kwargs):
     updates = {}
     for field, amount in kwargs.items():
         updates[field] = F(field) - amount
-    return await update(model, filters, **updates)
+    return await update(model_cls, filters, **updates)
 
 
 async def update_instance(instance, fields=None):
-    model_class = instance.__class__
-    pk_list = model_class._meta.primary_keys
+    model_cls = instance.__class__
+    pk_list = model_cls._meta.primary_keys
     if not pk_list:
-        raise ValueError(f"Cannot update {model_class.__name__} with no primary key.")
+        raise ValueError(f"Cannot update {model_cls.__name__} with no primary key.")
     pk_name = pk_list[0]
     pk_value = getattr(instance, pk_name, None)
     if pk_value is None:
-        raise ValueError(f"Cannot update {model_class.__name__}, {pk_name} is None")
+        raise ValueError(f"Cannot update {model_cls.__name__}, {pk_name} is None")
 
     update_data = {}
     # If fields is specified, only update those; otherwise, update all non-None fields
     field_names = (
         fields
         if fields is not None
-        else [f for f in model_class._fields if f != pk_name]
+        else [f for f in model_cls._fields if f != pk_name]
     )
     for field_name in field_names:
         if field_name == pk_name:
             continue
         value = getattr(instance, field_name, None)
         if value is not None:  # Only include non-None values
-            field = model_class._fields[field_name]
+            field = model_cls._fields[field_name]
             update_data[field_name] = field.get_db_prep_value(value)
 
     filters = {pk_name: pk_value}
@@ -151,11 +151,11 @@ async def update_instance(instance, fields=None):
         )
         vcprint(f"Update data: {update_data}", verbose=debug, color="cyan")
 
-    result = await update(model_class, filters, **update_data)
+    result = await update(model_cls, filters, **update_data)
 
     if result["rows_affected"] == 0:
         raise ValueError(
-            f"No rows were updated for {model_class.__name__} with {pk_name}={pk_value}"
+            f"No rows were updated for {model_cls.__name__} with {pk_name}={pk_value}"
         )
 
     if result["updated_rows"]:

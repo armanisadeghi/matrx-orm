@@ -17,9 +17,9 @@ from ..state import StateManager
 debug = False
 
 class QueryBuilder:
-    def __init__(self, model, database=None):
-        self.model = model
-        self.database = self._set_database(model)
+    def __init__(self, model_cls, database=None):
+        self.model = model_cls
+        self.database = self._set_database(model_cls)
         self.filters = []
         self.excludes = []
         self.order_by_fields = []
@@ -32,12 +32,12 @@ class QueryBuilder:
         self.having_filters = []
         self.aggregations = []
 
-    def _set_database(self, model):
-        if hasattr(model, '_database') and model._database:
-            self.database = model._database
+    def _set_database(self, model_cls):
+        if hasattr(model_cls, '_database') and model_cls._database:
+            self.database = model_cls._database
             return self.database
         
-        raise ValueError(f"Database not found for model {model.__name__}")
+        raise ValueError(f"Database not found for model {model_cls.__name__}")
 
 
     def filter(self, **kwargs):
@@ -72,8 +72,8 @@ class QueryBuilder:
         self.prefetch_fields.extend(fields)
         return self
 
-    def join(self, model, on, join_type="INNER"):
-        self.joins.append({"model": model, "on": on, "type": join_type})
+    def join(self, model_cls, on, join_type="INNER"):
+        self.joins.append({"model": model_cls, "on": on, "type": join_type})
         return self
 
     def group_by(self, *fields):
