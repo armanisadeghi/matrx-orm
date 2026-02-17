@@ -791,6 +791,14 @@ class Column:
                 "blank": value.split("'")[1].strip(),  # Extract timestamp with timezone
                 "generator": "formatTimestamptz()",
             },
+            "::time without time zone": lambda value: {
+                "blank": value.split("'")[1].strip(),  # Extract time value
+                "generator": "formatTime()",
+            },
+            "::time with time zone": lambda value: {
+                "blank": value.split("'")[1].strip(),  # Extract time with timezone value
+                "generator": "formatTime()",
+            },
             "::uuid": lambda uuid_value: {
                 "blank": uuid_value.split("'")[1].strip() if "'" in uuid_value else uuid_value.strip(),
                 "generator": "",
@@ -884,6 +892,10 @@ class Column:
             elif value.startswith("ARRAY[]::") and value.endswith("[]"):
                 return {"blank": "[]", "generator": ""}
 
+            # Handle non-empty ARRAY[...] syntax: ARRAY['react'::text, 'lucide-react'::text, ...]
+            elif value.startswith("ARRAY["):
+                return {"blank": "[]", "generator": ""}
+
             # Handle simple numeric defaults (no quotes, no casting)
             # This includes integers, decimals, negative numbers, scientific notation
             elif value.isdigit() or (value.startswith("-") and value[1:].replace(".", "", 1).isdigit()):
@@ -941,6 +953,12 @@ class Column:
             if value.endswith("::timestamp with time zone"):
                 vcprint(data=value, color="red")
                 return callable_outcomes["::timestamp with time zone"](value)
+
+            if value.endswith("::time without time zone"):
+                return callable_outcomes["::time without time zone"](value)
+
+            if value.endswith("::time with time zone"):
+                return callable_outcomes["::time with time zone"](value)
 
             if value.endswith("::uuid"):
                 uuid_value = value.split("::")[0].strip("'")  # Extract UUID without validation

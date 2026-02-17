@@ -10,7 +10,7 @@ schema_builder_save_direct = True
 
 
 DEBUG_SETTINGS = {
-    "tables": ["wc_impairment_definition"],
-    "columns": ["name"],
-    "base_type": [""],
+    "tables": [],
+    "columns": [],
+    "base_type": [],
 }

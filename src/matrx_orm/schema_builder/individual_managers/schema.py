@@ -652,10 +652,19 @@ class Schema:
                 remaining_tables.remove(table_name)
 
         py_structure = [self.get_string_user_model()]
+        all_field_types = {"UUIDField", "CharField", "Model"}
+
         for table_name in sorted_tables:
             table = self.tables[table_name]
             py_table_entry = table.to_python_model()
             py_structure.append(py_table_entry)
+            all_field_types.update(table.unique_field_types)
+
+        has_enums = any(
+            column.has_enum_labels
+            for table in self.tables.values()
+            for column in table.columns
+        )
 
         py_manager_structure = []
         py_auto_config_structure = []
@@ -690,8 +699,19 @@ class Schema:
             print("python_models", get_code_config(self.database_project)["python_models"])
             print("-----------------------------\n")
 
-        self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["python_models"],
-                                                             main_code, additional_code)
+        models_config = get_code_config(self.database_project)["python_models"]
+        sorted_field_types = sorted(all_field_types)
+        field_imports = ", ".join(sorted_field_types)
+        dynamic_import_lines = [
+            "import database_registry",
+            f"from matrx_orm import {field_imports}, model_registry, BaseDTO, BaseManager",
+        ]
+        if has_enums:
+            dynamic_import_lines.append("from enum import Enum")
+        dynamic_import_lines.append("from dataclasses import dataclass")
+        models_config["import_lines"] = dynamic_import_lines
+
+        self.code_handler.generate_and_save_code_from_object(models_config, main_code, additional_code)
 
         
         py_auto_config_code = "\n".join(py_auto_config_structure)

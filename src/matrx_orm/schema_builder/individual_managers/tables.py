@@ -1021,7 +1021,13 @@ class Table:
         for column in self.columns:
             py_field = column.to_python_model_field()
             py_fields.append(py_field)
-            self.unique_field_types.add(column.python_field_type)
+
+            if column.foreign_key_reference:
+                self.unique_field_types.add("ForeignKey")
+            elif column.has_enum_labels:
+                self.unique_field_types.add("EnumField")
+            else:
+                self.unique_field_types.add(column.python_field_type)
 
             if column.has_enum_labels:
                 py_enum_entry = column.set_python_enum_entry()
