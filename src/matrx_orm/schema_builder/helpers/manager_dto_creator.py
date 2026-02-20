@@ -256,6 +256,31 @@ def generate_to_dict_relation_methods(model_name: str, model_name_plural: str, r
     )
 
 
+def generate_m2m_relation_methods(model_name: str, model_name_plural: str, m2m_relations: list[str]) -> str:
+    """Generate named convenience methods for each M2M relationship."""
+    return "".join(
+        [
+            f"""
+    async def get_{model_name}_{relation}(self, id):
+        return await self.get_item_with_m2m(id, '{relation}')
+
+    async def add_{model_name}_{relation}(self, id, *target_ids):
+        return await self.add_m2m(id, '{relation}', *target_ids)
+
+    async def remove_{model_name}_{relation}(self, id, *target_ids):
+        return await self.remove_m2m(id, '{relation}', *target_ids)
+
+    async def set_{model_name}_{relation}(self, id, target_ids):
+        return await self.set_m2m(id, '{relation}', target_ids)
+
+    async def clear_{model_name}_{relation}(self, id):
+        return await self.clear_m2m(id, '{relation}')
+"""
+            for relation in m2m_relations
+        ]
+    )
+
+
 def generate_filter_field_methods(model_name: str, model_name_plural: str, filter_fields: list[str]) -> str:
     """Generate filter-specific methods for each field in filter_fields."""
     return "".join(
@@ -323,6 +348,7 @@ def generate_manager_class(
     include_or_not_methods: bool = False,
     include_to_dict_methods: bool = False,
     include_to_dict_relations: bool = False,
+    m2m_relations: list[str] | None = None,
 ) -> str:
     """Combine all parts into the full class with fine-grained configuration and singleton manager."""
     base = generate_base_manager_class(models_module_path, model_pascal, model_name, model_name_plural, model_name_snake)
@@ -335,6 +361,10 @@ def generate_manager_class(
     # Active relation methods
     if relations and include_active_relations:
         parts.append(generate_active_relation_methods(model_name, model_name_plural, relations))
+
+    # M2M relation methods
+    if m2m_relations:
+        parts.append(generate_m2m_relation_methods(model_name, model_name_plural, m2m_relations))
 
     # Filter field methods
     if filter_fields and include_filter_fields:

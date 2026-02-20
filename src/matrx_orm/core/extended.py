@@ -45,7 +45,10 @@ class BaseDTO:
         }
 
     def _report_error(
-            self, message: str, error_type: str = "GenericError", client_visible: str | None = None
+        self,
+        message: str,
+        error_type: str = "GenericError",
+        client_visible: str | None = None,
     ) -> AppError:
         return AppError(
             message=message,
@@ -139,7 +142,9 @@ class BaseDTO:
             visited = set()
 
         if id(self) in visited:
-            return {"__circular__": f"<Circular reference to {self.__class__.__name__}>"}
+            return {
+                "__circular__": f"<Circular reference to {self.__class__.__name__}>"
+            }
         visited.add(id(self))
 
         base_dict: dict[str, Any] = {}
@@ -174,11 +179,11 @@ class BaseManager(Generic[ModelT]):
     relation_fields: set[str]
 
     def __init__(
-            self,
-            model: type[ModelT],
-            dto_class: type[BaseDTO] | None = None,
-            fetch_on_init_limit: int = 0,
-            FETCH_ON_INIT_WITH_WARNINGS_OFF: str | None = None,
+        self,
+        model: type[ModelT],
+        dto_class: type[BaseDTO] | None = None,
+        fetch_on_init_limit: int = 0,
+        FETCH_ON_INIT_WITH_WARNINGS_OFF: str | None = None,
     ) -> None:
         self.model = model
         self.dto_class = dto_class
@@ -191,7 +196,7 @@ class BaseManager(Generic[ModelT]):
 
     def _initialize_manager(self) -> None:
         """Initialize the manager and trigger auto-fetch if configured.
-        
+
         Auto-fetch now works correctly in all contexts thanks to automatic
         event loop detection and pool recreation in AsyncDatabaseManager.
         """
@@ -199,9 +204,17 @@ class BaseManager(Generic[ModelT]):
             try:
                 asyncio.get_running_loop()
                 asyncio.create_task(self._auto_fetch_on_init_async())
-                vcprint(f"[{self.model.__name__}] Auto-fetching on init (async)", verbose=info, color="yellow")
+                vcprint(
+                    f"[{self.model.__name__}] Auto-fetching on init (async)",
+                    verbose=info,
+                    color="yellow",
+                )
             except RuntimeError:
-                vcprint(f"[{self.model.__name__}] Auto-fetching on init (sync)", verbose=info, color="yellow")
+                vcprint(
+                    f"[{self.model.__name__}] Auto-fetching on init (sync)",
+                    verbose=info,
+                    color="yellow",
+                )
                 self._auto_fetch_on_init_sync()
 
     def _get_error_context(self) -> dict[str, str]:
@@ -211,7 +224,10 @@ class BaseManager(Generic[ModelT]):
         }
 
     def _report_error(
-            self, message: str, error_type: str = "GenericError", client_visible: str | None = None
+        self,
+        message: str,
+        error_type: str = "GenericError",
+        client_visible: str | None = None,
     ) -> AppError:
         return AppError(
             message=message,
@@ -238,10 +254,10 @@ class BaseManager(Generic[ModelT]):
 
     async def initialize(self) -> BaseManager[ModelT]:
         """Explicitly initialize the manager with auto-fetch in async contexts.
-        
+
         This should be called after manager creation if you want to trigger auto-fetch
         in an async context.
-        
+
         Example:
             manager = MyManager()
             await manager.initialize()
@@ -252,10 +268,10 @@ class BaseManager(Generic[ModelT]):
 
     def initialize_sync(self) -> BaseManager[ModelT]:
         """Explicitly initialize the manager with auto-fetch in sync contexts.
-        
+
         This should be called after manager creation if you want to trigger auto-fetch
         in a synchronous context.
-        
+
         Example:
             manager = MyManager()
             manager.initialize_sync()
@@ -290,7 +306,9 @@ class BaseManager(Generic[ModelT]):
         return await self._initialize_item_runtime(item)  # type: ignore[return-value]
 
     @handle_errors
-    async def _get_item_or_none(self, use_cache: bool = True, **kwargs: Any) -> ModelT | None:
+    async def _get_item_or_none(
+        self, use_cache: bool = True, **kwargs: Any
+    ) -> ModelT | None:
         """Fetch a single item from the model."""
         item = await self.model.get_or_none(use_cache=use_cache, **kwargs)
         if not item:
@@ -298,7 +316,9 @@ class BaseManager(Generic[ModelT]):
         return await self._initialize_item_runtime(item)
 
     @handle_errors
-    async def _get_item_with_retry(self, use_cache: bool = True, **kwargs: Any) -> ModelT:
+    async def _get_item_with_retry(
+        self, use_cache: bool = True, **kwargs: Any
+    ) -> ModelT:
         """Fetch a single item from the model with retry."""
         item = await self.model.get_or_none(use_cache=use_cache, **kwargs)
         if not item:
@@ -311,7 +331,9 @@ class BaseManager(Generic[ModelT]):
         return await self._initialize_item_runtime(item)  # type: ignore[return-value]
 
     @handle_errors
-    async def _get_items(self, order_by: str | None = None, **kwargs: Any) -> list[ModelT]:
+    async def _get_items(
+        self, order_by: str | None = None, **kwargs: Any
+    ) -> list[ModelT]:
         """Fetch multiple items from the model with filters."""
         if order_by:
             items = await self.model.filter(**kwargs).order_by(order_by).all()
@@ -320,7 +342,9 @@ class BaseManager(Generic[ModelT]):
         return [await self._initialize_item_runtime(item) for item in items]  # type: ignore[misc]
 
     @handle_errors
-    async def _get_first_item(self, order_by: str | None = None, **kwargs: Any) -> ModelT | None:
+    async def _get_first_item(
+        self, order_by: str | None = None, **kwargs: Any
+    ) -> ModelT | None:
         """Fetch first item from the model with filters."""
         if order_by:
             item = await self.model.filter(**kwargs).order_by(order_by).first()
@@ -329,7 +353,9 @@ class BaseManager(Generic[ModelT]):
         return await self._process_item(item)
 
     @handle_errors
-    async def _get_last_item(self, order_by: str | None = None, **kwargs: Any) -> ModelT | None:
+    async def _get_last_item(
+        self, order_by: str | None = None, **kwargs: Any
+    ) -> ModelT | None:
         """Fetch last item from the model with filters."""
         item = await self.model.filter(**kwargs).order_by(order_by).last()
         return await self._process_item(item)
@@ -342,7 +368,10 @@ class BaseManager(Generic[ModelT]):
 
     @handle_errors
     async def _create_items(
-            self, items_data: list[dict[str, Any]], batch_size: int = 1000, ignore_conflicts: bool = False
+        self,
+        items_data: list[dict[str, Any]],
+        batch_size: int = 1000,
+        ignore_conflicts: bool = False,
     ) -> list[ModelT]:
         """
         Create multiple items using TRUE bulk operations.
@@ -408,7 +437,9 @@ class BaseManager(Generic[ModelT]):
         self._active_items.discard(item_id)
 
     @handle_errors
-    async def _fetch_related(self, item: ModelT, relation_name: str) -> Model | list[Model] | None:
+    async def _fetch_related(
+        self, item: ModelT, relation_name: str
+    ) -> Model | list[Model] | None:
         """Fetch a single relationship for an item."""
         if not item:
             raise AppError(
@@ -443,12 +474,16 @@ class BaseManager(Generic[ModelT]):
         return await self._get_item_or_raise(use_cache=use_cache, **kwargs)
 
     @handle_errors
-    async def load_item_or_none(self, use_cache: bool = True, **kwargs: Any) -> ModelT | None:
+    async def load_item_or_none(
+        self, use_cache: bool = True, **kwargs: Any
+    ) -> ModelT | None:
         """Load and initialize a single item or None."""
         return await self._get_item_or_none(use_cache=use_cache, **kwargs)
 
     @handle_errors
-    async def load_item_with_retry(self, use_cache: bool = True, **kwargs: Any) -> ModelT:
+    async def load_item_with_retry(
+        self, use_cache: bool = True, **kwargs: Any
+    ) -> ModelT:
         """Load and initialize a single item with retry."""
         return await self._get_item_with_retry(use_cache=use_cache, **kwargs)
 
@@ -513,7 +548,10 @@ class BaseManager(Generic[ModelT]):
         return await self._initialize_item_runtime(item)  # type: ignore[return-value]
 
     async def create_items(
-            self, items_data: list[dict[str, Any]], batch_size: int = 1000, ignore_conflicts: bool = False
+        self,
+        items_data: list[dict[str, Any]],
+        batch_size: int = 1000,
+        ignore_conflicts: bool = False,
     ) -> list[ModelT]:
         """Create multiple items at once using TRUE bulk operations.
 
@@ -536,7 +574,7 @@ class BaseManager(Generic[ModelT]):
         return await self._update_item(item, **updates)
 
     async def update_items(
-            self, objects: list[ModelT], fields: list[str], batch_size: int = 1000
+        self, objects: list[ModelT], fields: list[str], batch_size: int = 1000
     ) -> int:
         """
         Update multiple items at once using TRUE bulk operations.
@@ -655,7 +693,9 @@ class BaseManager(Generic[ModelT]):
         """Check if an item exists."""
         return bool(await self._get_item_or_none(id=item_id))
 
-    async def get_or_create(self, defaults: dict[str, Any] | None = None, **kwargs: Any) -> ModelT | None:
+    async def get_or_create(
+        self, defaults: dict[str, Any] | None = None, **kwargs: Any
+    ) -> ModelT | None:
         """Get an item or create it if it doesn't exist."""
         item = await self._get_item_or_none(**kwargs)
         if not item and defaults:
@@ -715,13 +755,15 @@ class BaseManager(Generic[ModelT]):
         item = await self.create_item(**data)
         return self._item_to_dict(item)
 
-    async def update_item_get_dict(self, item_id: Any, **updates: Any) -> dict[str, Any] | None:
+    async def update_item_get_dict(
+        self, item_id: Any, **updates: Any
+    ) -> dict[str, Any] | None:
         """Update an item and return its dict."""
         item = await self.update_item(item_id, **updates)
         return self._item_to_dict(item)
 
     async def get_item_with_related(
-            self, item_id: Any, relation_name: str
+        self, item_id: Any, relation_name: str
     ) -> tuple[ModelT, Model | list[Model] | None]:
         """Get an item with a specific relationship."""
         item = await self.load_by_id(item_id)
@@ -745,7 +787,7 @@ class BaseManager(Generic[ModelT]):
         return item, None
 
     async def get_item_with_related_with_retry(
-            self, item_id: Any, relation_name: str
+        self, item_id: Any, relation_name: str
     ) -> tuple[ModelT, Model | list[Model] | None]:
         """Get an item with a specific relationship with retry."""
         item = await self.load_by_id_with_retry(item_id)
@@ -777,7 +819,7 @@ class BaseManager(Generic[ModelT]):
         return items
 
     async def get_item_with_all_related(
-            self, item_id: Any
+        self, item_id: Any
     ) -> tuple[ModelT, dict[str, dict[str, Any]] | None]:
         """Get an item with all relationships."""
         item = await self.load_by_id(item_id)
@@ -793,7 +835,48 @@ class BaseManager(Generic[ModelT]):
         return items
 
     @handle_errors
-    async def get_items_with_related_list(self, relation_names: list[str]) -> list[ModelT]:
+    async def get_item_with_m2m(
+        self, item_id: Any, relation_name: str
+    ) -> tuple[ModelT | None, list[Model] | None]:
+        """Load an item and fetch one M2M relationship."""
+        item = await self.load_by_id(item_id)
+        if item:
+            m2m_items = await item.fetch_m2m(relation_name)
+            return item, m2m_items
+        return item, None  # type: ignore[return-value]
+
+    @handle_errors
+    async def add_m2m(self, item_id: Any, relation_name: str, *target_ids: Any) -> int:
+        """Add M2M targets for an item."""
+        item = await self.load_by_id(item_id)
+        return await item.add_m2m(relation_name, *target_ids)
+
+    @handle_errors
+    async def remove_m2m(
+        self, item_id: Any, relation_name: str, *target_ids: Any
+    ) -> int:
+        """Remove M2M targets for an item."""
+        item = await self.load_by_id(item_id)
+        return await item.remove_m2m(relation_name, *target_ids)
+
+    @handle_errors
+    async def set_m2m(
+        self, item_id: Any, relation_name: str, target_ids: list[Any]
+    ) -> None:
+        """Replace all M2M targets for an item."""
+        item = await self.load_by_id(item_id)
+        await item.set_m2m(relation_name, target_ids)
+
+    @handle_errors
+    async def clear_m2m(self, item_id: Any, relation_name: str) -> int:
+        """Clear all M2M targets for an item."""
+        item = await self.load_by_id(item_id)
+        return await item.clear_m2m(relation_name)
+
+    @handle_errors
+    async def get_items_with_related_list(
+        self, relation_names: list[str]
+    ) -> list[ModelT]:
         """Get all active items with multiple specific relationships."""
         items = await self.get_active_items()
         for item in items:
@@ -804,7 +887,7 @@ class BaseManager(Generic[ModelT]):
         return items
 
     async def get_item_through_fk(
-            self, item_id: Any, first_relation: str, second_relation: str
+        self, item_id: Any, first_relation: str, second_relation: str
     ) -> tuple[ModelT | None, Model | list[Model] | None, Model | list[Model] | None]:
         """Get an item through two FK hops."""
         item = await self.load_by_id(item_id)
@@ -816,7 +899,9 @@ class BaseManager(Generic[ModelT]):
             return item, fk_instance, None
         return None, None, None
 
-    async def get_items_with_related_dict(self, relation_name: str) -> list[dict[str, Any] | None]:
+    async def get_items_with_related_dict(
+        self, relation_name: str
+    ) -> list[dict[str, Any] | None]:
         """Get dicts for items with a specific relationship."""
         items = await self.get_items_with_related(relation_name)
         return [self._item_to_dict(item) for item in items if item]
@@ -840,14 +925,18 @@ class BaseManager(Generic[ModelT]):
             return await self._process_item(item)
         return None
 
-    async def add_active_by_item_or_not(self, item: ModelT | None = None) -> ModelT | None:
+    async def add_active_by_item_or_not(
+        self, item: ModelT | None = None
+    ) -> ModelT | None:
         """Add an item to active set if provided, else return None."""
         if item:
             self._add_to_active(item.id)
             return await self._process_item(item)
         return None
 
-    async def add_active_by_ids_or_not(self, item_ids: list[Any] | None = None) -> list[ModelT] | None:
+    async def add_active_by_ids_or_not(
+        self, item_ids: list[Any] | None = None
+    ) -> list[ModelT] | None:
         """Add items to active set by IDs if provided, else return None."""
         if item_ids:
             items: list[ModelT] = []
@@ -861,7 +950,9 @@ class BaseManager(Generic[ModelT]):
             return items
         return None
 
-    async def add_active_by_items_or_not(self, items: list[ModelT] | None = None) -> list[ModelT] | None:
+    async def add_active_by_items_or_not(
+        self, items: list[ModelT] | None = None
+    ) -> list[ModelT] | None:
         """Add items to active set if provided, else return None."""
         if items:
             processed_items: list[ModelT] = []
@@ -884,12 +975,16 @@ class BaseManager(Generic[ModelT]):
         item = await self.get_active_item(item_id)
         return item.to_dict() if item else None
 
-    async def load_item_get_dict(self, use_cache: bool = True, **kwargs: Any) -> dict[str, Any] | None:
+    async def load_item_get_dict(
+        self, use_cache: bool = True, **kwargs: Any
+    ) -> dict[str, Any] | None:
         """Load an item and return its dict."""
         item = await self.load_item(use_cache=use_cache, **kwargs)
         return item.to_dict() if item else None
 
-    async def load_items_by_ids_get_dict(self, item_ids: list[Any]) -> list[dict[str, Any]]:
+    async def load_items_by_ids_get_dict(
+        self, item_ids: list[Any]
+    ) -> list[dict[str, Any]]:
         """Load items by IDs and return their dicts."""
         # TODO: FAULTY METHOD USED: load_items_by_ids
         items = await self.load_items_by_ids(item_ids)
@@ -912,7 +1007,7 @@ class BaseManager(Generic[ModelT]):
         return [item.to_dict() for item in items if item]
 
     async def get_active_item_with_fk(
-            self, item_id: Any, related_model: str
+        self, item_id: Any, related_model: str
     ) -> tuple[ModelT | None, Model | list[Model] | None]:
         """Get an active item with a foreign key relation."""
         item = await self._get_item_or_raise(id=item_id)
@@ -976,7 +1071,9 @@ class BaseManager(Generic[ModelT]):
         ]
 
     @handle_errors
-    async def get_active_item_with_one_relation(self, relation_name: str) -> list[ModelT]:
+    async def get_active_item_with_one_relation(
+        self, relation_name: str
+    ) -> list[ModelT]:
         """Get an active item with one specific relation."""
         items = await self.get_active_items()
         for item in items:
@@ -985,7 +1082,9 @@ class BaseManager(Generic[ModelT]):
         return items
 
     @handle_errors
-    async def get_active_items_with_one_relation(self, relation_name: str) -> list[ModelT]:
+    async def get_active_items_with_one_relation(
+        self, relation_name: str
+    ) -> list[ModelT]:
         """Get active items with one specific relation."""
         items = await self.get_active_items()
         for item in items:
@@ -993,7 +1092,9 @@ class BaseManager(Generic[ModelT]):
                 await item.fetch_one_relation(relation_name)
         return items
 
-    async def get_active_item_with_one_relation_dict(self, relation_name: str) -> list[dict[str, Any]]:
+    async def get_active_item_with_one_relation_dict(
+        self, relation_name: str
+    ) -> list[dict[str, Any]]:
         """Get dicts for an active item with one specific relation."""
         return [
             item.to_dict()
@@ -1002,7 +1103,9 @@ class BaseManager(Generic[ModelT]):
         ]
 
     @handle_errors
-    async def get_active_item_with_related_models_list(self, related_models_list: list[str]) -> list[ModelT]:
+    async def get_active_item_with_related_models_list(
+        self, related_models_list: list[str]
+    ) -> list[ModelT]:
         """Get an active item with multiple specific related models."""
         items = await self.get_active_items()
         for item in items:
@@ -1011,7 +1114,9 @@ class BaseManager(Generic[ModelT]):
         return items
 
     @handle_errors
-    async def get_active_items_with_related_models_list(self, related_models_list: list[str]) -> list[ModelT]:
+    async def get_active_items_with_related_models_list(
+        self, related_models_list: list[str]
+    ) -> list[ModelT]:
         """Get active items with multiple specific related models."""
         items = await self.get_active_items()
         for item in items:
@@ -1019,7 +1124,9 @@ class BaseManager(Generic[ModelT]):
                 await item.fetch_one_relation(related_model)
         return items
 
-    async def get_active_item_with_related_models_list_dict(self, related_models_list: list[str]) -> list[dict[str, Any]]:
+    async def get_active_item_with_related_models_list_dict(
+        self, related_models_list: list[str]
+    ) -> list[dict[str, Any]]:
         """Get dicts for an active item with multiple specific related models."""
         return [
             item.to_dict()
@@ -1030,7 +1137,7 @@ class BaseManager(Generic[ModelT]):
         ]
 
     async def get_active_item_with_through_fk(
-            self, item_id: Any, first_relationship: str, second_relationship: str
+        self, item_id: Any, first_relationship: str, second_relationship: str
     ) -> tuple[ModelT | None, Model | None, Model | None]:
         """Get an active item through two FK hops."""
         item, fk_instance = await self.get_active_item_with_fk(
@@ -1046,7 +1153,7 @@ class BaseManager(Generic[ModelT]):
 
     @handle_errors
     async def get_active_item_through_ifk(
-            self, item_id: Any, first_relationship: str, second_relationship: str
+        self, item_id: Any, first_relationship: str, second_relationship: str
     ) -> tuple[ModelT | None, Model | list[Model] | None, Any]:
         """Get an active item through two inverse FK hops."""
         item, ifk_instance = await self.get_active_item_with_ifk(
@@ -1120,7 +1227,7 @@ class BaseManager(Generic[ModelT]):
         count = len(initialized_items)
 
         elapsed_time = time.perf_counter() - start_time
-        
+
         if elapsed_time < 1.0:
             time_str = f"{elapsed_time * 1000:.2f}ms"
         else:
@@ -1143,10 +1250,10 @@ class BaseManager(Generic[ModelT]):
             if self._FETCH_ON_INIT_WITH_WARNINGS_OFF.startswith(suppression_prefix):
                 try:
                     warning_limit_threshold = int(
-                        self._FETCH_ON_INIT_WITH_WARNINGS_OFF[len(suppression_prefix):]
+                        self._FETCH_ON_INIT_WITH_WARNINGS_OFF[len(suppression_prefix) :]
                     )
                     warnings_suppressed = (
-                            warning_limit_threshold >= self.fetch_on_init_limit
+                        warning_limit_threshold >= self.fetch_on_init_limit
                     )
                 except ValueError:
                     vcprint(
@@ -1166,7 +1273,7 @@ class BaseManager(Generic[ModelT]):
         self._active_items.update(initialized_items)
 
     def _trigger_fetch_warnings(
-            self, count: int, items: list[ModelT | None], warning_limit_threshold: int
+        self, count: int, items: list[ModelT | None], warning_limit_threshold: int
     ) -> None:
         """Trigger escalating warnings based on the number of fetched items."""
         if count <= warning_limit_threshold:
@@ -1225,7 +1332,9 @@ class BaseManager(Generic[ModelT]):
             vcprint("\n".join(scary_warning), color="red")
             vcprint(items, pretty=True, color="yellow")
 
-    def _trigger_limit_reached_warning(self, count: int, items: list[ModelT | None]) -> None:
+    def _trigger_limit_reached_warning(
+        self, count: int, items: list[ModelT | None]
+    ) -> None:
         """Trigger a non-suppressible warning if the fetch count approaches or hits the limit."""
         warning_lines = [
             "*" * 80,
@@ -1246,7 +1355,9 @@ class BaseManager(Generic[ModelT]):
         vcprint("\n".join(warning_lines), color="magenta")
         vcprint(items, pretty=True, color="yellow")
 
-    def _validation_error(self, class_name: str, data: Any, field: str, message: str) -> None:
+    def _validation_error(
+        self, class_name: str, data: Any, field: str, message: str
+    ) -> None:
         vcprint(
             data,
             f"[{class_name} ERROR!] Invalid or missing '{field}' field. You provided",
@@ -1263,17 +1374,23 @@ class BaseManager(Generic[ModelT]):
         """Synchronous wrapper for load_item()."""
         try:
             asyncio.get_running_loop()
-            raise RuntimeError("load_item_sync() called in async context. Use await load_item() instead.")
+            raise RuntimeError(
+                "load_item_sync() called in async context. Use await load_item() instead."
+            )
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
         return asyncio.run(self.load_item(use_cache=use_cache, **kwargs))
 
-    def load_item_or_none_sync(self, use_cache: bool = True, **kwargs: Any) -> ModelT | None:
+    def load_item_or_none_sync(
+        self, use_cache: bool = True, **kwargs: Any
+    ) -> ModelT | None:
         """Synchronous wrapper for load_item_or_none()."""
         try:
             asyncio.get_running_loop()
-            raise RuntimeError("load_item_or_none_sync() called in async context. Use await load_item_or_none() instead.")
+            raise RuntimeError(
+                "load_item_or_none_sync() called in async context. Use await load_item_or_none() instead."
+            )
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
@@ -1283,7 +1400,9 @@ class BaseManager(Generic[ModelT]):
         """Synchronous wrapper for load_items()."""
         try:
             asyncio.get_running_loop()
-            raise RuntimeError("load_items_sync() called in async context. Use await load_items() instead.")
+            raise RuntimeError(
+                "load_items_sync() called in async context. Use await load_items() instead."
+            )
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
@@ -1293,7 +1412,9 @@ class BaseManager(Generic[ModelT]):
         """Synchronous wrapper for load_by_id()."""
         try:
             asyncio.get_running_loop()
-            raise RuntimeError("load_by_id_sync() called in async context. Use await load_by_id() instead.")
+            raise RuntimeError(
+                "load_by_id_sync() called in async context. Use await load_by_id() instead."
+            )
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
@@ -1303,7 +1424,9 @@ class BaseManager(Generic[ModelT]):
         """Synchronous wrapper for filter_items()."""
         try:
             asyncio.get_running_loop()
-            raise RuntimeError("filter_items_sync() called in async context. Use await filter_items() instead.")
+            raise RuntimeError(
+                "filter_items_sync() called in async context. Use await filter_items() instead."
+            )
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
@@ -1313,7 +1436,9 @@ class BaseManager(Generic[ModelT]):
         """Synchronous wrapper for create_item()."""
         try:
             asyncio.get_running_loop()
-            raise RuntimeError("create_item_sync() called in async context. Use await create_item() instead.")
+            raise RuntimeError(
+                "create_item_sync() called in async context. Use await create_item() instead."
+            )
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
@@ -1323,7 +1448,9 @@ class BaseManager(Generic[ModelT]):
         """Synchronous wrapper for update_item()."""
         try:
             asyncio.get_running_loop()
-            raise RuntimeError("update_item_sync() called in async context. Use await update_item() instead.")
+            raise RuntimeError(
+                "update_item_sync() called in async context. Use await update_item() instead."
+            )
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
@@ -1333,17 +1460,23 @@ class BaseManager(Generic[ModelT]):
         """Synchronous wrapper for delete_item()."""
         try:
             asyncio.get_running_loop()
-            raise RuntimeError("delete_item_sync() called in async context. Use await delete_item() instead.")
+            raise RuntimeError(
+                "delete_item_sync() called in async context. Use await delete_item() instead."
+            )
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
         return asyncio.run(self.delete_item(item_id))
 
-    def get_or_create_sync(self, defaults: dict[str, Any] | None = None, **kwargs: Any) -> ModelT | None:
+    def get_or_create_sync(
+        self, defaults: dict[str, Any] | None = None, **kwargs: Any
+    ) -> ModelT | None:
         """Synchronous wrapper for get_or_create()."""
         try:
             asyncio.get_running_loop()
-            raise RuntimeError("get_or_create_sync() called in async context. Use await get_or_create() instead.")
+            raise RuntimeError(
+                "get_or_create_sync() called in async context. Use await get_or_create() instead."
+            )
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
@@ -1353,7 +1486,9 @@ class BaseManager(Generic[ModelT]):
         """Synchronous wrapper for exists()."""
         try:
             asyncio.get_running_loop()
-            raise RuntimeError("exists_sync() called in async context. Use await exists() instead.")
+            raise RuntimeError(
+                "exists_sync() called in async context. Use await exists() instead."
+            )
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
@@ -1363,7 +1498,9 @@ class BaseManager(Generic[ModelT]):
         """Synchronous wrapper for get_active_items()."""
         try:
             asyncio.get_running_loop()
-            raise RuntimeError("get_active_items_sync() called in async context. Use await get_active_items() instead.")
+            raise RuntimeError(
+                "get_active_items_sync() called in async context. Use await get_active_items() instead."
+            )
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
@@ -1373,7 +1510,9 @@ class BaseManager(Generic[ModelT]):
         """Synchronous wrapper for get_item_dict()."""
         try:
             asyncio.get_running_loop()
-            raise RuntimeError("get_item_dict_sync() called in async context. Use await get_item_dict() instead.")
+            raise RuntimeError(
+                "get_item_dict_sync() called in async context. Use await get_item_dict() instead."
+            )
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
@@ -1383,7 +1522,9 @@ class BaseManager(Generic[ModelT]):
         """Synchronous wrapper for get_items_dict()."""
         try:
             asyncio.get_running_loop()
-            raise RuntimeError("get_items_dict_sync() called in async context. Use await get_items_dict() instead.")
+            raise RuntimeError(
+                "get_items_dict_sync() called in async context. Use await get_items_dict() instead."
+            )
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise

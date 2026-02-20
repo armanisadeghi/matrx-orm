@@ -283,3 +283,178 @@ class OneToOneField(ForeignKey):
     def __init__(self, to_model: str | type[Any], **kwargs: Any) -> None:
         kwargs["unique"] = True
         super().__init__(to_model, **kwargs)
+
+
+@dataclass
+class ManyToManyReference:
+    """Tracks a many-to-many relationship through a junction table."""
+
+    junction_table: str
+    source_column: str
+    target_column: str
+    target_model: str | type[Model]
+    related_name: str
+    junction_schema: str | None = None
+
+    @cached_property
+    def _resolved_model(self) -> type[Model]:
+        return get_model_by_name(self.target_model) if isinstance(self.target_model, str) else self.target_model
+
+    @property
+    def resolved_model(self) -> type[Model]:
+        return self._resolved_model
+
+    @property
+    def qualified_junction_table(self) -> str:
+        if self.junction_schema:
+            return f"{self.junction_schema}.{self.junction_table}"
+        return self.junction_table
+
+    async def _get_db_name(self, instance: Model) -> str:
+        return instance._meta.database
+
+    def _enrich_context(self) -> dict[str, str]:
+        return {
+            "junction_table": self.junction_table,
+            "relation_name": self.related_name,
+            "target_model": self.target_model if isinstance(self.target_model, str) else getattr(self.target_model, '__name__', str(self.target_model)),
+        }
+
+    async def fetch_related(self, instance: Model) -> list[Model]:
+        """Two-query hop: junction table -> target model."""
+        from matrx_orm.core.async_db_manager import AsyncDatabaseManager
+        from matrx_orm.exceptions import ORMException
+
+        pk_field = instance._meta.primary_keys[0]
+        source_value = getattr(instance, pk_field)
+        if source_value is None:
+            return []
+
+        try:
+            db_name = await self._get_db_name(instance)
+            junction = self.qualified_junction_table
+
+            sql = f"SELECT {self.target_column} FROM {junction} WHERE {self.source_column} = $1"
+            rows = await AsyncDatabaseManager.execute_query(db_name, sql, source_value)
+
+            if not rows:
+                return []
+
+            target_ids = [row[self.target_column] for row in rows]
+            target_model = self.resolved_model
+            results = await target_model.filter(id__in=target_ids).all()
+            return results
+        except ORMException as e:
+            e.enrich(model=instance.__class__, operation="fetch_m2m", **self._enrich_context())
+            raise
+
+    async def add(self, instance: Model, *target_ids: Any) -> int:
+        """Insert rows into the junction table. Idempotent via ON CONFLICT DO NOTHING."""
+        if not target_ids:
+            return 0
+
+        from matrx_orm.core.async_db_manager import AsyncDatabaseManager
+        from matrx_orm.exceptions import ORMException
+
+        pk_field = instance._meta.primary_keys[0]
+        source_value = getattr(instance, pk_field)
+
+        try:
+            db_name = await self._get_db_name(instance)
+            junction = self.qualified_junction_table
+
+            placeholders = ", ".join(
+                f"(${i * 2 + 1}, ${i * 2 + 2})" for i in range(len(target_ids))
+            )
+            sql = (
+                f"INSERT INTO {junction} ({self.source_column}, {self.target_column}) "
+                f"VALUES {placeholders} "
+                f"ON CONFLICT DO NOTHING"
+            )
+
+            params: list[Any] = []
+            for tid in target_ids:
+                params.extend([source_value, tid])
+
+            rows = await AsyncDatabaseManager.execute_query(db_name, sql, *params)
+            return len(rows) if rows else len(target_ids)
+        except ORMException as e:
+            e.enrich(model=instance.__class__, operation="add_m2m", **self._enrich_context())
+            raise
+
+    async def remove(self, instance: Model, *target_ids: Any) -> int:
+        """Remove specific targets from the junction table."""
+        if not target_ids:
+            return 0
+
+        from matrx_orm.core.async_db_manager import AsyncDatabaseManager
+        from matrx_orm.exceptions import ORMException
+
+        pk_field = instance._meta.primary_keys[0]
+        source_value = getattr(instance, pk_field)
+
+        try:
+            db_name = await self._get_db_name(instance)
+            junction = self.qualified_junction_table
+
+            sql = (
+                f"DELETE FROM {junction} "
+                f"WHERE {self.source_column} = $1 AND {self.target_column} = ANY($2) "
+                f"RETURNING *"
+            )
+            rows = await AsyncDatabaseManager.execute_query(
+                db_name, sql, source_value, list(target_ids)
+            )
+            return len(rows) if rows else 0
+        except ORMException as e:
+            e.enrich(model=instance.__class__, operation="remove_m2m", **self._enrich_context())
+            raise
+
+    async def set(self, instance: Model, target_ids: list[Any]) -> None:
+        """Replace all targets: clear existing, then add new ones."""
+        await self.clear(instance)
+        if target_ids:
+            await self.add(instance, *target_ids)
+
+    async def clear(self, instance: Model) -> int:
+        """Remove all junction rows for this instance."""
+        from matrx_orm.core.async_db_manager import AsyncDatabaseManager
+        from matrx_orm.exceptions import ORMException
+
+        pk_field = instance._meta.primary_keys[0]
+        source_value = getattr(instance, pk_field)
+
+        try:
+            db_name = await self._get_db_name(instance)
+            junction = self.qualified_junction_table
+
+            sql = f"DELETE FROM {junction} WHERE {self.source_column} = $1 RETURNING *"
+            rows = await AsyncDatabaseManager.execute_query(db_name, sql, source_value)
+            return len(rows) if rows else 0
+        except ORMException as e:
+            e.enrich(model=instance.__class__, operation="clear_m2m", **self._enrich_context())
+            raise
+
+
+class ManyToManyField(RelationField):
+    """
+    Declarative M2M field. When used in a model, the ORM auto-creates
+    a hidden junction table if it doesn't exist.
+
+    Usage:
+        class Recipe(Model):
+            tags = ManyToManyField("Tag", related_name="recipes")
+    """
+
+    db_table: str | None
+
+    def __init__(self, to_model: str | type[Any], **kwargs: Any) -> None:
+        super().__init__(to_model, **kwargs)
+        self.db_table = kwargs.get("db_table")
+
+    def get_junction_table_name(self, source_model_name: str) -> str:
+        if self.db_table:
+            return self.db_table
+        target = self.to_model if isinstance(self.to_model, str) else self.to_model.__name__
+        names = sorted([source_model_name.lower(), target.lower()])
+        return f"{names[0]}_{names[1]}"

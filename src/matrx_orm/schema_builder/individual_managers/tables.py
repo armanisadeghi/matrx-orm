@@ -109,13 +109,17 @@ class Table:
         self.column_rel_entries = {}  # Temp solution to get fk/ifk for reverse field lookup
         self.Field_name_groups = {}
 
-        self.columns = [Column(**col, parent_table_instance=self) for col in (table_columns or [])]
+        self.columns = [
+            Column(**col, parent_table_instance=self) for col in (table_columns or [])
+        ]
 
         self.identify_display_column()
 
         self.pre_initialize()
 
-        vcprint(self.junction_analysis_ts, pretty=True, verbose=self.verbose, color="blue")
+        vcprint(
+            self.junction_analysis_ts, pretty=True, verbose=self.verbose, color="blue"
+        )
         vcprint(
             self.to_dict(),
             title="Table initialized",
@@ -219,7 +223,10 @@ class Table:
             field_name = self.display_field_metadata["fieldName"]
             database_field_name = self.display_field_metadata["databaseFieldName"]
 
-            self.display_ts_field_metadata = f"{{ fieldName: '{field_name}', " f"databaseFieldName: '{database_field_name}' }}"
+            self.display_ts_field_metadata = (
+                f"{{ fieldName: '{field_name}', "
+                f"databaseFieldName: '{database_field_name}' }}"
+            )
 
             self.display_json_field_metadata = {
                 "fieldName": field_name,
@@ -241,12 +248,17 @@ class Table:
         self._update_fetch_strategy()
 
     def get_relationship_mapping(self):
-        return {relationship.target_table: relationship.foreign_column for relationship in self.foreign_key_relationships}
+        return {
+            relationship.target_table: relationship.foreign_column
+            for relationship in self.foreign_key_relationships
+        }
 
     def add_referenced_by(self, source_table, relationship):
         # Maintain existing behavior
         self.referenced_by[source_table] = relationship
-        self.schema_structure["inverseForeignKeys"].append({"relatedTable": source_table, "relatedColumn": relationship.column})
+        self.schema_structure["inverseForeignKeys"].append(
+            {"relatedTable": source_table, "relatedColumn": relationship.column}
+        )
         # Add to new collection
         self.referenced_by_relationships.append(relationship)
         self._update_fetch_strategy()
@@ -258,7 +270,9 @@ class Table:
             "related_table": related_table,
         }
         self.many_to_many.append(many_to_many_entry)
-        self.schema_structure["manyToMany"].append({"junctionTable": junction_table.name, "relatedTable": related_table.name})
+        self.schema_structure["manyToMany"].append(
+            {"junctionTable": junction_table.name, "relatedTable": related_table.name}
+        )
         # Add to new collection
         self.many_to_many_relationships.append(many_to_many_entry)
         self._update_fetch_strategy()
@@ -357,7 +371,9 @@ class Table:
         self.initialized = True
 
     def get_primary_key_field(self) -> str:
-        primary_key_columns = [column.name_camel for column in self.columns if column.is_primary_key]
+        primary_key_columns = [
+            column.name_camel for column in self.columns if column.is_primary_key
+        ]
 
         if len(primary_key_columns) == 1:
             return primary_key_columns[0]
@@ -367,9 +383,15 @@ class Table:
         return "null"
 
     def get_fieldNames_in_groups(self):
-        self.Field_name_groups["nativeFields"] = [column.name_camel for column in self.columns]
-        self.Field_name_groups["primaryKeyFields"] = [column.name_camel for column in self.columns if column.is_primary_key]
-        self.Field_name_groups["nativeFieldsNoPk"] = [column.name_camel for column in self.columns if not column.is_primary_key]
+        self.Field_name_groups["nativeFields"] = [
+            column.name_camel for column in self.columns
+        ]
+        self.Field_name_groups["primaryKeyFields"] = [
+            column.name_camel for column in self.columns if column.is_primary_key
+        ]
+        self.Field_name_groups["nativeFieldsNoPk"] = [
+            column.name_camel for column in self.columns if not column.is_primary_key
+        ]
         return self.Field_name_groups
 
     def get_primary_key_fields_list(self):
@@ -387,7 +409,9 @@ class Table:
         return pk_entry
 
     def get_column_default_components(self):
-        self.column_default_components = [column.calc_default_component for column in self.columns]
+        self.column_default_components = [
+            column.calc_default_component for column in self.columns
+        ]
         return self.column_default_components
 
     def get_primary_key_metadata(self) -> dict:
@@ -429,7 +453,10 @@ class Table:
 
     def generate_unique_name_lookups(self):
         name_variations = set(self.name_variations.values())
-        formatted_unique_names = {f'"{name}"' if " " in name or "-" in name else name: self.name_camel for name in name_variations}
+        formatted_unique_names = {
+            f'"{name}"' if " " in name or "-" in name else name: self.name_camel
+            for name in name_variations
+        }
         self.unique_name_lookups = formatted_unique_names
 
     def generate_unique_field_types(self):
@@ -481,7 +508,9 @@ class Table:
         frontend_name = f"{self.utils.to_camel_case(target_table)}Reference"
         entityName = f"{self.utils.to_camel_case(target_table)}"
 
-        uniqueColumnId = f"{self.database_project}:{target_table}:{self.get_primary_key_field()}"
+        uniqueColumnId = (
+            f"{self.database_project}:{target_table}:{self.get_primary_key_field()}"
+        )
         uniqueFieldId = f"{self.database_project}:{entityName}:{self.utils.to_camel_case(self.get_primary_key_field())}"
 
         vcprint(uniqueFieldId, verbose=self.verbose, color="yellow")
@@ -703,7 +732,11 @@ class Table:
         return entries
 
     def to_typescript_type_entry(self):
-        self.ts_type_entry = f"export type {self.name_pascal} = {{\n" + "\n".join([column.to_typescript_type_entry() for column in self.columns]) + "\n}\n"
+        self.ts_type_entry = (
+            f"export type {self.name_pascal} = {{\n"
+            + "\n".join([column.to_typescript_type_entry() for column in self.columns])
+            + "\n}\n"
+        )
         return self.ts_type_entry
 
     def to_json_foreign_keys(self):
@@ -730,9 +763,13 @@ class Table:
 
             # Loop through the foreign keys in the junction table
             for fk in junction_table.foreign_keys.values():
-                if fk.target_table == self.name:  # Check if the target_table is the main table (Table 1)
+                if (
+                    fk.target_table == self.name
+                ):  # Check if the target_table is the main table (Table 1)
                     main_table_column = fk.column
-                elif fk.target_table == related_table.name:  # Check if the target_table is the related table (Table 3)
+                elif (
+                    fk.target_table == related_table.name
+                ):  # Check if the target_table is the related table (Table 3)
                     related_table_column = fk.column
 
             if main_table_column and related_table_column:
@@ -784,9 +821,13 @@ class Table:
 
             # Loop through the foreign keys in the junction table
             for fk in junction_table.foreign_keys.values():
-                if fk.target_table == self.name:  # Check if the target_table is the main table (Table 1)
+                if (
+                    fk.target_table == self.name
+                ):  # Check if the target_table is the main table (Table 1)
                     main_table_column = fk.column
-                elif fk.target_table == related_table.name:  # Check if the target_table is the related table (Table 3)
+                elif (
+                    fk.target_table == related_table.name
+                ):  # Check if the target_table is the related table (Table 3)
                     related_table_column = fk.column
 
             if main_table_column and related_table_column:
@@ -884,10 +925,14 @@ class Table:
         self.reverse_field_name_lookup = {self.name_camel: {}}
 
         for column in self.columns:
-            self.reverse_field_name_lookup[self.name_camel].update(column.reverse_column_lookup)
+            self.reverse_field_name_lookup[self.name_camel].update(
+                column.reverse_column_lookup
+            )
 
         if self.column_rel_entries:
-            self.reverse_field_name_lookup[self.name_camel].update(self.column_rel_entries)
+            self.reverse_field_name_lookup[self.name_camel].update(
+                self.column_rel_entries
+            )
 
         return self.reverse_field_name_lookup
 
@@ -909,7 +954,9 @@ class Table:
             json_fields.update(json_fk)
 
         for source_table, relationship in self.get_all_referenced_by().items():
-            ts_ifk, json_ifk, const_ts_ifk = self.to_inverse_foreign_key_entry(source_table)
+            ts_ifk, json_ifk, const_ts_ifk = self.to_inverse_foreign_key_entry(
+                source_table
+            )
             ts_fields.append(ts_ifk)
             const_ts_fields.append(const_ts_ifk)
             json_fields.update(json_ifk)
@@ -919,7 +966,9 @@ class Table:
 
         relationship_ts, relationship_json = self.to_schema_structure_entry()
         name_variations = json.dumps(self.generate_name_variations(), indent=4)
-        component_props = json.dumps(self.generate_component_props(), indent=4)  # TODO: Needs update
+        component_props = json.dumps(
+            self.generate_component_props(), indent=4
+        )  # TODO: Needs update
 
         primary_key_info = self.get_primary_key_metadata()
         primary_key_json = json.dumps(primary_key_info, indent=4)
@@ -963,9 +1012,13 @@ class Table:
             f"        ],\n"
         )
 
-        self.ts_structure = f"    {self.name_camel}: {{\n" f"{entity_structure}" f"    }}"
+        self.ts_structure = f"    {self.name_camel}: {{\n{entity_structure}    }}"
 
-        self.const_ts_structure = f"export const {self.name_camel} = {{\n" f"{const_entity_structure}" f"    }} as const;"
+        self.const_ts_structure = (
+            f"export const {self.name_camel} = {{\n"
+            f"{const_entity_structure}"
+            f"    }} as const;"
+        )
 
         self.json_structure = {
             self.name_camel: {
@@ -1008,6 +1061,33 @@ class Table:
             }
         }
 
+    def to_python_many_to_many_config(self):
+        """Build _many_to_many config dict for the Python model."""
+        m2m_config = {}
+        for mm in self.many_to_many:
+            junction_table = mm["junction_table"]
+            related_table = mm["related_table"]
+
+            source_col = None
+            target_col = None
+
+            for fk in junction_table.foreign_keys.values():
+                if fk.target_table == self.name:
+                    source_col = fk.column
+                elif fk.target_table == related_table.name:
+                    target_col = fk.column
+
+            if source_col and target_col:
+                relation_name = f"{related_table.name}s"
+                m2m_config[relation_name] = {
+                    "junction_table": junction_table.name,
+                    "source_column": source_col,
+                    "target_column": target_col,
+                    "target_model": self.utils.to_pascal_case(related_table.name),
+                    "related_name": relation_name,
+                }
+        return m2m_config
+
     def to_python_model(self):
         """
         Builds the Python class model string with dynamic foreign keys.
@@ -1031,20 +1111,32 @@ class Table:
 
             if column.has_enum_labels:
                 py_enum_entry = column.set_python_enum_entry()
-                enum_name = self.utils.to_pascal_case(column.base_type)  # Extract enum class name
+                enum_name = self.utils.to_pascal_case(
+                    column.base_type
+                )  # Extract enum class name
 
-                if py_enum_entry and enum_name not in seen_enum_names:  # Only add unique enums
+                if (
+                    py_enum_entry and enum_name not in seen_enum_names
+                ):  # Only add unique enums
                     py_enum_classes.append(py_enum_entry)
                     seen_enum_names.add(enum_name)  # Mark this enum as added
 
         # Process inverse foreign keys and collect them
         inverse_foreign_keys = {}
         for source_table, relationship in self.get_all_referenced_by().items():
-            ifk_field = self.to_python_inverse_foreign_key_field(source_table, relationship)
+            ifk_field = self.to_python_inverse_foreign_key_field(
+                source_table, relationship
+            )
             inverse_foreign_keys.update(ifk_field)
 
         # Add _inverse_foreign_keys to the model fields
         py_fields.append(f"_inverse_foreign_keys = {inverse_foreign_keys}")
+
+        # Process many-to-many relationships
+        m2m_config = self.to_python_many_to_many_config()
+        if m2m_config:
+            py_fields.append(f"_many_to_many = {m2m_config}")
+
         py_fields.append(f'_database = "{self.database_project}"')
 
         if py_enum_classes:
@@ -1063,10 +1155,14 @@ class Table:
         MANAGER_CONFIG_OVERRIDES = get_manager_config(self.database_project)
 
         relations = self.get_all_relations_list()
-        filter_fields = [column.name for column in self.columns if column.is_default_filter_field]
+        filter_fields = [
+            column.name for column in self.columns if column.is_default_filter_field
+        ]
+
+        m2m_config = self.to_python_many_to_many_config()
+        m2m_relations = list(m2m_config.keys()) if m2m_config else None
 
         alias = get_database_alias(self.database_project)
-        # Default configuration with all options explicitly set
         base_config = {
             "models_module_path": f"database.{alias}.models",
             "model_pascal": self.python_model_name,
@@ -1082,6 +1178,7 @@ class Table:
             "include_or_not_methods": False,
             "include_to_dict_methods": False,
             "include_to_dict_relations": False,
+            "m2m_relations": m2m_relations,
         }
 
         # Apply overrides if they exist
@@ -1090,7 +1187,9 @@ class Table:
             base_config.update(model_overrides)
 
         self.base_class_auto_config = base_config
-        self.model_base_class_str = generate_manager_class(**self.base_class_auto_config)
+        self.model_base_class_str = generate_manager_class(
+            **self.base_class_auto_config
+        )
 
         return generate_dto_and_manager(self.name, self.python_model_name)
 

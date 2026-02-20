@@ -18,7 +18,12 @@ from matrx_orm.state import CachePolicy, StateManager
 
 from ..query.builder import QueryBuilder
 from .fields import Field, ForeignKey
-from .relations import ForeignKeyReference, InverseForeignKeyReference
+from .relations import (
+    ForeignKeyReference,
+    InverseForeignKeyReference,
+    ManyToManyReference,
+    ManyToManyField,
+)
 
 file_name = "matrx_orm/orm/core/base.py"
 
@@ -80,11 +85,16 @@ class RuntimeContainer:
             setattr(self.dto, name, value)
 
     def to_dict(self) -> dict[str, Any]:
-        data_dict: dict[str, Any] = {k: str(v) if isinstance(v, UUID) else v for k, v in self._data.items()}
+        data_dict: dict[str, Any] = {
+            k: str(v) if isinstance(v, UUID) else v for k, v in self._data.items()
+        }
         rel_dict: dict[str, Any] = {}
         for k, v in self._relationships.items():
             if isinstance(v, list):
-                rel_dict[k] = [item.to_dict() if hasattr(item, "to_dict") else str(item) for item in v]
+                rel_dict[k] = [
+                    item.to_dict() if hasattr(item, "to_dict") else str(item)
+                    for item in v
+                ]
             elif v and hasattr(v, "to_dict"):
                 rel_dict[k] = v.to_dict()
             else:
@@ -124,6 +134,11 @@ class ModelOptions:
     constraints: list[Any]
     db_schema: str | None = None
     unfetchable: bool = False
+    many_to_many_keys: dict[str, ManyToManyReference] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.many_to_many_keys is None:
+            self.many_to_many_keys = {}
 
     @property
     def qualified_table_name(self) -> str:
@@ -133,19 +148,53 @@ class ModelOptions:
 
 
 class ModelMeta(type):
-    def __new__(mcs, name: str, bases: tuple[type, ...], attrs: dict[str, Any]) -> ModelMeta:
+    def __new__(
+        mcs, name: str, bases: tuple[type, ...], attrs: dict[str, Any]
+    ) -> ModelMeta:
         if name == "Model":
             return super().__new__(mcs, name, bases, attrs)
 
         fields = {}
         foreign_keys = {}
         inverse_foreign_keys = {}
+        many_to_many_keys: dict[str, ManyToManyReference] = {}
         unique_fields = set()
         primary_keys = []
         dynamic_fields = set()
+        pending_junction_tables: list[dict[str, Any]] = []
 
         for key, value in attrs.items():
-            if isinstance(value, Field):
+            if isinstance(value, ManyToManyField):
+                junction_name = value.get_junction_table_name(name)
+                source_col = f"{_to_snake_case(name)}_id"
+                target_name = (
+                    value.to_model
+                    if isinstance(value.to_model, str)
+                    else value.to_model.__name__
+                )
+                target_col = f"{_to_snake_case(target_name)}_id"
+                many_to_many_keys[key] = ManyToManyReference(
+                    junction_table=junction_name,
+                    source_column=source_col,
+                    target_column=target_col,
+                    target_model=value.to_model,
+                    related_name=key,
+                )
+                dynamic_fields.add(f"_{key}_m2m")
+                pending_junction_tables.append(
+                    {
+                        "junction_table": junction_name,
+                        "source_column": source_col,
+                        "target_column": target_col,
+                        "source_table": attrs.get("_table_name")
+                        or _to_snake_case(name),
+                        "target_table": _to_snake_case(target_name)
+                        if isinstance(value.to_model, str)
+                        else _to_snake_case(value.to_model.__name__),
+                    }
+                )
+
+            elif isinstance(value, Field):
                 fields[key] = value
                 if getattr(value, "unique", False):
                     unique_fields.add(key)
@@ -168,7 +217,10 @@ class ModelMeta(type):
 
         if "_primary_keys" in attrs and attrs["_primary_keys"]:
             if primary_keys:
-                error_message = f"Model {name} cannot have both fields with primary_key=True " "and _primary_keys defined"
+                error_message = (
+                    f"Model {name} cannot have both fields with primary_key=True "
+                    "and _primary_keys defined"
+                )
                 formated_error(error_message, class_name="Model", method_name="__new__")
                 raise ValueError(error_message)
 
@@ -176,8 +228,12 @@ class ModelMeta(type):
 
             for pk in primary_keys:
                 if pk not in fields:
-                    error_message = f"Primary key field '{pk}' not found in model {name}"
-                    formated_error(error_message, class_name="Model", method_name="__new__")
+                    error_message = (
+                        f"Primary key field '{pk}' not found in model {name}"
+                    )
+                    formated_error(
+                        error_message, class_name="Model", method_name="__new__"
+                    )
                     raise ValueError(error_message)
 
         if not primary_keys:
@@ -188,12 +244,21 @@ class ModelMeta(type):
         if "_inverse_foreign_keys" in attrs:
             for key, value in attrs["_inverse_foreign_keys"].items():
                 if "referenced_field" not in value:
-                    error_message = f"Inverse foreign key '{key}' must specify 'referenced_field'"
-                    formated_error(error_message, class_name="Model", method_name="__new__")
+                    error_message = (
+                        f"Inverse foreign key '{key}' must specify 'referenced_field'"
+                    )
+                    formated_error(
+                        error_message, class_name="Model", method_name="__new__"
+                    )
                     raise ValueError(error_message)
                 inverse_foreign_keys[key] = InverseForeignKeyReference(**value)
                 dynamic_field_name = f"_{key}_relation"
                 dynamic_fields.add(dynamic_field_name)
+
+        if "_many_to_many" in attrs:
+            for key, value in attrs["_many_to_many"].items():
+                many_to_many_keys[key] = ManyToManyReference(**value)
+                dynamic_fields.add(f"_{key}_m2m")
 
         table_name = attrs.get("_table_name")
         if not table_name:
@@ -212,11 +277,13 @@ class ModelMeta(type):
             constraints=attrs.get("_constraints", []),
             db_schema=attrs.get("_db_schema"),
             unfetchable=attrs.get("_unfetchable", False),
+            many_to_many_keys=many_to_many_keys,
         )
 
         attrs["_meta"] = options
         attrs["_fields"] = fields
         attrs["_dynamic_fields"] = dynamic_fields
+        attrs["_pending_junction_tables"] = pending_junction_tables
 
         def __init__(self: Any, **kwargs: Any) -> None:
             super(Model, self).__init__()
@@ -225,13 +292,17 @@ class ModelMeta(type):
                 if hasattr(field, "to_python"):
                     value = field.to_python(value)
                 setattr(self, field_name, value)
-            self._extra_data = {k: v for k, v in kwargs.items() if k not in self._fields}
+            self._extra_data = {
+                k: v for k, v in kwargs.items() if k not in self._fields
+            }
 
             self._dynamic_data: dict[str, Any] = {}
             for field in self._dynamic_fields:
                 if field.endswith("_related"):
                     self._dynamic_data[field] = {}
                 elif field.endswith("_relation"):
+                    self._dynamic_data[field] = []
+                elif field.endswith("_m2m"):
                     self._dynamic_data[field] = []
 
         def get_related(self: Any, field_name: str) -> Any:
@@ -243,19 +314,33 @@ class ModelMeta(type):
             if relation_field in self._dynamic_fields:
                 return self._dynamic_data[relation_field]
 
+            m2m_field = f"_{field_name}_m2m"
+            if m2m_field in self._dynamic_fields:
+                return self._dynamic_data[m2m_field]
+
             error_message = f"No related field for {field_name}"
             formated_error(error_message, class_name="Model", method_name="__init__")
             raise AttributeError(error_message)
 
-        def set_related(self: Any, field_name: str, value: Any, is_inverse: bool = False) -> None:
-            if is_inverse:
+        def set_related(
+            self: Any,
+            field_name: str,
+            value: Any,
+            is_inverse: bool = False,
+            is_m2m: bool = False,
+        ) -> None:
+            if is_m2m:
+                field = f"_{field_name}_m2m"
+            elif is_inverse:
                 field = f"_{field_name}_relation"
             else:
                 field = f"_{field_name}_related"
 
             if field not in self._dynamic_fields:
                 error_message = f"No related field for {field_name}"
-                formated_error(error_message, class_name="Model", method_name="__init__")
+                formated_error(
+                    error_message, class_name="Model", method_name="__init__"
+                )
                 raise AttributeError(error_message)
             self._dynamic_data[field] = value
 
@@ -272,7 +357,9 @@ class ModelMeta(type):
 
 class Model(RuntimeMixin, metaclass=ModelMeta):
     DoesNotExist: ClassVar[type[DoesNotExist]] = DoesNotExist
-    MultipleObjectsReturned: ClassVar[type[MultipleObjectsReturned]] = MultipleObjectsReturned
+    MultipleObjectsReturned: ClassVar[type[MultipleObjectsReturned]] = (
+        MultipleObjectsReturned
+    )
     ValidationError: ClassVar[type[ValidationError]] = ValidationError
 
     _meta: ClassVar[ModelOptions]
@@ -289,6 +376,8 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
     _unique_together: ClassVar[list[Any] | None] = None
     _constraints: ClassVar[list[Any] | None] = None
     _inverse_foreign_keys: ClassVar[dict[str, Any]] = {}
+    _many_to_many: ClassVar[dict[str, Any]] = {}
+    _pending_junction_tables: ClassVar[list[dict[str, Any]]] = []
 
     _extra_data: dict[str, Any]
     _dynamic_data: dict[str, Any]
@@ -358,7 +447,9 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         """
         try:
             asyncio.get_running_loop()
-            raise RuntimeError("Model.get_sync() called in an async context. Use await Model.get() instead.")
+            raise RuntimeError(
+                "Model.get_sync() called in an async context. Use await Model.get() instead."
+            )
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
@@ -386,7 +477,9 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         """
         try:
             asyncio.get_running_loop()
-            raise RuntimeError("Model.get_or_none_sync() called in an async context. Use await Model.get_or_none() instead.")
+            raise RuntimeError(
+                "Model.get_or_none_sync() called in an async context. Use await Model.get_or_none() instead."
+            )
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
@@ -405,7 +498,9 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         """
         try:
             asyncio.get_running_loop()
-            raise RuntimeError("Model.filter_sync() called in an async context. Use await Model.filter().all() instead.")
+            raise RuntimeError(
+                "Model.filter_sync() called in an async context. Use await Model.filter().all() instead."
+            )
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
@@ -430,7 +525,9 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         """
         try:
             asyncio.get_running_loop()
-            raise RuntimeError("Model.all_sync() called in an async context. Use await Model.all() instead.")
+            raise RuntimeError(
+                "Model.all_sync() called in an async context. Use await Model.all() instead."
+            )
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
@@ -441,7 +538,9 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         """Save the current state of the model instance."""
         if kwargs:
             error_message = f"Error for {self.__class__.__name__}: For updating fields, use update() instead of save()"
-            formated_error(error_message, class_name="Model", method_name="save", context=kwargs)
+            formated_error(
+                error_message, class_name="Model", method_name="save", context=kwargs
+            )
             raise TypeError(error_message)
 
         try:
@@ -464,8 +563,12 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         invalid_fields = [k for k in kwargs if k not in self._fields]
         if invalid_fields:
             vcprint(self._fields, "Model Fields", color="yellow")
-            error_message = f"Invalid fields for {self.__class__.__name__}: {invalid_fields}"
-            formated_error(error_message, class_name="Model", method_name="update", context=kwargs)
+            error_message = (
+                f"Invalid fields for {self.__class__.__name__}: {invalid_fields}"
+            )
+            formated_error(
+                error_message, class_name="Model", method_name="update", context=kwargs
+            )
             raise ValueError(error_message)
 
         try:
@@ -479,7 +582,9 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             raise
 
     @classmethod
-    async def update_fields(cls, instance_or_id: Model | Any, **kwargs: Any) -> Model | None:
+    async def update_fields(
+        cls, instance_or_id: Model | Any, **kwargs: Any
+    ) -> Model | None:
         """
         Static method to update an instance or create it if it doesn't exist.
         Merges the provided fields with existing values.
@@ -525,7 +630,11 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             await delete.delete_instance(self)
             await StateManager.remove(self.__class__, self)
         except ORMException as e:
-            pk = getattr(self, self._meta.primary_keys[0], None) if self._meta.primary_keys else None
+            pk = (
+                getattr(self, self._meta.primary_keys[0], None)
+                if self._meta.primary_keys
+                else None
+            )
             e.enrich(model=self.__class__, operation="delete", args={"id": pk})
             raise
 
@@ -541,7 +650,9 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         return cls._fields.get(field_name)
 
     @classmethod
-    def get_relation(cls, field_name: str) -> ForeignKeyReference | InverseForeignKeyReference:
+    def get_relation(
+        cls, field_name: str
+    ) -> ForeignKeyReference | InverseForeignKeyReference:
         field = cls.get_field(field_name)
         if isinstance(field, (ForeignKeyReference, InverseForeignKeyReference)):
             return field
@@ -624,7 +735,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         fk_ref = self._meta.foreign_keys[field_name]
 
         related_model = fk_ref.related_model
-        if related_model and getattr(related_model._meta, 'unfetchable', False):
+        if related_model and getattr(related_model._meta, "unfetchable", False):
             return None
 
         value = getattr(self, field_name)
@@ -652,8 +763,18 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         if field_name in self._meta.inverse_foreign_keys:
             return await self.fetch_ifk(field_name)
 
-        error_message = f"'{field_name}' is not a valid relationship field. " "Field must be one of: " f"{', '.join(self._meta.foreign_keys | self._meta.inverse_foreign_keys)}"
-        formated_error(error_message, class_name="Model", method_name="fetch_one_relation")
+        if field_name in self._meta.many_to_many_keys:
+            return await self.fetch_m2m(field_name)
+
+        all_relations = (
+            set(self._meta.foreign_keys)
+            | set(self._meta.inverse_foreign_keys)
+            | set(self._meta.many_to_many_keys)
+        )
+        error_message = f"'{field_name}' is not a valid relationship field. Field must be one of: {', '.join(all_relations)}"
+        formated_error(
+            error_message, class_name="Model", method_name="fetch_one_relation"
+        )
         raise ValueError(error_message)
 
     async def fetch_fks(self) -> dict[str, Model | None]:
@@ -665,7 +786,11 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             except Exception as e:
                 model_name = self.__class__.__name__
                 related = self._meta.foreign_keys[field_name].to_model
-                related_name = related if isinstance(related, str) else getattr(related, '__name__', str(related))
+                related_name = (
+                    related
+                    if isinstance(related, str)
+                    else getattr(related, "__name__", str(related))
+                )
                 vcprint(
                     f"[{model_name}] Failed to fetch FK '{field_name}' -> {related_name}: {e.__class__.__name__}: {e.message if hasattr(e, 'message') else e}",
                     color="yellow",
@@ -682,7 +807,13 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             except Exception as e:
                 model_name = self.__class__.__name__
                 ifk_ref = self._meta.inverse_foreign_keys[field_name]
-                related_name = ifk_ref.from_model if isinstance(ifk_ref.from_model, str) else getattr(ifk_ref.from_model, '__name__', str(ifk_ref.from_model))
+                related_name = (
+                    ifk_ref.from_model
+                    if isinstance(ifk_ref.from_model, str)
+                    else getattr(
+                        ifk_ref.from_model, "__name__", str(ifk_ref.from_model)
+                    )
+                )
                 vcprint(
                     f"[{model_name}] Failed to fetch IFK '{field_name}' -> {related_name}: {e.__class__.__name__}: {e.message if hasattr(e, 'message') else e}",
                     color="yellow",
@@ -690,11 +821,88 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
                 results[field_name] = None
         return results
 
+    async def fetch_m2m(self, relation_name: str) -> list[Model]:
+        """Fetch a single many-to-many relationship by name."""
+        if relation_name not in self._meta.many_to_many_keys:
+            error_message = (
+                f"No M2M relationship '{relation_name}' on {self.__class__.__name__}"
+            )
+            formated_error(error_message, class_name="Model", method_name="fetch_m2m")
+            raise ValueError(error_message)
+        ref = self._meta.many_to_many_keys[relation_name]
+        results = await ref.fetch_related(self)
+        self._dynamic_data[f"_{relation_name}_m2m"] = results
+        return results
+
+    async def fetch_m2ms(self) -> dict[str, list[Model]]:
+        """Fetch all M2M relationships, skipping any that fail."""
+        results: dict[str, list[Model]] = {}
+        for relation_name in self._meta.many_to_many_keys:
+            try:
+                results[relation_name] = await self.fetch_m2m(relation_name)
+            except Exception as e:
+                model_name = self.__class__.__name__
+                ref = self._meta.many_to_many_keys[relation_name]
+                target = (
+                    ref.target_model
+                    if isinstance(ref.target_model, str)
+                    else getattr(ref.target_model, "__name__", str(ref.target_model))
+                )
+                vcprint(
+                    f"[{model_name}] Failed to fetch M2M '{relation_name}' -> {target}: {e.__class__.__name__}: {e.message if hasattr(e, 'message') else e}",
+                    color="yellow",
+                )
+                results[relation_name] = []
+        return results
+
+    async def add_m2m(self, relation_name: str, *target_ids: Any) -> int:
+        """Add targets to a many-to-many relationship."""
+        if relation_name not in self._meta.many_to_many_keys:
+            raise ValueError(
+                f"No M2M relationship '{relation_name}' on {self.__class__.__name__}"
+            )
+        ref = self._meta.many_to_many_keys[relation_name]
+        return await ref.add(self, *target_ids)
+
+    async def remove_m2m(self, relation_name: str, *target_ids: Any) -> int:
+        """Remove targets from a many-to-many relationship."""
+        if relation_name not in self._meta.many_to_many_keys:
+            raise ValueError(
+                f"No M2M relationship '{relation_name}' on {self.__class__.__name__}"
+            )
+        ref = self._meta.many_to_many_keys[relation_name]
+        return await ref.remove(self, *target_ids)
+
+    async def set_m2m(self, relation_name: str, target_ids: list[Any]) -> None:
+        """Replace all targets in a many-to-many relationship."""
+        if relation_name not in self._meta.many_to_many_keys:
+            raise ValueError(
+                f"No M2M relationship '{relation_name}' on {self.__class__.__name__}"
+            )
+        ref = self._meta.many_to_many_keys[relation_name]
+        await ref.set(self, target_ids)
+
+    async def clear_m2m(self, relation_name: str) -> int:
+        """Remove all targets from a many-to-many relationship."""
+        if relation_name not in self._meta.many_to_many_keys:
+            raise ValueError(
+                f"No M2M relationship '{relation_name}' on {self.__class__.__name__}"
+            )
+        ref = self._meta.many_to_many_keys[relation_name]
+        return await ref.clear(self)
+
     async def fetch_all_related(self) -> dict[str, dict[str, Any]]:
-        """Fetch all related data (both FKs and inverse FKs)"""
+        """Fetch all related data (FKs, inverse FKs, and M2M)"""
         fk_results = await self.fetch_fks()
         ifk_results = await self.fetch_ifks()
-        return {"foreign_keys": fk_results, "inverse_foreign_keys": ifk_results}
+        m2m_results = await self.fetch_m2ms()
+        result: dict[str, dict[str, Any]] = {
+            "foreign_keys": fk_results,
+            "inverse_foreign_keys": ifk_results,
+        }
+        if m2m_results:
+            result["many_to_many"] = m2m_results
+        return result
 
     async def filter_fk(self, field_name: str, **kwargs: Any) -> list[Model]:
         if field_name not in self._meta.foreign_keys:
@@ -704,7 +912,9 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         fk_ref = self._meta.foreign_keys[field_name]
         value = getattr(self, field_name)
         if value is not None:
-            return await fk_ref.related_model.filter(**{fk_ref.to_column: value}, **kwargs).all()
+            return await fk_ref.related_model.filter(
+                **{fk_ref.to_column: value}, **kwargs
+            ).all()
         return []
 
     async def filter_ifk(self, field_name: str, **kwargs: Any) -> list[Model]:
@@ -718,13 +928,15 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         referenced_value = getattr(self, ifk_ref.referenced_field)
         vcprint(referenced_value, pretty=True, color="yellow")
         if referenced_value is not None:
-            return await ifk_ref.related_model.filter(**{ifk_ref.from_field: referenced_value}, **kwargs).all()
+            return await ifk_ref.related_model.filter(
+                **{ifk_ref.from_field: referenced_value}, **kwargs
+            ).all()
         return []
 
     async def filter_one_relation(self, field_name: str, **kwargs: Any) -> list[Model]:
         """
         Filter a relationship by field name with additional criteria,
-        automatically determining whether it's a FK or IFK relationship
+        automatically determining whether it's a FK, IFK, or M2M relationship
         """
         if field_name in self._meta.foreign_keys:
             return await self.filter_fk(field_name, **kwargs)
@@ -732,17 +944,33 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         if field_name in self._meta.inverse_foreign_keys:
             return await self.filter_ifk(field_name, **kwargs)
 
-        error_message = f"'{field_name}' is not a valid relationship field. " "Field must be one of: " f"{', '.join(self._meta.foreign_keys | self._meta.inverse_foreign_keys)}"
-        formated_error(error_message, class_name="Model", method_name="filter_one_relation")
+        if field_name in self._meta.many_to_many_keys:
+            return await self.fetch_m2m(field_name)
+
+        all_relations = (
+            set(self._meta.foreign_keys)
+            | set(self._meta.inverse_foreign_keys)
+            | set(self._meta.many_to_many_keys)
+        )
+        error_message = f"'{field_name}' is not a valid relationship field. Field must be one of: {', '.join(all_relations)}"
+        formated_error(
+            error_message, class_name="Model", method_name="filter_one_relation"
+        )
         raise ValueError(error_message)
 
     def get_related(self, field_name: str) -> Any:
         regular_field = f"_{field_name}_related"
-        inverse_field = f"_{field_name}_relation"
         if regular_field in self._dynamic_fields:
             return self._dynamic_data[regular_field]
-        elif inverse_field in self._dynamic_fields:
+
+        inverse_field = f"_{field_name}_relation"
+        if inverse_field in self._dynamic_fields:
             return self._dynamic_data[inverse_field]
+
+        m2m_field = f"_{field_name}_m2m"
+        if m2m_field in self._dynamic_fields:
+            return self._dynamic_data[m2m_field]
+
         error_message = f"No related field for {field_name}"
         formated_error(error_message, class_name="Model", method_name="get_related")
         raise AttributeError(error_message)
@@ -761,6 +989,25 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
     async def get_by_id(cls, id_value: Any, use_cache: bool = True) -> Model:
         pk_field = cls._meta.primary_keys[0]
         return await cls.get(use_cache=use_cache, **{pk_field: id_value})
+
+    @classmethod
+    async def ensure_m2m_tables(cls) -> None:
+        """Create any pending junction tables that don't yet exist in the database."""
+        if not cls._pending_junction_tables:
+            return
+
+        from matrx_orm.core.async_db_manager import AsyncDatabaseManager
+
+        db_name = cls._meta.database
+        for jt in cls._pending_junction_tables:
+            sql = (
+                f"CREATE TABLE IF NOT EXISTS {jt['junction_table']} ("
+                f"{jt['source_column']} UUID NOT NULL REFERENCES {jt['source_table']}(id) ON DELETE CASCADE, "
+                f"{jt['target_column']} UUID NOT NULL REFERENCES {jt['target_table']}(id) ON DELETE CASCADE, "
+                f"PRIMARY KEY ({jt['source_column']}, {jt['target_column']})"
+                f")"
+            )
+            await AsyncDatabaseManager.execute_query(db_name, sql)
 
     @classmethod
     async def get_many(cls, **kwargs: Any) -> list[Model]:
