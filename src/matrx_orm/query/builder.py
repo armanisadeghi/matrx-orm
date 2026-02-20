@@ -1,12 +1,11 @@
 import asyncio
 
 from matrx_utils import vcprint
-from matrx_orm.error_handling import handle_orm_operation
 from ..query.executor import QueryExecutor
 from ..exceptions import (
-    DatabaseError,
     DoesNotExist,
     MultipleObjectsReturned,
+    ORMException,
     QueryError,
     ValidationError,
 )
@@ -93,7 +92,7 @@ class QueryBuilder:
         """Constructs the SQL query before execution."""
         query = {
             "model": self.model,
-            "table": self.model._meta.table_name,
+            "table": self.model._meta.qualified_table_name,
             "filters": self._merge_filters_excludes(),
             "order_by": self.order_by_fields,
             "limit": self.limit_val,
@@ -126,13 +125,14 @@ class QueryBuilder:
             await StateManager.cache_bulk(self.model, results)
             if debug:
                 vcprint(
-                    f"[BUILDER: QUERY_BUILDER] all method]🛢️  Cached {len(results)} records for {self.model.__name__}",
+                    f"[BUILDER: QUERY_BUILDER] all method]  Cached {len(results)} records for {self.model.__name__}",
                     color="bright_gold",
                 )
 
             return results
-        except DatabaseError as e:
-            raise DatabaseError(model=self.model, operation="all", original_error=e)
+        except ORMException as e:
+            e.enrich(model=self.model, operation="all", filters=self._merge_filters_excludes())
+            raise
         except Exception as e:
             raise QueryError(model=self.model, details={"operation": "all", "error": str(e)})
 
@@ -140,8 +140,9 @@ class QueryBuilder:
         """Get the first matching record."""
         try:
             return await self._get_executor().first()
-        except DatabaseError as e:
-            raise DatabaseError(model=self.model, operation="first", original_error=e)
+        except ORMException as e:
+            e.enrich(model=self.model, operation="first", filters=self._merge_filters_excludes())
+            raise
 
     async def last(self):
         """Order by primary key descending and fetch the first record."""
@@ -153,30 +154,25 @@ class QueryBuilder:
         """
         Retrieves exactly one object matching the criteria.
         """
-        async with handle_orm_operation(
-            "[BUILDER: QUERY_BUILDER] get method",
-            model=self.model,
-            filters=self._merge_filters_excludes(),
-        ):
+        filters = self._merge_filters_excludes()
+        try:
             executor = self._get_executor()
             results = await executor.all()
-            if debug:
-                vcprint(
-                    f"[BUILDER: QUERY_BUILDER] get method]🛢️  Returning {len(results)} results",
-                    color="bright_gold",
-                )
 
             if not results:
-                raise DoesNotExist(model=self.model, filters=self._merge_filters_excludes())
+                raise DoesNotExist(model=self.model, filters=filters)
 
             if len(results) > 1:
                 raise MultipleObjectsReturned(
                     model=self.model,
                     count=len(results),
-                    filters=self._merge_filters_excludes(),
+                    filters=filters,
                 )
 
             return results[0]
+        except ORMException as e:
+            e.enrich(model=self.model, operation="get", filters=filters)
+            raise
 
     async def get_or_none(self):
         """
@@ -199,29 +195,33 @@ class QueryBuilder:
             return await self._get_executor().update(**kwargs)
         except ValidationError:
             raise
-        except DatabaseError as e:
-            raise DatabaseError(model=self.model, operation="update", original_error=e)
+        except ORMException as e:
+            e.enrich(model=self.model, operation="update", filters=self._merge_filters_excludes())
+            raise
 
     async def delete(self):
         """Delete matching records."""
         try:
             return await self._get_executor().delete()
-        except DatabaseError as e:
-            raise DatabaseError(model=self.model, operation="delete", original_error=e)
+        except ORMException as e:
+            e.enrich(model=self.model, operation="delete", filters=self._merge_filters_excludes())
+            raise
 
     async def count(self):
         """Count matching records."""
         try:
             return await self._get_executor().count()
-        except DatabaseError as e:
-            raise DatabaseError(model=self.model, operation="count", original_error=e)
+        except ORMException as e:
+            e.enrich(model=self.model, operation="count", filters=self._merge_filters_excludes())
+            raise
 
     async def exists(self):
         """Check if matching records exist."""
         try:
             return await self._get_executor().exists()
-        except DatabaseError as e:
-            raise DatabaseError(model=self.model, operation="exists", original_error=e)
+        except ORMException as e:
+            e.enrich(model=self.model, operation="exists", filters=self._merge_filters_excludes())
+            raise
 
     async def values(self, *fields):
         if fields:

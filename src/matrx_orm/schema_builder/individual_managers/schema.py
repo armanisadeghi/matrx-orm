@@ -603,10 +603,12 @@ class Schema:
         self.code_handler.write_to_json(json_code_temp_path, json_structure, clean=True)
 
     def get_string_user_model(self):
-        # Returns the string for the Users model
         users_model = f"""class Users(Model):
     id = UUIDField(primary_key=True, null=False)
     email = CharField(null=False)\n
+    _table_name = \"users\"
+    _db_schema = \"auth\"
+    _unfetchable = True
     _database = \"{self.database_project}\"\n"""
         return users_model
 

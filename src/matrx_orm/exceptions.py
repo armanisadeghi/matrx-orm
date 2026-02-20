@@ -5,11 +5,51 @@ class ORMException(Exception):
 
     def __init__(self, message=None, model=None, details=None, class_name=None, method_name=None):
         self.model = model.__name__ if model else "Unknown Model"
-        self.details = details or {}
+        self.details = self._sanitize_details(details or {})
         self._message = message
         self.class_name = class_name
         self.method_name = method_name
+        self._enriched = False
         super().__init__(self.format_message())
+
+    def enrich(self, model=None, operation=None, args=None, **extra):
+        """Stamp context onto this exception as it bubbles up through layers.
+        
+        Each layer that catches an ORMException should call enrich() with
+        whatever it knows, then re-raise — never wrap in a new exception.
+        Only the first enrichment for each field wins (closest to the error).
+        """
+        if model and self.model == "Unknown Model":
+            self.model = model.__name__ if hasattr(model, '__name__') else str(model)
+        if operation and not self.method_name:
+            self.method_name = operation
+        if args is not None and "args" not in self.details:
+            self.details["args"] = args
+        for key, value in extra.items():
+            if key not in self.details:
+                self.details[key] = value
+        self._enriched = True
+        super().__init__(self.format_message())
+        return self
+
+    @staticmethod
+    def _sanitize_details(details):
+        """Prevent nested ORMException str() output from ballooning error messages."""
+        sanitized = {}
+        for key, value in details.items():
+            if isinstance(value, ORMException):
+                sanitized[key] = value.message
+            elif isinstance(value, str) and value.count("=" * 80) > 1:
+                lines = value.strip().split("\n")
+                for line in lines:
+                    if line.startswith("Message: "):
+                        sanitized[key] = line[len("Message: "):]
+                        break
+                else:
+                    sanitized[key] = lines[0] if lines else value
+            else:
+                sanitized[key] = value
+        return sanitized
 
     @property
     def message(self):
@@ -18,25 +58,25 @@ class ORMException(Exception):
 
     def format_message(self):
         """Format the complete error message with all details"""
-        # Start with separator
         error_msg = ["\n" + "=" * 80 + "\n"]
 
-        # Add location info if available
         if self.class_name and self.method_name:
             error_msg.append(f"[ERROR in {self.model}: {self.class_name}.{self.method_name}()]\n")
         else:
             error_msg.append(f"[ERROR in {self.model}]\n")
 
-        # Add main message
         error_msg.append(f"Message: {self.message}")
 
-        # Add details in a clean format
         if self.details:
             error_msg.append("\nContext:")
             for key, value in self.details.items():
-                error_msg.append(f"  {key}: {value}")
+                if key == "traceback":
+                    continue
+                str_val = str(value)
+                if len(str_val) > 300:
+                    str_val = str_val[:300] + "..."
+                error_msg.append(f"  {key}: {str_val}")
 
-        # End with separator
         error_msg.append("\n" + "=" * 80 + "\n")
 
         return "\n".join(error_msg)

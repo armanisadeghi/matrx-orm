@@ -8,6 +8,7 @@ from matrx_utils import vcprint
 from matrx_orm.exceptions import (
     DoesNotExist,
     MultipleObjectsReturned,
+    ORMException,
     ValidationError,
 )
 from matrx_orm.operations import create, delete, update
@@ -110,6 +111,14 @@ class ModelOptions:
     indexes: list
     unique_together: list
     constraints: list
+    db_schema: str = None
+    unfetchable: bool = False
+
+    @property
+    def qualified_table_name(self):
+        if self.db_schema:
+            return f"{self.db_schema}.{self.table_name}"
+        return self.table_name
 
 
 class ModelMeta(type):
@@ -190,6 +199,8 @@ class ModelMeta(type):
             indexes=attrs.get("_indexes", []),
             unique_together=attrs.get("_unique_together", []),
             constraints=attrs.get("_constraints", []),
+            db_schema=attrs.get("_db_schema"),
+            unfetchable=attrs.get("_unfetchable", False),
         )
 
         attrs["_meta"] = options
@@ -260,6 +271,8 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
     _realtime_updates = False
     _table_name = None
     _database = None
+    _db_schema = None
+    _unfetchable = False
     _indexes = None
     _unique_together = None
     _constraints = None
@@ -313,10 +326,14 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
 
     @classmethod
     async def get(cls, use_cache=True, **kwargs):
-        if use_cache:
-            return await StateManager.get(cls, **kwargs)
-        else:
-            return await QueryBuilder(cls).filter(**kwargs).get()
+        try:
+            if use_cache:
+                return await StateManager.get(cls, **kwargs)
+            else:
+                return await QueryBuilder(cls).filter(**kwargs).get()
+        except ORMException as e:
+            e.enrich(model=cls, operation="get", args=kwargs)
+            raise
 
     @classmethod
     def get_sync(cls, use_cache=True, **kwargs):
@@ -385,9 +402,13 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
 
     @classmethod
     async def all(cls):
-        results = await QueryBuilder(cls).all()
-        await StateManager.cache_bulk(cls, results)
-        return results
+        try:
+            results = await QueryBuilder(cls).all()
+            await StateManager.cache_bulk(cls, results)
+            return results
+        except ORMException as e:
+            e.enrich(model=cls, operation="all")
+            raise
 
     @classmethod
     def all_sync(cls):
@@ -411,20 +432,23 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             formated_error(error_message, class_name="Model", method_name="save", context=kwargs)
             raise TypeError(error_message)
 
-        is_update = hasattr(self, "id") and self.id is not None
-        if is_update:
-            await update.update_instance(self)
-        else:
-            await create.create_instance(self.__class__, **self.__dict__)
-        await StateManager.cache(self.__class__, self)
-        return self
+        try:
+            is_update = hasattr(self, "id") and self.id is not None
+            if is_update:
+                await update.update_instance(self)
+            else:
+                await create.create_instance(self.__class__, **self.__dict__)
+            await StateManager.cache(self.__class__, self)
+            return self
+        except ORMException as e:
+            e.enrich(model=self.__class__, operation="save")
+            raise
 
     async def update(self, **kwargs):
         """
         Update specific fields and save in one operation.
         Returns the updated instance.
         """
-        # Validate fields
         invalid_fields = [k for k in kwargs if k not in self._fields]
         if invalid_fields:
             vcprint(self._fields, "Model Fields", color="yellow")
@@ -432,13 +456,15 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             formated_error(error_message, class_name="Model", method_name="update", context=kwargs)
             raise ValueError(error_message)
 
-        # Update instance attributes
-        for field, value in kwargs.items():
-            setattr(self, field, value)
+        try:
+            for field, value in kwargs.items():
+                setattr(self, field, value)
 
-        # Save only the specified fields
-        await update.update_instance(self, fields=kwargs.keys())  # Pass specific fields
-        return self
+            await update.update_instance(self, fields=kwargs.keys())
+            return self
+        except ORMException as e:
+            e.enrich(model=self.__class__, operation="update", args=kwargs)
+            raise
 
     @classmethod
     async def update_fields(cls, instance_or_id, **kwargs):
@@ -487,8 +513,13 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             raise e
 
     async def delete(self):
-        await delete.delete_instance(self)
-        await StateManager.remove(self.__class__, self)
+        try:
+            await delete.delete_instance(self)
+            await StateManager.remove(self.__class__, self)
+        except ORMException as e:
+            pk = getattr(self, self._meta.primary_keys[0], None) if self._meta.primary_keys else None
+            e.enrich(model=self.__class__, operation="delete", args={"id": pk})
+            raise
 
     def get_cache_key(self):
         return "_".join(str(getattr(self, pk)) for pk in self._meta.primary_keys)
@@ -585,6 +616,11 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             raise ValueError(error_message)
 
         fk_ref = self._meta.foreign_keys[field_name]
+
+        related_model = fk_ref.related_model
+        if related_model and getattr(related_model._meta, 'unfetchable', False):
+            return None
+
         value = getattr(self, field_name)
         if value is not None:
             return await fk_ref.fetch_data(self, value)
@@ -616,17 +652,37 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         raise ValueError(error_message)
 
     async def fetch_fks(self):
-        """Fetch all foreign key relationships"""
+        """Fetch all foreign key relationships, skipping any that fail."""
         results = {}
         for field_name in self._meta.foreign_keys:
-            results[field_name] = await self.fetch_fk(field_name)
+            try:
+                results[field_name] = await self.fetch_fk(field_name)
+            except Exception as e:
+                model_name = self.__class__.__name__
+                related = self._meta.foreign_keys[field_name].to_model
+                related_name = related if isinstance(related, str) else getattr(related, '__name__', str(related))
+                vcprint(
+                    f"[{model_name}] Failed to fetch FK '{field_name}' -> {related_name}: {e.__class__.__name__}: {e.message if hasattr(e, 'message') else e}",
+                    color="yellow",
+                )
+                results[field_name] = None
         return results
 
     async def fetch_ifks(self):
-        """Fetch all inverse foreign key relationships"""
+        """Fetch all inverse foreign key relationships, skipping any that fail."""
         results = {}
         for field_name in self._meta.inverse_foreign_keys:
-            results[field_name] = await self.fetch_ifk(field_name)
+            try:
+                results[field_name] = await self.fetch_ifk(field_name)
+            except Exception as e:
+                model_name = self.__class__.__name__
+                ifk_ref = self._meta.inverse_foreign_keys[field_name]
+                related_name = ifk_ref.from_model if isinstance(ifk_ref.from_model, str) else getattr(ifk_ref.from_model, '__name__', str(ifk_ref.from_model))
+                vcprint(
+                    f"[{model_name}] Failed to fetch IFK '{field_name}' -> {related_name}: {e.__class__.__name__}: {e.message if hasattr(e, 'message') else e}",
+                    color="yellow",
+                )
+                results[field_name] = None
         return results
 
     async def fetch_all_related(self):

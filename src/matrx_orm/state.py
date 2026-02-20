@@ -4,6 +4,7 @@ from enum import Enum
 import asyncio
 from matrx_utils import vcprint
 from matrx_orm.exceptions import (
+    ORMException,
     ValidationError,
     DoesNotExist,
     ConfigurationError,
@@ -287,7 +288,8 @@ class StateManager:
             try:
                 record = await model_class.get(use_cache=False, **kwargs)
             except DoesNotExist:
-                # Don't cache None results
+                raise
+            except ORMException:
                 raise
             except Exception as e:
                 raise CacheError(
@@ -302,7 +304,7 @@ class StateManager:
                 await cls.cache(model_class, record)
 
             return record
-        except (DoesNotExist, StateError, CacheError):
+        except ORMException:
             raise
         except Exception as e:
             raise StateError(

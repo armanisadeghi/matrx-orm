@@ -81,11 +81,13 @@ class QueryExecutor:
 
     async def _execute(self):
         """Executes the built SQL query with proper error handling."""
+        from matrx_orm.exceptions import ORMException
         try:
             results = await self.db.execute_query(self.database, self.query, *self.params)
             return results
-        except DatabaseError as e:
-            raise DatabaseError(model=self.model, operation="execute", original_error=e)
+        except ORMException as e:
+            e.enrich(model=self.model, query=self.query, params=self.params)
+            raise
         except Exception as e:
             raise QueryError(
                 model=self.model,

@@ -67,7 +67,7 @@ async def bulk_create(model_cls, objects_data):
     from ..query.executor import QueryExecutor
 
     query = {
-        "table": model_cls._table_name,
+        "table": model_cls._meta.qualified_table_name,
         "data": data_list,
     }
 
