@@ -5,33 +5,34 @@ This test creates a simple model with a field named 'model' to ensure
 there are no conflicts with the internal model_cls parameter.
 """
 
-from matrx_orm import Model, Field
+from matrx_orm import Model
+from matrx_orm.core.fields import UUIDField, CharField
 
 
-class TestModel(Model):
-    """Test model with a field named 'model' to verify no conflicts."""
+class SampleModel(Model):
+    """Model with a field named 'model' to verify no conflicts."""
     
     _table_name = "test_models"
     _database = "test"
     
-    id = Field(primary_key=True)
-    name = Field()
-    model = Field()  # This should now work without conflicts!
-    description = Field()
+    id = UUIDField(primary_key=True)
+    name = CharField(max_length=100)
+    model = CharField(max_length=100)
+    description = CharField(max_length=255)
 
 
 def test_model_definition():
     """Test that the model can be defined with a 'model' field."""
     print("✓ Model definition successful")
-    print(f"  Table name: {TestModel._table_name}")
-    print(f"  Fields: {list(TestModel._fields.keys())}")
-    assert 'model' in TestModel._fields, "Field 'model' should be in _fields"
+    print(f"  Table name: {SampleModel._table_name}")
+    print(f"  Fields: {list(SampleModel._fields.keys())}")
+    assert 'model' in SampleModel._fields, "Field 'model' should be in _fields"
     print("✓ Field 'model' is properly defined")
 
 
 def test_model_instantiation():
     """Test that we can create instances with the 'model' field."""
-    instance = TestModel(
+    instance = SampleModel(
         id=1,
         name="Test Item",
         model="GPT-4",  # Using 'model' as a field

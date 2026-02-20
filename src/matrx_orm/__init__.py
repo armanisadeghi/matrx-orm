@@ -14,6 +14,7 @@ from .core.extended import BaseManager, BaseDTO
 from .core.base import Model
 from .core.registry import model_registry
 from .core.fields import (
+    Field,
     CharField,
     EnumField,
     DateField,
@@ -75,6 +76,7 @@ __all__ = [
     "BaseDTO",
     "Model",
     "model_registry",
+    "Field",
     "CharField",
     "EnumField",
     "DateField",

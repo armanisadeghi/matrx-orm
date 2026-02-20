@@ -28,3 +28,11 @@ packages = ["src/matrx_orm"]
 
 [tool.hatch.metadata]
 allow-direct-references = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "level1: tests that run without a database connection",
+    "level2: tests that require a live PostgreSQL database",
+]
+asyncio_mode = "auto"
