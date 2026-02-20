@@ -1,7 +1,9 @@
+from __future__ import annotations
 
 import asyncio
 import re
 from dataclasses import dataclass
+from typing import Any, ClassVar
 from uuid import UUID
 
 from matrx_utils import vcprint
@@ -21,11 +23,16 @@ from .relations import ForeignKeyReference, InverseForeignKeyReference
 file_name = "matrx_orm/orm/core/base.py"
 
 
-def _to_snake_case(name):
+def _to_snake_case(name: str) -> str:
     return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
 
 
-def formated_error(message, class_name=None, method_name=None, context=None):
+def formated_error(
+    message: str,
+    class_name: str | None = None,
+    method_name: str | None = None,
+    context: Any = None,
+) -> None:
     vcprint("\n" + "=" * 80 + "\n", color="red")
     if class_name and method_name:
         vcprint(f"[ERROR in {file_name}: {class_name}.{method_name}()]\n", color="red")
@@ -38,25 +45,27 @@ def formated_error(message, class_name=None, method_name=None, context=None):
     print()
     vcprint(message, color="red")
     vcprint("\n" + "=" * 80 + "\n", color="red")
-    return
 
 
 # https://grok.com/chat/f5581dd5-2684-445a-b2bd-40a2e7b63955 - DTO and eliminating the
 
 
 class RuntimeContainer:
-    def __init__(self):
-        self._data = {}
-        self._relationships = {}  # Store fetched relationships
-        self.dto = None  # Reference to the DTO
+    _data: dict[str, Any]
+    _relationships: dict[str, Any]
+    dto: Any
 
-    def __getattr__(self, name):
-        # Check relationships first, then data
+    def __init__(self) -> None:
+        self._data = {}
+        self._relationships = {}
+        self.dto = None
+
+    def __getattr__(self, name: str) -> Any:
         if name in self._relationships:
             return self._relationships[name]
         return self._data.get(name)
 
-    def __setattr__(self, name, value):
+    def __setattr__(self, name: str, value: Any) -> None:
         if name in ("_data", "_relationships", "dto"):
             super().__setattr__(name, value)
         elif name in self._relationships:
@@ -64,15 +73,15 @@ class RuntimeContainer:
         else:
             self._data[name] = value
 
-    def set_relationship(self, name, value):
+    def set_relationship(self, name: str, value: Any) -> None:
         """Store a fetched relationship."""
         self._relationships[name] = value
         if self.dto:
-            setattr(self.dto, name, value)  # Sync with DTO
+            setattr(self.dto, name, value)
 
-    def to_dict(self):
-        data_dict = {k: str(v) if isinstance(v, UUID) else v for k, v in self._data.items()}
-        rel_dict = {}
+    def to_dict(self) -> dict[str, Any]:
+        data_dict: dict[str, Any] = {k: str(v) if isinstance(v, UUID) else v for k, v in self._data.items()}
+        rel_dict: dict[str, Any] = {}
         for k, v in self._relationships.items():
             if isinstance(v, list):
                 rel_dict[k] = [item.to_dict() if hasattr(item, "to_dict") else str(item) for item in v]
@@ -84,17 +93,19 @@ class RuntimeContainer:
 
 
 class RuntimeMixin:
-    def __init__(self, *args, **kwargs):
+    runtime: RuntimeContainer
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.runtime = RuntimeContainer()
         self._initialize_runtime()
 
-    def _initialize_runtime(self):
+    def _initialize_runtime(self) -> None:
         """Override in model-specific classes"""
         pass
 
-    def to_dict(self):
-        base_dict = super().to_dict()
+    def to_dict(self) -> dict[str, Any]:
+        base_dict: dict[str, Any] = super().to_dict()  # type: ignore[misc]
         runtime_dict = self.runtime.to_dict()
         return {**base_dict, **runtime_dict}
 
@@ -103,26 +114,26 @@ class RuntimeMixin:
 class ModelOptions:
     table_name: str
     database: str
-    fields: dict
-    primary_keys: list
-    unique_fields: set
-    foreign_keys: dict
-    inverse_foreign_keys: dict
-    indexes: list
-    unique_together: list
-    constraints: list
-    db_schema: str = None
+    fields: dict[str, Field]
+    primary_keys: list[str]
+    unique_fields: set[str]
+    foreign_keys: dict[str, ForeignKeyReference]
+    inverse_foreign_keys: dict[str, InverseForeignKeyReference]
+    indexes: list[Any]
+    unique_together: list[Any]
+    constraints: list[Any]
+    db_schema: str | None = None
     unfetchable: bool = False
 
     @property
-    def qualified_table_name(self):
+    def qualified_table_name(self) -> str:
         if self.db_schema:
             return f"{self.db_schema}.{self.table_name}"
         return self.table_name
 
 
 class ModelMeta(type):
-    def __new__(mcs, name, bases, attrs):
+    def __new__(mcs, name: str, bases: tuple[type, ...], attrs: dict[str, Any]) -> ModelMeta:
         if name == "Model":
             return super().__new__(mcs, name, bases, attrs)
 
@@ -207,23 +218,23 @@ class ModelMeta(type):
         attrs["_fields"] = fields
         attrs["_dynamic_fields"] = dynamic_fields
 
-        def __init__(self, **kwargs):
+        def __init__(self: Any, **kwargs: Any) -> None:
             super(Model, self).__init__()
             for field_name, field in self._fields.items():
                 value = kwargs.get(field_name, field.get_default())
-                if hasattr(field, "to_python"):  # Only change: apply to_python()
+                if hasattr(field, "to_python"):
                     value = field.to_python(value)
                 setattr(self, field_name, value)
             self._extra_data = {k: v for k, v in kwargs.items() if k not in self._fields}
 
-            self._dynamic_data = {}
+            self._dynamic_data: dict[str, Any] = {}
             for field in self._dynamic_fields:
                 if field.endswith("_related"):
                     self._dynamic_data[field] = {}
                 elif field.endswith("_relation"):
                     self._dynamic_data[field] = []
 
-        def get_related(self, field_name):
+        def get_related(self: Any, field_name: str) -> Any:
             regular_field = f"_{field_name}_related"
             if regular_field in self._dynamic_fields:
                 return self._dynamic_data[regular_field]
@@ -236,7 +247,7 @@ class ModelMeta(type):
             formated_error(error_message, class_name="Model", method_name="__init__")
             raise AttributeError(error_message)
 
-        def set_related(self, field_name, value, is_inverse=False):
+        def set_related(self: Any, field_name: str, value: Any, is_inverse: bool = False) -> None:
             if is_inverse:
                 field = f"_{field_name}_relation"
             else:
@@ -260,44 +271,48 @@ class ModelMeta(type):
 
 
 class Model(RuntimeMixin, metaclass=ModelMeta):
-    DoesNotExist = DoesNotExist
-    MultipleObjectsReturned = MultipleObjectsReturned
-    ValidationError = ValidationError
+    DoesNotExist: ClassVar[type[DoesNotExist]] = DoesNotExist
+    MultipleObjectsReturned: ClassVar[type[MultipleObjectsReturned]] = MultipleObjectsReturned
+    ValidationError: ClassVar[type[ValidationError]] = ValidationError
 
-    _meta = None
-    _fields = None
-    _cache_policy = CachePolicy.SHORT_TERM
-    _cache_timeout = None
-    _realtime_updates = False
-    _table_name = None
-    _database = None
-    _db_schema = None
-    _unfetchable = False
-    _indexes = None
-    _unique_together = None
-    _constraints = None
-    _inverse_foreign_keys = {}
+    _meta: ClassVar[ModelOptions]
+    _fields: ClassVar[dict[str, Field]]
+    _dynamic_fields: ClassVar[set[str]]
+    _cache_policy: ClassVar[CachePolicy] = CachePolicy.SHORT_TERM
+    _cache_timeout: ClassVar[int | None] = None
+    _realtime_updates: ClassVar[bool] = False
+    _table_name: ClassVar[str | None] = None
+    _database: ClassVar[str | None] = None
+    _db_schema: ClassVar[str | None] = None
+    _unfetchable: ClassVar[bool] = False
+    _indexes: ClassVar[list[Any] | None] = None
+    _unique_together: ClassVar[list[Any] | None] = None
+    _constraints: ClassVar[list[Any] | None] = None
+    _inverse_foreign_keys: ClassVar[dict[str, Any]] = {}
 
-    def __init__(self, **kwargs):
+    _extra_data: dict[str, Any]
+    _dynamic_data: dict[str, Any]
+
+    def __init__(self, **kwargs: Any) -> None:
         for field_name, field in self._fields.items():
             value = kwargs.get(field_name, field.get_default())
             setattr(self, field_name, value)
         self._extra_data = {k: v for k, v in kwargs.items() if k not in self._fields}
 
     @classmethod
-    def get_database_name(cls):
+    def get_database_name(cls) -> str:
         if not cls._database:
             raise ValueError(f"Database name not set for model {cls.__name__}")
         return cls._database
 
     @classmethod
-    async def create(cls, **kwargs):
+    async def create(cls, **kwargs: Any) -> Model:
         instance = await create.create_instance(cls, **kwargs)
         await StateManager.cache(cls, instance)
         return instance
 
     @classmethod
-    async def bulk_create(cls, objects_data):
+    async def bulk_create(cls, objects_data: list[dict[str, Any]]) -> list[Model]:
         """
         Bulk create multiple instances using enhanced bulk operations.
         Follows the same data processing pipeline as individual create().
@@ -307,7 +322,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         return await bulk_create(cls, objects_data)
 
     @classmethod
-    async def bulk_update(cls, objects, fields):
+    async def bulk_update(cls, objects: list[Model], fields: list[str]) -> int:
         """
         Bulk update multiple instances with validation like individual operations.
         """
@@ -316,7 +331,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         return await bulk_update(cls, objects, fields)
 
     @classmethod
-    async def bulk_delete(cls, objects):
+    async def bulk_delete(cls, objects: list[Model]) -> int:
         """
         Bulk delete multiple instances.
         """
@@ -325,7 +340,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         return await bulk_delete(cls, objects)
 
     @classmethod
-    async def get(cls, use_cache=True, **kwargs):
+    async def get(cls, use_cache: bool = True, **kwargs: Any) -> Model:
         try:
             if use_cache:
                 return await StateManager.get(cls, **kwargs)
@@ -336,25 +351,22 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             raise
 
     @classmethod
-    def get_sync(cls, use_cache=True, **kwargs):
+    def get_sync(cls, use_cache: bool = True, **kwargs: Any) -> Model:
         """
         Synchronous wrapper for get(). Runs the async get() method in the current event loop.
         Use this in synchronous contexts to avoid RuntimeWarning for unawaited coroutines.
         """
-        # Check if there's an active event loop
         try:
             asyncio.get_running_loop()
-            # If we're in an async context, warn the user to use async get
             raise RuntimeError("Model.get_sync() called in an async context. Use await Model.get() instead.")
         except RuntimeError as e:
             if "no running event loop" not in str(e):
-                raise  # Re-raise if it's not the expected "no running loop" error
+                raise
 
-        # No running loop: safe to run synchronously
         return asyncio.run(cls.get(use_cache=use_cache, **kwargs))
 
     @classmethod
-    async def get_or_none(cls, use_cache=True, **kwargs):
+    async def get_or_none(cls, use_cache: bool = True, **kwargs: Any) -> Model | None:
         try:
             if use_cache:
                 return await StateManager.get_or_none(cls, **kwargs)
@@ -367,7 +379,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             return None
 
     @classmethod
-    def get_or_none_sync(cls, use_cache=True, **kwargs):
+    def get_or_none_sync(cls, use_cache: bool = True, **kwargs: Any) -> Model | None:
         """
         Synchronous wrapper for get_or_none().
         Use this in synchronous contexts to avoid RuntimeWarning for unawaited coroutines.
@@ -382,11 +394,11 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         return asyncio.run(cls.get_or_none(use_cache=use_cache, **kwargs))
 
     @classmethod
-    def filter(cls, **kwargs):
+    def filter(cls, **kwargs: Any) -> QueryBuilder:
         return QueryBuilder(cls).filter(**kwargs)
 
     @classmethod
-    def filter_sync(cls, **kwargs):
+    def filter_sync(cls, **kwargs: Any) -> list[Model]:
         """
         Synchronous wrapper for filter().all().
         Use this in synchronous contexts to fetch filtered results without async/await.
@@ -401,7 +413,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         return asyncio.run(cls.filter(**kwargs).all())
 
     @classmethod
-    async def all(cls):
+    async def all(cls) -> list[Model]:
         try:
             results = await QueryBuilder(cls).all()
             await StateManager.cache_bulk(cls, results)
@@ -411,7 +423,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             raise
 
     @classmethod
-    def all_sync(cls):
+    def all_sync(cls) -> list[Model]:
         """
         Synchronous wrapper for all().
         Use this in synchronous contexts to fetch all results without async/await.
@@ -425,7 +437,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
 
         return asyncio.run(cls.all())
 
-    async def save(self, **kwargs):
+    async def save(self, **kwargs: Any) -> Model:
         """Save the current state of the model instance."""
         if kwargs:
             error_message = f"Error for {self.__class__.__name__}: For updating fields, use update() instead of save()"
@@ -444,7 +456,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             e.enrich(model=self.__class__, operation="save")
             raise
 
-    async def update(self, **kwargs):
+    async def update(self, **kwargs: Any) -> Model:
         """
         Update specific fields and save in one operation.
         Returns the updated instance.
@@ -467,7 +479,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             raise
 
     @classmethod
-    async def update_fields(cls, instance_or_id, **kwargs):
+    async def update_fields(cls, instance_or_id: Model | Any, **kwargs: Any) -> Model | None:
         """
         Static method to update an instance or create it if it doesn't exist.
         Merges the provided fields with existing values.
@@ -485,7 +497,6 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
                         method_name="update_fields",
                     )
 
-            # Validate fields first
             invalid_fields = [k for k in kwargs if k not in cls._fields]
             if invalid_fields:
                 raise ValidationError(
@@ -497,7 +508,6 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
                     method_name="update_fields",
                 )
 
-            # Update the instance
             for field, value in kwargs.items():
                 setattr(instance, field, value)
 
@@ -505,14 +515,12 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             return instance
 
         except DoesNotExist as e:
-            # Just print the formatted message and return None
             print(str(e))
             return None
         except ValidationError as e:
-            # These we want to raise as they indicate developer error
             raise e
 
-    async def delete(self):
+    async def delete(self) -> None:
         try:
             await delete.delete_instance(self)
             await StateManager.remove(self.__class__, self)
@@ -521,19 +529,19 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             e.enrich(model=self.__class__, operation="delete", args={"id": pk})
             raise
 
-    def get_cache_key(self):
+    def get_cache_key(self) -> str:
         return "_".join(str(getattr(self, pk)) for pk in self._meta.primary_keys)
 
     @property
-    def table_name(self):
+    def table_name(self) -> str:
         return self._meta.table_name
 
     @classmethod
-    def get_field(cls, field_name):
+    def get_field(cls, field_name: str) -> Field | None:
         return cls._fields.get(field_name)
 
     @classmethod
-    def get_relation(cls, field_name):
+    def get_relation(cls, field_name: str) -> ForeignKeyReference | InverseForeignKeyReference:
         field = cls.get_field(field_name)
         if isinstance(field, (ForeignKeyReference, InverseForeignKeyReference)):
             return field
@@ -541,7 +549,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         formated_error(error_message, class_name="Model", method_name="get_relation")
         raise ValueError(error_message)
 
-    def _serialize_value(self, value):
+    def _serialize_value(self, value: Any) -> Any:
         """Convert value to a serializable form for to_dict()."""
         from enum import Enum
         from uuid import UUID
@@ -549,8 +557,6 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         if value is None:
             return None
 
-        # Check for Enum FIRST, before string check
-        # This is important for enums that inherit from str like DataType(str, Enum)
         if isinstance(value, Enum):
             return value.value
 
@@ -571,8 +577,8 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
 
         return str(value)
 
-    def to_dict(self):
-        data = {}
+    def to_dict(self) -> dict[str, Any]:
+        data: dict[str, Any] = {}
         for field_name, field in self._fields.items():
             value = getattr(self, field_name, None)
             if value is not None:
@@ -584,8 +590,8 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             data["dto"] = self.dto.to_dict()
         return data
 
-    def to_flat_dict(self):
-        data = {}
+    def to_flat_dict(self) -> dict[str, Any]:
+        data: dict[str, Any] = {}
         for field_name, field in self._fields.items():
             value = getattr(self, field_name, None)
             if value is not None:
@@ -598,7 +604,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         return {**data, **runtime_data, **dto_data}
 
     @classmethod
-    def from_db_result(cls, data):
+    def from_db_result(cls, data: dict[str, Any]) -> Model:
         instance = cls()
         for field_name, value in data.items():
             if field_name in cls._fields:
@@ -608,7 +614,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
                 instance._extra_data[field_name] = value
         return instance
 
-    async def fetch_fk(self, field_name):
+    async def fetch_fk(self, field_name: str) -> Model | None:
         """Fetch a single foreign key relationship"""
         if field_name not in self._meta.foreign_keys:
             error_message = f"No foreign key found for field {field_name}"
@@ -626,7 +632,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             return await fk_ref.fetch_data(self, value)
         return None
 
-    async def fetch_ifk(self, field_name):
+    async def fetch_ifk(self, field_name: str) -> list[Model]:
         """Fetch a single inverse foreign key relationship"""
         if field_name not in self._meta.inverse_foreign_keys:
             error_message = f"No inverse foreign key found for field {field_name}"
@@ -639,21 +645,20 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             return await ifk_ref.fetch_data(self)
         return []
 
-    async def fetch_one_relation(self, field_name: str):
+    async def fetch_one_relation(self, field_name: str) -> Model | list[Model] | None:
         if field_name in self._meta.foreign_keys:
             return await self.fetch_fk(field_name)
 
         if field_name in self._meta.inverse_foreign_keys:
             return await self.fetch_ifk(field_name)
 
-        # proper error message
         error_message = f"'{field_name}' is not a valid relationship field. " "Field must be one of: " f"{', '.join(self._meta.foreign_keys | self._meta.inverse_foreign_keys)}"
         formated_error(error_message, class_name="Model", method_name="fetch_one_relation")
         raise ValueError(error_message)
 
-    async def fetch_fks(self):
+    async def fetch_fks(self) -> dict[str, Model | None]:
         """Fetch all foreign key relationships, skipping any that fail."""
-        results = {}
+        results: dict[str, Model | None] = {}
         for field_name in self._meta.foreign_keys:
             try:
                 results[field_name] = await self.fetch_fk(field_name)
@@ -668,9 +673,9 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
                 results[field_name] = None
         return results
 
-    async def fetch_ifks(self):
+    async def fetch_ifks(self) -> dict[str, list[Model] | None]:
         """Fetch all inverse foreign key relationships, skipping any that fail."""
-        results = {}
+        results: dict[str, list[Model] | None] = {}
         for field_name in self._meta.inverse_foreign_keys:
             try:
                 results[field_name] = await self.fetch_ifk(field_name)
@@ -685,13 +690,13 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
                 results[field_name] = None
         return results
 
-    async def fetch_all_related(self):
+    async def fetch_all_related(self) -> dict[str, dict[str, Any]]:
         """Fetch all related data (both FKs and inverse FKs)"""
         fk_results = await self.fetch_fks()
         ifk_results = await self.fetch_ifks()
         return {"foreign_keys": fk_results, "inverse_foreign_keys": ifk_results}
 
-    async def filter_fk(self, field_name, **kwargs):
+    async def filter_fk(self, field_name: str, **kwargs: Any) -> list[Model]:
         if field_name not in self._meta.foreign_keys:
             error_message = f"No foreign key found for field {field_name}"
             formated_error(error_message, class_name="Model", method_name="filter_fk")
@@ -702,7 +707,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             return await fk_ref.related_model.filter(**{fk_ref.to_column: value}, **kwargs).all()
         return []
 
-    async def filter_ifk(self, field_name, **kwargs):
+    async def filter_ifk(self, field_name: str, **kwargs: Any) -> list[Model]:
         """Filter inverse foreign key relationships with additional criteria"""
         if field_name not in self._meta.inverse_foreign_keys:
             error_message = f"No inverse foreign key found for field {field_name}"
@@ -716,7 +721,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             return await ifk_ref.related_model.filter(**{ifk_ref.from_field: referenced_value}, **kwargs).all()
         return []
 
-    async def filter_one_relation(self, field_name: str, **kwargs):
+    async def filter_one_relation(self, field_name: str, **kwargs: Any) -> list[Model]:
         """
         Filter a relationship by field name with additional criteria,
         automatically determining whether it's a FK or IFK relationship
@@ -731,9 +736,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         formated_error(error_message, class_name="Model", method_name="filter_one_relation")
         raise ValueError(error_message)
 
-    # ===== I'm not sure if this adds any value because when we try to 'fetch', the database will returned cached data, even if we don't tell it to.
-
-    def get_related(self, field_name):
+    def get_related(self, field_name: str) -> Any:
         regular_field = f"_{field_name}_related"
         inverse_field = f"_{field_name}_relation"
         if regular_field in self._dynamic_fields:
@@ -744,7 +747,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         formated_error(error_message, class_name="Model", method_name="get_related")
         raise AttributeError(error_message)
 
-    def has_related(self, field_name):
+    def has_related(self, field_name: str) -> bool:
         """Check if related data is already loaded"""
         try:
             data = self.get_related(field_name)
@@ -755,10 +758,10 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             return False
 
     @classmethod
-    async def get_by_id(cls, id_value, use_cache=True):
+    async def get_by_id(cls, id_value: Any, use_cache: bool = True) -> Model:
         pk_field = cls._meta.primary_keys[0]
         return await cls.get(use_cache=use_cache, **{pk_field: id_value})
 
     @classmethod
-    async def get_many(cls, **kwargs):
+    async def get_many(cls, **kwargs: Any) -> list[Model]:
         return await QueryBuilder(cls).filter(**kwargs).all()

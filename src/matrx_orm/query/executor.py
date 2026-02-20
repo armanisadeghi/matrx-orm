@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import Any, TYPE_CHECKING
+
 from matrx_utils import vcprint
 from matrx_orm.core.async_db_manager import AsyncDatabaseManager
 from matrx_orm.exceptions import (
@@ -7,24 +11,33 @@ from matrx_orm.exceptions import (
     QueryError,
 )
 
+if TYPE_CHECKING:
+    from matrx_orm.core.base import Model
+
 debug = False
 
 
 class QueryExecutor:
-    def __init__(self, query):
+    model: type[Model]
+    database: str
+    db: AsyncDatabaseManager
+    _full_query_dict: dict[str, Any]
+    query: str
+    params: list[Any]
+
+    def __init__(self, query: dict[str, Any]) -> None:
         self.model = query["model"]
         self.database = query["database"]
         self.db = AsyncDatabaseManager()
         self._full_query_dict = query
         self.query, self.params = self._build_query()
 
-    def _build_query(self):
+    def _build_query(self) -> tuple[str, list[Any]]:
         select_clause = ", ".join(self._full_query_dict["select"]) if self._full_query_dict["select"] else "*"
         sql = f"SELECT {select_clause} FROM {self._full_query_dict['table']}"
-        params = []
-        where_conditions = []
+        params: list[Any] = []
+        where_conditions: list[str] = []
 
-        # Handle filters
         filters = self._full_query_dict.get("filters", {})
         if filters:
             for key, value in filters.items():
@@ -40,26 +53,23 @@ class QueryExecutor:
             sql += " WHERE " + " AND ".join(where_conditions)
 
         if self._full_query_dict["order_by"]:
-            order_by_terms = []
+            order_by_terms: list[str] = []
             for term in self._full_query_dict["order_by"]:
                 if isinstance(term, str):
-                    # Handle string-based ordering (e.g., "-version" or "version DESC")
                     if term.startswith("-"):
                         order_by_terms.append(f"{term[1:]} DESC")
                     else:
                         order_by_terms.append(f"{term} ASC")
                 elif hasattr(term, "_order_direction"):
-                    # Handle field object with desc() or asc()
                     field_name = term.name
                     if field_name is None:
-                        # Infer field name from model's fields if not set
                         for fname, field in self.model._fields.items():
-                            if field is term:  # Compare object identity
+                            if field is term:
                                 field_name = fname
                                 break
                         if field_name is None:
                             raise ValueError(f"Field object used in order_by could not be matched to a model field: {term}")
-                    direction = term._order_direction or "ASC"  # Default to ASC if not set
+                    direction = term._order_direction or "ASC"
                     order_by_terms.append(f"{field_name} {direction}")
                 else:
                     raise ValueError(f"Invalid order_by term: {term}")
@@ -79,7 +89,7 @@ class QueryExecutor:
 
         return sql, params
 
-    async def _execute(self):
+    async def _execute(self) -> list[dict[str, Any]]:
         """Executes the built SQL query with proper error handling."""
         from matrx_orm.exceptions import ORMException
         try:
@@ -94,7 +104,7 @@ class QueryExecutor:
                 details={"query": self.query, "params": self.params, "error": str(e)},
             )
 
-    async def insert(self, query):
+    async def insert(self, query: dict[str, Any]) -> dict[str, Any]:
         """Inserts a new row with proper error handling."""
         table = query["table"]
         data = query.get("data", {})
@@ -118,7 +128,7 @@ class QueryExecutor:
                 raise IntegrityError(str(e))
             raise DatabaseError(str(e))
 
-    async def bulk_insert(self, query):
+    async def bulk_insert(self, query: dict[str, Any]) -> list[Model]:
         """Bulk inserts multiple rows into the database."""
         table = query["table"]
         data_list = query.get("data", [])
@@ -142,11 +152,10 @@ class QueryExecutor:
                 details={"error": str(e)},
             )
 
-        all_values = []
-        placeholders_list = []
+        all_values: list[Any] = []
+        placeholders_list: list[str] = []
         param_index = 1
 
-        # Validate each row has the same columns
         for i, row_data in enumerate(data_list):
             if set(row_data.keys()) != set(columns):
                 raise ValidationError(
@@ -158,7 +167,7 @@ class QueryExecutor:
                     },
                 )
 
-            row_placeholders = []
+            row_placeholders: list[str] = []
             for col in columns:
                 row_placeholders.append(f"${param_index}")
                 all_values.append(row_data[col])
@@ -184,21 +193,19 @@ class QueryExecutor:
                 },
             )
 
-    async def update(self, **kwargs):
+    async def update(self, **kwargs: Any) -> dict[str, Any]:
         """Updates rows in the database."""
         try:
-            # Initial validation
             if not kwargs:
                 raise ValidationError(model=self.model, reason="No update data provided")
 
             table = self._full_query_dict["table"]
-            set_clause = []
-            params = []
+            set_clause: list[str] = []
+            params: list[Any] = []
 
-            # Process update data with field validation
-            update_data = {}
-            invalid_fields = []
-            skipped_fields = []
+            update_data: dict[str, Any] = {}
+            invalid_fields: list[str] = []
+            skipped_fields: list[str] = []
 
             for k, v in kwargs.items():
                 if k in self.model._fields:
@@ -213,7 +220,6 @@ class QueryExecutor:
                     invalid_fields.append(k)
                     vcprint(f"Field not found in model: {k}", color="red")
 
-            # Raise validation error if there are invalid fields
             if invalid_fields:
                 raise ValidationError(
                     model=self.model,
@@ -224,7 +230,6 @@ class QueryExecutor:
                     },
                 )
 
-            # Build SET clause
             param_index = 1
             for field_name, value in update_data.items():
                 set_clause.append(f"{field_name} = ${param_index}")
@@ -238,22 +243,18 @@ class QueryExecutor:
                     details={"skipped_fields": skipped_fields},
                 )
 
-            # Build WHERE clause
             base_query, where_params = self._build_query()
             where_clause = ""
             if "WHERE" in base_query:
                 where_clause = base_query.split("WHERE", 1)[1].strip()
                 where_clause = where_clause.split("ORDER BY")[0].strip() if "ORDER BY" in where_clause else where_clause
-                # Update the parameter numbers in where clause
                 for i in range(len(where_params)):
                     where_clause = where_clause.replace(f"${i + 1}", f"${param_index + i}")
 
-            # Construct final SQL
             sql = f"UPDATE {table} SET {', '.join(set_clause)}"
             if where_clause:
                 sql += f" WHERE {where_clause}"
 
-            # Add where params to full params list
             params.extend(where_params)
 
             if debug:
@@ -270,7 +271,6 @@ class QueryExecutor:
                     vcprint(f"Params: {params}", color="yellow")
                     vcprint(f"Result: {result}", color="yellow")
 
-                # Return both the count and the updated data
                 return {"rows_affected": rows_affected, "updated_rows": result}
 
             except DatabaseError as e:
@@ -287,10 +287,8 @@ class QueryExecutor:
                     )
 
         except (ValidationError, IntegrityError, DatabaseError):
-            # Re-raise these as they're already properly formatted
             raise
         except Exception as e:
-            # Catch any other unexpected errors
             raise QueryError(
                 model=self.model,
                 details={
@@ -301,7 +299,7 @@ class QueryExecutor:
                 },
             )
 
-    async def delete(self):
+    async def delete(self) -> int:
         """Deletes rows from the database."""
         table = self._full_query_dict["table"]
         base_query, where_params = self._build_query()
@@ -309,7 +307,6 @@ class QueryExecutor:
         if "WHERE" in base_query:
             where_clause = base_query.split("WHERE", 1)[1].strip()
             where_clause = where_clause.split("ORDER BY")[0].strip() if "ORDER BY" in where_clause else where_clause
-            # Update the parameter numbers in where clause
             for i in range(len(where_params)):
                 where_clause = where_clause.replace(f"${i + 1}", f"${len(where_params) + i}")
 
@@ -323,14 +320,14 @@ class QueryExecutor:
         except DatabaseError as e:
             raise DatabaseError(f"Delete failed: {str(e)}")
 
-    async def all(self):
+    async def all(self) -> list[Any]:
         """Returns all results with proper error handling."""
         results = await self._execute()
         if not results:
             return []
         return [self.model(**row) for row in results]
 
-    async def first(self):
+    async def first(self) -> Any:
         """Returns first result with proper error handling."""
         self._full_query_dict["limit"] = 1
         results = await self._execute()
@@ -338,7 +335,7 @@ class QueryExecutor:
             return None
         return self.model(**results[0])
 
-    async def count(self):
+    async def count(self) -> int:
         """Executes a count query and returns the count."""
         base_query, params = self._build_query()
         table_name = self._full_query_dict["table"]
@@ -358,47 +355,43 @@ class QueryExecutor:
         except DatabaseError as e:
             raise DatabaseError(f"Count query failed: {str(e)}")
 
-    async def exists(self):
+    async def exists(self) -> bool:
         """Checks if any result exists for the given query."""
         self._full_query_dict["limit"] = 1
         results = await self._execute()
         return len(results) > 0
 
-    async def values(self):
+    async def values(self) -> list[dict[str, Any]]:
         """Returns results as a list of dictionaries."""
         results = await self._execute()
         if not results:
             return []
         return [dict(row) for row in results]
 
-    async def values_list(self, flat=False):
+    async def values_list(self, flat: bool = False) -> list[tuple[Any, ...]] | list[Any]:
         """Returns results as a list of tuples, or flat list if flat=True."""
         results = await self._execute()
         if not results:
             return []
         
         if flat:
-            # For flat=True, return a flat list of the first column
             select_fields = self._full_query_dict.get("select", ["*"])
             if select_fields == ["*"] or len(select_fields) != 1:
                 raise ValueError("values_list with flat=True requires exactly one field to be selected")
             field_name = select_fields[0]
             return [row[field_name] for row in results]
         else:
-            # Return list of tuples
             if self._full_query_dict.get("select") == ["*"]:
-                # If selecting all fields, return all values as tuples
                 return [tuple(row.values()) for row in results]
             else:
-                # Return only selected fields in order
                 select_fields = self._full_query_dict.get("select", [])
                 return [tuple(row[field] for field in select_fields) for row in results]
 
-    def __aiter__(self):
+    def __aiter__(self) -> QueryExecutor:
         self._iter_index = 0
         return self
 
-    async def __anext__(self):
+    async def __anext__(self) -> Any:
         if not self._results:
             await self._execute()
         if self._iter_index >= len(self._results):

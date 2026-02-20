@@ -1,14 +1,21 @@
+from __future__ import annotations
+
+from typing import Any, TYPE_CHECKING
+
 from matrx_orm.state import StateManager
 
 from ..query.builder import QueryBuilder
 from .update import update
 
+if TYPE_CHECKING:
+    from matrx_orm.core.base import Model
 
-async def delete(model_cls, **kwargs):
+
+async def delete(model_cls: type[Model], **kwargs: Any) -> int:
     return await QueryBuilder(model_cls).filter(**kwargs).delete()
 
 
-async def bulk_delete(model_cls, objects):
+async def bulk_delete(model_cls: type[Model], objects: list[Model]) -> int:
     """
     Enhanced bulk_delete that follows the same patterns as individual operations.
     Now properly handles cache removal like individual delete operations do.
@@ -20,10 +27,8 @@ async def bulk_delete(model_cls, objects):
     if not ids:
         return 0
 
-    # Perform bulk delete using the proven individual operation pattern
     rows_affected = await delete(model_cls, id__in=ids)
 
-    # Remove from cache like individual delete operations do
     if rows_affected > 0:
         for obj in objects:
             if hasattr(obj, "id") and obj.id in ids:
@@ -32,21 +37,21 @@ async def bulk_delete(model_cls, objects):
     return rows_affected
 
 
-async def soft_delete(model_cls, **kwargs):
+async def soft_delete(model_cls: type[Model], **kwargs: Any) -> dict[str, Any]:
     from datetime import datetime
 
     return await update(model_cls, deleted_at=datetime.now(), **kwargs)
 
 
-async def restore(model_cls, **kwargs):
+async def restore(model_cls: type[Model], **kwargs: Any) -> dict[str, Any]:
     return await update(model_cls, deleted_at=None, **kwargs)
 
 
-async def purge(model_cls, **kwargs):
+async def purge(model_cls: type[Model], **kwargs: Any) -> int:
     return await delete(model_cls, deleted_at__isnull=False, **kwargs)
 
 
-async def delete_instance(instance):
+async def delete_instance(instance: Model) -> None:
     model_cls = instance.__class__
     pk_list = model_cls._meta.primary_keys
     if not pk_list:

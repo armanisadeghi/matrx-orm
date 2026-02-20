@@ -1,17 +1,24 @@
+from __future__ import annotations
+
+from typing import Any, Iterable, TYPE_CHECKING
+
 from matrx_utils import vcprint
 from matrx_orm.state import StateManager
 
 from ..core.expressions import F
 from ..query.builder import QueryBuilder
 
+if TYPE_CHECKING:
+    from matrx_orm.core.base import Model
+
 debug = False
 
 
-async def update(model_cls, filters, **kwargs):
+async def update(model_cls: type[Model], filters: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
     return await QueryBuilder(model_cls).filter(**filters).update(**kwargs)
 
 
-async def bulk_update(model_cls, objects, fields):
+async def bulk_update(model_cls: type[Model], objects: list[Model], fields: list[str]) -> int:
     """
     Enhanced bulk_update that works within the current ORM limitations.
     Uses controlled batch processing since the ORM doesn't support __in operators yet.
@@ -19,13 +26,11 @@ async def bulk_update(model_cls, objects, fields):
     if not objects or not fields:
         return 0
 
-    # Validate fields like individual operations do
     invalid_fields = [k for k in fields if k not in model_cls._fields]
     if invalid_fields:
         vcprint(model_cls._fields, "Model Fields", color="yellow")
         raise ValueError(f"Invalid fields for {model_cls.__name__}: {invalid_fields}")
 
-    # Extract objects with valid IDs
     valid_objects = [
         obj for obj in objects if hasattr(obj, "id") and obj.id is not None
     ]
@@ -34,15 +39,12 @@ async def bulk_update(model_cls, objects, fields):
 
     vcprint(f"Processing {len(valid_objects)} objects for bulk update...", color="blue")
 
-    # Since the ORM doesn't support __in operator yet, we'll use individual updates
-    # but process them efficiently with error handling and progress tracking
     rows_affected = 0
-    failed_updates = []
+    failed_updates: list[dict[str, Any]] = []
 
     for i, obj in enumerate(valid_objects):
         try:
-            # Prepare update data with proper field processing
-            update_data = {}
+            update_data: dict[str, Any] = {}
             for field_name in fields:
                 if field_name in model_cls._fields and hasattr(obj, field_name):
                     field = model_cls._fields[field_name]
@@ -51,17 +53,14 @@ async def bulk_update(model_cls, objects, fields):
                         update_data[field_name] = field.get_db_prep_value(value)
 
             if update_data:
-                # Use individual update through QueryBuilder (proven method)
                 result = (
                     await QueryBuilder(model_cls).filter(id=obj.id).update(**update_data)
                 )
                 if result.get("rows_affected", 0) > 0:
                     rows_affected += 1
 
-                    # Update cache like individual operations do
                     await StateManager.cache(model_cls, obj)
 
-            # Progress indicator for large batches
             if (i + 1) % 10 == 0:
                 vcprint(
                     f"Processed {i + 1}/{len(valid_objects)} updates...", color="cyan"
@@ -72,12 +71,11 @@ async def bulk_update(model_cls, objects, fields):
             failed_updates.append({"object": obj, "error": str(e)})
             continue
 
-    # Report results
     if failed_updates:
         vcprint(
             f"Bulk update completed with {len(failed_updates)} failures", color="yellow"
         )
-        for failure in failed_updates[:3]:  # Show first 3 failures
+        for failure in failed_updates[:3]:
             vcprint(
                 f"  Failed: {failure['object'].id} - {failure['error']}", color="red"
             )
@@ -89,7 +87,9 @@ async def bulk_update(model_cls, objects, fields):
     return rows_affected
 
 
-async def update_or_create(model_cls, defaults=None, **kwargs):
+async def update_or_create(
+    model_cls: type[Model], defaults: dict[str, Any] | None = None, **kwargs: Any
+) -> tuple[Model, bool]:
     """Fixed to use proper Model methods instead of non-existent model.objects"""
     defaults = defaults or {}
     try:
@@ -104,21 +104,21 @@ async def update_or_create(model_cls, defaults=None, **kwargs):
         return instance, True
 
 
-async def increment(model_cls, filters, **kwargs):
-    updates = {}
+async def increment(model_cls: type[Model], filters: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+    updates: dict[str, Any] = {}
     for field, amount in kwargs.items():
         updates[field] = F(field) + amount
     return await update(model_cls, filters, **updates)
 
 
-async def decrement(model_cls, filters, **kwargs):
-    updates = {}
+async def decrement(model_cls: type[Model], filters: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+    updates: dict[str, Any] = {}
     for field, amount in kwargs.items():
         updates[field] = F(field) - amount
     return await update(model_cls, filters, **updates)
 
 
-async def update_instance(instance, fields=None):
+async def update_instance(instance: Model, fields: Iterable[str] | None = None) -> Model:
     model_cls = instance.__class__
     pk_list = model_cls._meta.primary_keys
     if not pk_list:
@@ -128,9 +128,8 @@ async def update_instance(instance, fields=None):
     if pk_value is None:
         raise ValueError(f"Cannot update {model_cls.__name__}, {pk_name} is None")
 
-    update_data = {}
-    # If fields is specified, only update those; otherwise, update all non-None fields
-    field_names = (
+    update_data: dict[str, Any] = {}
+    field_names: Iterable[str] = (
         fields
         if fields is not None
         else [f for f in model_cls._fields if f != pk_name]
@@ -139,7 +138,7 @@ async def update_instance(instance, fields=None):
         if field_name == pk_name:
             continue
         value = getattr(instance, field_name, None)
-        if value is not None:  # Only include non-None values
+        if value is not None:
             field = model_cls._fields[field_name]
             update_data[field_name] = field.get_db_prep_value(value)
 
