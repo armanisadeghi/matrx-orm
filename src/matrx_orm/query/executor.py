@@ -16,6 +16,8 @@ if TYPE_CHECKING:
 
 debug = False
 
+_SKIP_PARAM = object()
+
 
 class QueryExecutor:
     model: type[Model]
@@ -32,6 +34,57 @@ class QueryExecutor:
         self._full_query_dict = query
         self.query, self.params = self._build_query()
 
+    _LOOKUP_OPERATORS = {
+        "in", "gt", "gte", "lt", "lte", "ne",
+        "isnull", "contains", "icontains",
+        "startswith", "endswith", "exclude",
+    }
+
+    @classmethod
+    def _parse_lookup(cls, key: str) -> tuple[str, str]:
+        """Parse 'field__operator' into (field_name, operator). Default operator is 'eq'."""
+        if "__" in key:
+            parts = key.rsplit("__", 1)
+            if parts[1] in cls._LOOKUP_OPERATORS:
+                return parts[0], parts[1]
+        return key, "eq"
+
+    @staticmethod
+    def _build_condition(field: str, operator: str, value: Any, param_idx: int) -> tuple[str, Any]:
+        """Build a SQL condition and its parameter for a given lookup operator.
+        
+        Returns (condition_sql, param_value). param_value is _SKIP_PARAM
+        for operators like isnull that don't need a bound parameter.
+        """
+        placeholder = f"${param_idx}"
+        if operator == "eq":
+            return f"{field} = {placeholder}", value
+        if operator == "ne":
+            return f"{field} != {placeholder}", value
+        if operator == "gt":
+            return f"{field} > {placeholder}", value
+        if operator == "gte":
+            return f"{field} >= {placeholder}", value
+        if operator == "lt":
+            return f"{field} < {placeholder}", value
+        if operator == "lte":
+            return f"{field} <= {placeholder}", value
+        if operator == "in":
+            return f"{field} = ANY({placeholder})", value
+        if operator == "isnull":
+            return (f"{field} IS NULL", _SKIP_PARAM) if value else (f"{field} IS NOT NULL", _SKIP_PARAM)
+        if operator == "contains":
+            return f"{field} LIKE {placeholder}", f"%{value}%"
+        if operator == "icontains":
+            return f"{field} ILIKE {placeholder}", f"%{value}%"
+        if operator == "startswith":
+            return f"{field} LIKE {placeholder}", f"{value}%"
+        if operator == "endswith":
+            return f"{field} LIKE {placeholder}", f"%{value}"
+        if operator == "exclude":
+            return f"{field} != {placeholder}", value
+        return f"{field} = {placeholder}", value
+
     def _build_query(self) -> tuple[str, list[Any]]:
         select_clause = ", ".join(self._full_query_dict["select"]) if self._full_query_dict["select"] else "*"
         sql = f"SELECT {select_clause} FROM {self._full_query_dict['table']}"
@@ -41,13 +94,15 @@ class QueryExecutor:
         filters = self._full_query_dict.get("filters", {})
         if filters:
             for key, value in filters.items():
-                field_name = key
+                field_name, operator = self._parse_lookup(key)
                 if hasattr(self.model, "_meta"):
-                    if key in self.model._meta.foreign_keys:
-                        fk_ref = self.model._meta.foreign_keys[key]
+                    if field_name in self.model._meta.foreign_keys:
+                        fk_ref = self.model._meta.foreign_keys[field_name]
                         field_name = fk_ref.field_name
-                where_conditions.append(f"{field_name} = ${len(params) + 1}")
-                params.append(value)
+                condition, param = self._build_condition(field_name, operator, value, len(params) + 1)
+                where_conditions.append(condition)
+                if param is not _SKIP_PARAM:
+                    params.append(param)
 
         if where_conditions:
             sql += " WHERE " + " AND ".join(where_conditions)

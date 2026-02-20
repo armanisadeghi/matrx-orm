@@ -21,7 +21,7 @@ async def update(model_cls: type[Model], filters: dict[str, Any], **kwargs: Any)
 async def bulk_update(model_cls: type[Model], objects: list[Model], fields: list[str]) -> int:
     """
     Enhanced bulk_update that works within the current ORM limitations.
-    Uses controlled batch processing since the ORM doesn't support __in operators yet.
+    Uses controlled batch processing for individual per-row updates.
     """
     if not objects or not fields:
         return 0
