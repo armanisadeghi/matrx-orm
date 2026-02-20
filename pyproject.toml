@@ -1,6 +1,6 @@
 [project]
 name = "matrx-orm"
-version = "1.3.0"
+version = "1.4.0"
 description = "Add your description here"
 readme = "README.md"
 authors = [
@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.scripts]
-matrx-orm = "matrx_orm:main"
+matrx-orm = "matrx_orm.migrations.cli:main"
 
 [build-system]
 requires = ["hatchling"]

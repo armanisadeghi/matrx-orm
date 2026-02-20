@@ -47,6 +47,20 @@ from .core.fields import (
     PrimitiveArrayField,
 )
 from .core.relations import ManyToManyField
+from .migrations import (
+    MigrationDB,
+    MigrationLoader,
+    MigrationState,
+    MigrationExecutor,
+    DDLGenerator,
+    SchemaDiff,
+    makemigrations,
+    migrate,
+    rollback,
+    status as migration_status,
+    create_empty,
+    migrate_and_rebuild,
+)
 
 __all__ = [
     "DatabaseProjectConfig",
@@ -95,4 +109,16 @@ __all__ = [
     "PrimitiveArrayField",
     "get_database_alias",
     "get_all_database_projects_redacted",
+    "MigrationDB",
+    "MigrationLoader",
+    "MigrationState",
+    "MigrationExecutor",
+    "DDLGenerator",
+    "SchemaDiff",
+    "makemigrations",
+    "migrate",
+    "migration_status",
+    "create_empty",
+    "rollback",
+    "migrate_and_rebuild",
 ]
