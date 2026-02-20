@@ -28,6 +28,13 @@ class QueryExecutor:
     params: list[Any]
 
     def __init__(self, query: dict[str, Any]) -> None:
+        _required = ("model", "database", "table")
+        _missing = [k for k in _required if k not in query]
+        if _missing:
+            raise QueryError(
+                message=f"Query dict missing required keys: {_missing}. Use QueryBuilder._build_query() to construct query dicts.",
+                details={"missing_keys": _missing, "provided_keys": list(query.keys())},
+            )
         self.model = query["model"]
         self.database = query["database"]
         self.db = AsyncDatabaseManager()

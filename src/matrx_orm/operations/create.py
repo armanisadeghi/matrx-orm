@@ -67,15 +67,10 @@ async def bulk_create(model_cls: type[Model], objects_data: list[dict[str, Any]]
                     data[field_name] = field.get_db_prep_value(value)
         data_list.append(data)
 
-    from ..query.executor import QueryExecutor
-
-    query: dict[str, Any] = {
-        "table": model_cls._meta.qualified_table_name,
-        "data": data_list,
-    }
+    query = QueryBuilder(model_cls)._build_query()
+    query["data"] = data_list
 
     executor = QueryExecutor(query)
-
     created_instances = await executor.bulk_insert(query)
 
     for instance in created_instances:

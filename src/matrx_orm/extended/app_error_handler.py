@@ -75,7 +75,7 @@ def handle_errors(func: _F) -> _F:
                         context[key] = e.details[key]
             error_message = e.message
         else:
-            error_message = str(e)
+            error_message = f"{type(e).__name__}: {e}"
 
         raise AppError(
             message=error_message,
