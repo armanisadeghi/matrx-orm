@@ -8,6 +8,7 @@ from uuid import UUID
 
 from matrx_utils import vcprint
 
+from matrx_orm.core.async_db_manager import run_sync
 from matrx_orm.core.base import Model, RuntimeContainer
 from matrx_orm.extended.app_error_handler import AppError, handle_errors
 
@@ -1211,7 +1212,7 @@ class BaseManager(Generic[ModelT]):
         if self.fetch_on_init_limit <= 0:
             return
 
-        asyncio.run(self._auto_fetch_on_init_async())
+        run_sync(self._auto_fetch_on_init_async())
 
     async def _auto_fetch_on_init_async(self) -> None:
         """Fetch items on initialization (async version with full DTO support)."""
@@ -1380,7 +1381,7 @@ class BaseManager(Generic[ModelT]):
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
-        return asyncio.run(self.load_item(use_cache=use_cache, **kwargs))
+        return run_sync(self.load_item(use_cache=use_cache, **kwargs))
 
     def load_item_or_none_sync(
         self, use_cache: bool = True, **kwargs: Any
@@ -1394,7 +1395,7 @@ class BaseManager(Generic[ModelT]):
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
-        return asyncio.run(self.load_item_or_none(use_cache=use_cache, **kwargs))
+        return run_sync(self.load_item_or_none(use_cache=use_cache, **kwargs))
 
     def load_items_sync(self, **kwargs: Any) -> list[ModelT]:
         """Synchronous wrapper for load_items()."""
@@ -1406,7 +1407,7 @@ class BaseManager(Generic[ModelT]):
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
-        return asyncio.run(self.load_items(**kwargs))
+        return run_sync(self.load_items(**kwargs))
 
     def load_by_id_sync(self, item_id: Any) -> ModelT:
         """Synchronous wrapper for load_by_id()."""
@@ -1418,7 +1419,7 @@ class BaseManager(Generic[ModelT]):
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
-        return asyncio.run(self.load_by_id(item_id))
+        return run_sync(self.load_by_id(item_id))
 
     def filter_items_sync(self, **kwargs: Any) -> list[ModelT]:
         """Synchronous wrapper for filter_items()."""
@@ -1430,7 +1431,7 @@ class BaseManager(Generic[ModelT]):
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
-        return asyncio.run(self.filter_items(**kwargs))
+        return run_sync(self.filter_items(**kwargs))
 
     def create_item_sync(self, **data: Any) -> ModelT:
         """Synchronous wrapper for create_item()."""
@@ -1442,7 +1443,7 @@ class BaseManager(Generic[ModelT]):
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
-        return asyncio.run(self.create_item(**data))
+        return run_sync(self.create_item(**data))
 
     def update_item_sync(self, item_id: Any, **updates: Any) -> ModelT:
         """Synchronous wrapper for update_item()."""
@@ -1454,7 +1455,7 @@ class BaseManager(Generic[ModelT]):
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
-        return asyncio.run(self.update_item(item_id, **updates))
+        return run_sync(self.update_item(item_id, **updates))
 
     def delete_item_sync(self, item_id: Any) -> bool:
         """Synchronous wrapper for delete_item()."""
@@ -1466,7 +1467,7 @@ class BaseManager(Generic[ModelT]):
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
-        return asyncio.run(self.delete_item(item_id))
+        return run_sync(self.delete_item(item_id))
 
     def get_or_create_sync(
         self, defaults: dict[str, Any] | None = None, **kwargs: Any
@@ -1480,7 +1481,7 @@ class BaseManager(Generic[ModelT]):
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
-        return asyncio.run(self.get_or_create(defaults=defaults, **kwargs))
+        return run_sync(self.get_or_create(defaults=defaults, **kwargs))
 
     def exists_sync(self, item_id: Any) -> bool:
         """Synchronous wrapper for exists()."""
@@ -1492,7 +1493,7 @@ class BaseManager(Generic[ModelT]):
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
-        return asyncio.run(self.exists(item_id))
+        return run_sync(self.exists(item_id))
 
     def get_active_items_sync(self) -> list[ModelT]:
         """Synchronous wrapper for get_active_items()."""
@@ -1504,7 +1505,7 @@ class BaseManager(Generic[ModelT]):
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
-        return asyncio.run(self.get_active_items())
+        return run_sync(self.get_active_items())
 
     def get_item_dict_sync(self, item_id: Any) -> dict[str, Any] | None:
         """Synchronous wrapper for get_item_dict()."""
@@ -1516,7 +1517,7 @@ class BaseManager(Generic[ModelT]):
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
-        return asyncio.run(self.get_item_dict(item_id))
+        return run_sync(self.get_item_dict(item_id))
 
     def get_items_dict_sync(self, **kwargs: Any) -> list[dict[str, Any] | None]:
         """Synchronous wrapper for get_items_dict()."""
@@ -1528,4 +1529,4 @@ class BaseManager(Generic[ModelT]):
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
-        return asyncio.run(self.get_items_dict(**kwargs))
+        return run_sync(self.get_items_dict(**kwargs))

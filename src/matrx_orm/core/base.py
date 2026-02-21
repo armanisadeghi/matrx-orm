@@ -17,6 +17,7 @@ from matrx_orm.operations import create, delete, update
 from matrx_orm.state import CachePolicy, StateManager
 
 from ..query.builder import QueryBuilder
+from .async_db_manager import run_sync
 from .fields import Field, ForeignKey
 from .relations import (
     ForeignKeyReference,
@@ -454,7 +455,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             if "no running event loop" not in str(e):
                 raise
 
-        return asyncio.run(cls.get(use_cache=use_cache, **kwargs))
+        return run_sync(cls.get(use_cache=use_cache, **kwargs))
 
     @classmethod
     async def get_or_none(cls, use_cache: bool = True, **kwargs: Any) -> Model | None:
@@ -484,7 +485,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             if "no running event loop" not in str(e):
                 raise
 
-        return asyncio.run(cls.get_or_none(use_cache=use_cache, **kwargs))
+        return run_sync(cls.get_or_none(use_cache=use_cache, **kwargs))
 
     @classmethod
     def filter(cls, **kwargs: Any) -> QueryBuilder:
@@ -505,7 +506,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             if "no running event loop" not in str(e):
                 raise
 
-        return asyncio.run(cls.filter(**kwargs).all())
+        return run_sync(cls.filter(**kwargs).all())
 
     @classmethod
     async def all(cls) -> list[Model]:
@@ -532,7 +533,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             if "no running event loop" not in str(e):
                 raise
 
-        return asyncio.run(cls.all())
+        return run_sync(cls.all())
 
     async def save(self, **kwargs: Any) -> Model:
         """Save the current state of the model instance."""

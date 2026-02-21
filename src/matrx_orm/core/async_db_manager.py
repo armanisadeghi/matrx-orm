@@ -228,6 +228,30 @@ class AsyncDatabaseManager:
             cls._locks.clear()
 
 
+def run_sync(coro):
+    """Run an async coroutine synchronously, ensuring all connection pools are
+    closed before the event loop shuts down.
+
+    Every call to asyncio.run() creates a fresh event loop. asyncpg pools are
+    bound to the loop they were created on; when the loop is torn down without
+    first closing the pool, Python emits ResourceWarning: unclosed connection
+    for every idle connection in the pool (min_size=5 by default means at least
+    5 warnings per call).
+
+    This helper wraps the caller's coroutine so that AsyncDatabaseManager.cleanup()
+    is always awaited at the end of the same event loop, regardless of whether the
+    coroutine succeeded or raised.
+    """
+
+    async def _wrapped():
+        try:
+            return await coro
+        finally:
+            await AsyncDatabaseManager.cleanup()
+
+    return asyncio.run(_wrapped())
+
+
 async def main():
     db = AsyncDatabaseManager()
     try:

@@ -829,6 +829,7 @@ The tag **must** match the version in `pyproject.toml` exactly.
 
 | Version | Highlights |
 |---|---|
+| **v1.4.3** | Fix `ResourceWarning: unclosed connection` on all sync wrapper methods by closing asyncpg pools before the event loop shuts down |
 | **v1.4.2** | Bug fixes: `bulk_create` key error, `ValidationError` API, `IntegrityError` call pattern |
 | **v1.4.1** | Fix bulk create and improve error reporting |
 | **v1.4.0** | Full PostgreSQL migration system (makemigrations, migrate, rollback, status, DDL generator, schema diff) |

@@ -4,6 +4,7 @@ import asyncio
 from typing import Any, Generic, TypeVar, TYPE_CHECKING
 
 from matrx_utils import vcprint
+from ..core.async_db_manager import run_sync
 from ..query.executor import QueryExecutor
 from ..exceptions import (
     DoesNotExist,
@@ -263,7 +264,7 @@ class QueryBuilder(Generic[ModelT]):
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
-        return asyncio.run(self.values(*fields))
+        return run_sync(self.values(*fields))
 
     def values_list_sync(self, *fields: str, flat: bool = False) -> list[tuple[Any, ...]] | list[Any]:
         """Synchronous wrapper for values_list()."""
@@ -273,7 +274,7 @@ class QueryBuilder(Generic[ModelT]):
         except RuntimeError as e:
             if "no running event loop" not in str(e):
                 raise
-        return asyncio.run(self.values_list(*fields, flat=flat))
+        return run_sync(self.values_list(*fields, flat=flat))
 
     async def __aiter__(self) -> Any:
         executor = self._get_executor()
