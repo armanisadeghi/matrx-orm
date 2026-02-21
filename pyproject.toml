@@ -1,7 +1,7 @@
 [project]
 name = "matrx-orm"
 version = "1.4.2"
-description = "Async PostgreSQL ORM with migrations, schema introspection, and many-to-many support. Works with any PostgreSQL database (Supabase, RDS, self-hosted)."
+description = "Async-first PostgreSQL ORM with bidirectional migrations, schema introspection, many-to-many relationships, and built-in state caching. Works with any PostgreSQL database."
 readme = "README.md"
 license = { text = "MIT" }
 authors = [
@@ -16,8 +16,11 @@ keywords = [
     "async",
     "asyncpg",
     "migrations",
+    "schema-builder",
+    "many-to-many",
     "supabase",
     "database",
+    "asyncio",
 ]
 requires-python = ">=3.10"
 classifiers = [
@@ -31,6 +34,10 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Database",
+    "Topic :: Database :: Front-Ends",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Framework :: AsyncIO",
+    "Typing :: Typed",
 ]
 dependencies = [
     "asyncpg>=0.30.0",
@@ -40,10 +47,18 @@ dependencies = [
     "matrx-utils>=1.0.4",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0",
+    "pytest-asyncio>=1.0",
+]
+
 [project.urls]
 Homepage = "https://github.com/armanisadeghi/matrx-orm"
 Repository = "https://github.com/armanisadeghi/matrx-orm"
 Documentation = "https://github.com/armanisadeghi/matrx-orm#readme"
+"Bug Tracker" = "https://github.com/armanisadeghi/matrx-orm/issues"
+Changelog = "https://github.com/armanisadeghi/matrx-orm/releases"
 
 [project.scripts]
 matrx-orm = "matrx_orm.migrations.cli:main"
