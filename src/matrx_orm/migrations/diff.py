@@ -14,6 +14,7 @@ from .ddl import (
     ForeignKeyDef,
 )
 from .operations import MigrationDB
+from .table_filter import TableFilter
 
 
 PG_TYPE_ALIASES: dict[str, str] = {
@@ -240,9 +241,15 @@ ORDER BY a.attnum
 class SchemaDiff:
     """Compares model definitions against the live database and produces migration operations."""
 
-    def __init__(self, db: MigrationDB, schema: str = "public") -> None:
+    def __init__(
+        self,
+        db: MigrationDB,
+        schema: str = "public",
+        table_filter: TableFilter | None = None,
+    ) -> None:
         self._db = db
         self._schema = schema
+        self._filter = table_filter
 
     def capture_model_state(self) -> dict[str, TableState]:
         """Extract the desired schema state from all registered ORM models."""
@@ -258,6 +265,8 @@ class SchemaDiff:
             if getattr(meta, "unfetchable", False):
                 continue
             if meta.db_schema and meta.db_schema != self._schema:
+                continue
+            if self._filter is not None and not self._filter.is_included(meta.table_name):
                 continue
 
             table = TableState(name=meta.table_name, schema=self._schema)
@@ -294,6 +303,8 @@ class SchemaDiff:
             tname = trow["table_name"]
             if tname == "_matrx_migrations":
                 continue
+            if self._filter is not None and not self._filter.is_included(tname):
+                continue
             table = TableState(name=tname, schema=self._schema)
 
             col_rows = await self._db.fetch(INTROSPECT_COLUMNS_SQL, tname, self._schema)
@@ -322,6 +333,9 @@ class SchemaDiff:
         """Compare model state vs DB state and return a list of operations."""
         model_state = self.capture_model_state()
         db_state = await self.capture_db_state()
+
+        if self._filter is not None:
+            self._filter.warn_cross_references(model_state)
         ops: list[Operation] = []
 
         model_tables = set(model_state.keys())

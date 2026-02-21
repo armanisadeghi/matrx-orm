@@ -4,6 +4,7 @@ from .state import MigrationState
 from .executor import MigrationExecutor
 from .ddl import DDLGenerator, ColumnDef, ForeignKeyDef, IndexDef, ConstraintDef, AlterColumnChanges
 from .diff import SchemaDiff
+from .table_filter import TableFilter
 from .cli import makemigrations, migrate, rollback, status, create_empty
 from .integration import migrate_and_rebuild, rebuild_schema
 
@@ -19,6 +20,7 @@ __all__ = [
     "ConstraintDef",
     "AlterColumnChanges",
     "SchemaDiff",
+    "TableFilter",
     "makemigrations",
     "migrate",
     "rollback",

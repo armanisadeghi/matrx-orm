@@ -39,6 +39,7 @@
 | **Relationships** | ForeignKey, InverseForeignKey, ManyToMany (declarative or config-based) |
 | **Resilient FK fetch** | `_unfetchable` flag silences errors for FKs pointing to inaccessible tables (e.g., Supabase `auth.users`) |
 | **Bidirectional migrations** | Model-first, SQL-first, or hybrid; auto-generate migrations from schema diffs |
+| **Scoped migrations** | `TableFilter` lets you include or exclude specific tables from the migration diff — with cross-reference warnings |
 | **Schema introspection** | Generate Python models and typed managers from an existing database schema |
 | **State caching** | Per-model in-memory cache with configurable TTL policies (permanent, long-term, short-term, instant) |
 | **BaseManager** | High-level manager class with built-in CRUD, bulk ops, and relationship helpers |
@@ -641,6 +642,80 @@ CREATE TABLE _matrx_migrations (
 
 The checksum detects if a migration file was modified after being applied, alerting you before the next run.
 
+### Scoped migrations — include or exclude tables
+
+Use `TableFilter` when you only want to diff a subset of your schema. Pass either an **include** list (allowlist) or an **exclude** list (denylist) — never both at the same time.
+
+**CLI — include-only (only diff these tables):**
+
+```bash
+matrx-orm makemigrations --database my_project --dir migrations \
+    --include-tables user post comment
+```
+
+**CLI — exclude (diff everything except these tables):**
+
+```bash
+matrx-orm makemigrations --database my_project --dir migrations \
+    --exclude-tables legacy_audit scratch_pad
+```
+
+`--include-tables` and `--exclude-tables` are mutually exclusive; passing both is a CLI error.
+
+**Programmatic — include-only:**
+
+```python
+from matrx_orm import makemigrations
+
+await makemigrations(
+    "my_project",
+    "./migrations",
+    include_tables={"user", "post", "comment"},
+)
+```
+
+**Programmatic — exclude:**
+
+```python
+await makemigrations(
+    "my_project",
+    "./migrations",
+    exclude_tables={"legacy_audit", "scratch_pad"},
+)
+```
+
+**Using `TableFilter` directly with `SchemaDiff`:**
+
+```python
+from matrx_orm import SchemaDiff, TableFilter
+from matrx_orm.migrations import MigrationDB
+
+db = MigrationDB("my_project")
+f = TableFilter(include={"user", "post"})
+diff = SchemaDiff(db, schema="public", table_filter=f)
+path = await diff.generate_migration_file("migrations/")
+```
+
+#### Cross-reference warnings
+
+When an included table has a foreign key column that references a table *outside* the migration scope, `matrx-orm` emits a `UserWarning` — the FK constraint will still be generated in the SQL, but the referenced table won't be created or managed by this migration set. Ensure it already exists in the target database.
+
+```
+UserWarning: [matrx-orm] Cross-scope FK detected: 'post.author_id' references 'user',
+which is outside the current migration scope. The FK constraint will be included
+in the generated SQL, but 'user' will not be created or managed by this migration
+set. Ensure it already exists in the target database.
+```
+
+To suppress these warnings intentionally:
+
+```python
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="matrx_orm")
+```
+
+> **Note:** Table filtering applies only to `makemigrations` (the diff/generation step). `migrate` and `rollback` apply already-generated migration files in full — there is nothing to filter at that stage.
+
 See [MIGRATIONS.md](MIGRATIONS.md) for full documentation.
 
 ---
@@ -806,22 +881,21 @@ Covers: real CRUD, bulk ops, query execution, FK/IFK fetching, M2M operations, c
 
 ## Publishing
 
-Releases are triggered by a version tag. To cut a new release:
+Releases are triggered by a version tag. GitHub Actions builds the wheel and publishes to PyPI automatically when a matching tag is pushed.
 
-1. Update `version` in `pyproject.toml`
-2. Commit all changes
-3. Create and push a tag matching the version:
+To cut a new release:
+
+1. Update `version` in `pyproject.toml` to the new version string (e.g. `1.5.0`).
+2. Commit all changes, tag, and push — replace `X.Y.Z` with the actual version:
 
 ```bash
 git add -A
-git commit -m "chore: release v1.4.2"
-git tag v1.4.2
+git commit -m "chore: release vX.Y.Z"
+git tag vX.Y.Z
 git push origin main --tags
 ```
 
-4. GitHub Actions builds the wheel and publishes to PyPI automatically.
-
-The tag **must** match the version in `pyproject.toml` exactly.
+The tag **must** match the `version` field in `pyproject.toml` exactly (e.g. tag `v1.5.0` for version `1.5.0`). A mismatch will fail the publish step.
 
 ---
 
@@ -829,6 +903,7 @@ The tag **must** match the version in `pyproject.toml` exactly.
 
 | Version | Highlights |
 |---|---|
+| **v1.5.1** | Scoped migrations: `TableFilter` with include-only and exclude modes; cross-scope FK warnings; `--include-tables` / `--exclude-tables` CLI flags |
 | **v1.4.3** | Fix `ResourceWarning: unclosed connection` on all sync wrapper methods by closing asyncpg pools before the event loop shuts down |
 | **v1.4.2** | Bug fixes: `bulk_create` key error, `ValidationError` API, `IntegrityError` call pattern |
 | **v1.4.1** | Fix bulk create and improve error reporting |

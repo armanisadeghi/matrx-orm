@@ -17,6 +17,7 @@ from .loader import MigrationLoader
 from .state import MigrationState
 from .executor import MigrationExecutor
 from .diff import SchemaDiff
+from .table_filter import TableFilter
 from .integration import migrate_and_rebuild as _migrate_and_rebuild
 
 
@@ -30,14 +31,37 @@ async def makemigrations(
     migrations_dir: str | Path = "migrations",
     name: str | None = None,
     schema: str = "public",
+    include_tables: set[str] | None = None,
+    exclude_tables: set[str] | None = None,
 ) -> Path | None:
     """Run the diff engine and generate a new migration file.
 
     Returns the path to the generated migration file, or ``None`` if
     there are no pending changes.
+
+    Parameters
+    ----------
+    database:
+        Database config name.
+    migrations_dir:
+        Directory where migration files are stored.
+    name:
+        Optional name suffix for the generated file.
+    schema:
+        PostgreSQL schema to diff (default ``"public"``).
+    include_tables:
+        When provided, *only* these table names are included in the diff.
+        Mutually exclusive with ``exclude_tables``.
+    exclude_tables:
+        When provided, these table names are skipped during the diff.
+        Mutually exclusive with ``include_tables``.
     """
+    table_filter: TableFilter | None = None
+    if include_tables is not None or exclude_tables is not None:
+        table_filter = TableFilter(include=include_tables, exclude=exclude_tables)
+
     db = MigrationDB(database)
-    diff = SchemaDiff(db, schema=schema)
+    diff = SchemaDiff(db, schema=schema, table_filter=table_filter)
     path = await diff.generate_migration_file(migrations_dir, name=name)
     if path:
         _out(f"Created migration: {path}")
@@ -161,6 +185,10 @@ async def migrate_rebuild(
     """Apply pending migrations then regenerate models from the updated DB.
 
     Returns the result dict from ``migrate_and_rebuild``.
+
+    Note: table filtering (``include_tables`` / ``exclude_tables``) applies only
+    to :func:`makemigrations` (the diff/generation step).  This command applies
+    already-generated migration files in full, so no filtering is relevant here.
     """
     result = await _migrate_and_rebuild(
         database=database,
@@ -189,6 +217,21 @@ def _build_parser() -> argparse.ArgumentParser:
     mk.add_argument("--dir", default="migrations", help="Migrations directory")
     mk.add_argument("--name", default=None, help="Migration name suffix")
     mk.add_argument("--schema", default="public", help="Database schema to diff")
+    mk_scope = mk.add_mutually_exclusive_group()
+    mk_scope.add_argument(
+        "--include-tables",
+        nargs="+",
+        metavar="TABLE",
+        default=None,
+        help="Only diff these tables (space-separated). Mutually exclusive with --exclude-tables.",
+    )
+    mk_scope.add_argument(
+        "--exclude-tables",
+        nargs="+",
+        metavar="TABLE",
+        default=None,
+        help="Skip these tables during diff (space-separated). Mutually exclusive with --include-tables.",
+    )
 
     mg = sub.add_parser("migrate", help="Apply all pending migrations")
     mg.add_argument("--database", required=True, help="Database config name")
@@ -228,7 +271,13 @@ def main(argv: list[str] | None = None) -> None:
 
     match args.command:
         case "makemigrations":
-            asyncio.run(makemigrations(args.database, args.dir, name=args.name, schema=args.schema))
+            asyncio.run(makemigrations(
+                args.database, args.dir,
+                name=args.name,
+                schema=args.schema,
+                include_tables=set(args.include_tables) if args.include_tables else None,
+                exclude_tables=set(args.exclude_tables) if args.exclude_tables else None,
+            ))
         case "migrate":
             asyncio.run(migrate(args.database, args.dir))
         case "rollback":
@@ -239,7 +288,8 @@ def main(argv: list[str] | None = None) -> None:
             asyncio.run(create_empty(args.database, args.dir, name=args.name))
         case "migrate_rebuild":
             asyncio.run(migrate_rebuild(
-                args.database, args.dir, schema=args.schema,
+                args.database, args.dir,
+                schema=args.schema,
                 database_project=args.database_project,
             ))
         case _:
