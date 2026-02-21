@@ -903,6 +903,7 @@ The tag **must** match the `version` field in `pyproject.toml` exactly (e.g. tag
 
 | Version | Highlights |
 |---|---|
+| **v1.5.2** | Fix migration dependency name bug — generated files now reference the full preceding migration stem (e.g. `"0001_baseline"`) instead of just the zero-padded number (`"0001"`) |
 | **v1.5.1** | Scoped migrations: `TableFilter` with include-only and exclude modes; cross-scope FK warnings; `--include-tables` / `--exclude-tables` CLI flags |
 | **v1.4.3** | Fix `ResourceWarning: unclosed connection` on all sync wrapper methods by closing asyncpg pools before the event loop shuts down |
 | **v1.4.2** | Bug fixes: `bulk_create` key error, `ValidationError` API, `IntegrityError` call pattern |

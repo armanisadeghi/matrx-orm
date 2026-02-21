@@ -454,8 +454,9 @@ class SchemaDiff:
         if not ops:
             return None
 
+        loader = MigrationLoader(migrations_dir)
+
         if number is None:
-            loader = MigrationLoader(migrations_dir)
             number = loader.next_number()
 
         if name is None:
@@ -472,8 +473,21 @@ class SchemaDiff:
             for sql in op.to_down_sql():
                 down_lines.append(f'    await db.execute("""{sql}""")')
 
-        prev_number = number - 1
-        deps = f'["{prev_number:04d}"]' if prev_number > 0 else "[]"
+        # Resolve the actual preceding migration stem rather than assuming the
+        # filename is just the zero-padded number.  Relying on the number alone
+        # produces an incorrect dependency like "0001" when the real stem is
+        # "0001_auto", which causes _validate_graph to reject the migration.
+        prev_dep: str | None = None
+        if number > 1 and loader.migrations:
+            for stem in reversed(sorted(loader.migrations.keys())):
+                try:
+                    if int(stem[:4]) < number:
+                        prev_dep = stem
+                        break
+                except ValueError:
+                    pass
+
+        deps = f'["{prev_dep}"]' if prev_dep else "[]"
 
         description = self._describe_ops(ops)
         content = (
