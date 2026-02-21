@@ -748,6 +748,32 @@ from matrx_orm import migrate_and_rebuild
 await migrate_and_rebuild("my_project", "./migrations", output_dir="./database/main")
 ```
 
+### Scoped introspection — include or exclude tables
+
+Pass `include_tables` or `exclude_tables` (mutually exclusive) to limit which tables are introspected, modelled, and code-generated:
+
+```python
+from matrx_orm.schema_builder import SchemaManager
+
+# Include-only: generate models for exactly these tables
+manager = SchemaManager(
+    schema="public",
+    database_project="my_project",
+    include_tables={"user", "post", "comment"},
+)
+manager.initialize()
+manager.schema.generate_models()
+
+# Exclude: generate models for everything except these tables
+manager = SchemaManager(
+    schema="public",
+    database_project="my_project",
+    exclude_tables={"legacy_audit", "scratch_pad"},
+)
+manager.initialize()
+manager.schema.generate_models()
+```
+
 ---
 
 ## BaseManager
@@ -903,6 +929,7 @@ The tag **must** match the `version` field in `pyproject.toml` exactly (e.g. tag
 
 | Version | Highlights |
 |---|---|
+| **v1.5.3** | `SchemaManager` now accepts `include_tables` and `exclude_tables` to generate models/managers for a specific subset of tables |
 | **v1.5.2** | Fix migration dependency name bug — generated files now reference the full preceding migration stem (e.g. `"0001_baseline"`) instead of just the zero-padded number (`"0001"`) |
 | **v1.5.1** | Scoped migrations: `TableFilter` with include-only and exclude modes; cross-scope FK warnings; `--include-tables` / `--exclude-tables` CLI flags |
 | **v1.4.3** | Fix `ResourceWarning: unclosed connection` on all sync wrapper methods by closing asyncpg pools before the event loop shuts down |
