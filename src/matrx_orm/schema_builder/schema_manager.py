@@ -54,6 +54,11 @@ class SchemaManager:
         self._include_tables: set[str] | None = set(include_tables) if include_tables is not None else None
         self._exclude_tables: set[str] | None = set(exclude_tables) if exclude_tables is not None else None
 
+        # Propagate filter to the Schema so generate_models() can apply it at
+        # write-time without touching any loading or relationship logic.
+        self.schema._include_tables = self._include_tables
+        self.schema._exclude_tables = self._exclude_tables
+
     def _is_table_included(self, table_name: str) -> bool:
         """Return True if *table_name* should be processed given the current filter."""
         if self._include_tables is not None:
@@ -98,22 +103,10 @@ class SchemaManager:
             self.overview_analysis,
         ) = get_db_objects(self.schema.name, self.database_project)
 
-        # When a table filter is active, strip relationship/overview data for
-        # excluded tables so that downstream methods (get_full_relationship_analysis,
-        # load_table_relationships, etc.) never try to resolve them.
-        if self._include_tables is not None or self._exclude_tables is not None:
-            self.full_relationships = [
-                r for r in self.full_relationships
-                if self._is_table_included(r["table_name"])
-            ]
-            self.overview_analysis = {
-                k: v for k, v in self.overview_analysis.items()
-                if self._is_table_included(k)
-            }
-            self.full_junction_analysis = {
-                k: v for k, v in self.full_junction_analysis.items()
-                if self._is_table_included(k)
-            }
+        # NOTE: no filtering here — all relationship/overview data loads in full so
+        # that topological sort, FK resolution, and relationship analysis are always
+        # correct.  The filter is applied in Schema.generate_models() just before
+        # code is written.
 
         self.utils.set_and_update_ts_enum_list(self.all_enum_base_types)
 
@@ -149,8 +142,6 @@ class SchemaManager:
 
         for obj in self.processed_objects:
             if obj["type"] == "table":
-                if not self._is_table_included(obj["name"]):
-                    continue
                 self.load_table(obj)
             elif obj["type"] == "view":
                 self.load_view(obj)

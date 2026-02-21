@@ -57,6 +57,8 @@ class Schema:
         self.info = schema_builder_info
         self.save_direct = save_direct
         self.initialized = False
+        self._include_tables: set[str] | None = None
+        self._exclude_tables: set[str] | None = None
 
         vcprint(
             self.to_dict(),
@@ -652,6 +654,15 @@ class Schema:
 
             for table_name in ready_tables:
                 remaining_tables.remove(table_name)
+
+        # Apply table filter at the last possible moment — all dependency resolution
+        # and topological sorting above ran on the full table set so relationships are
+        # always correct.  When no filter is configured this block is a no-op and the
+        # behaviour is 100% identical to an unfiltered run.
+        if self._include_tables is not None:
+            sorted_tables = [t for t in sorted_tables if t in self._include_tables]
+        elif self._exclude_tables is not None:
+            sorted_tables = [t for t in sorted_tables if t not in self._exclude_tables]
 
         py_structure = [self.get_string_user_model()]
         all_field_types = {"UUIDField", "CharField", "Model"}
