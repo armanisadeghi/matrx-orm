@@ -172,7 +172,7 @@ class QueryExecutor:
         data = query.get("data", {})
 
         if not data:
-            raise ValidationError("No data provided for insert")
+            raise ValidationError(message="No data provided for insert")
 
         columns = list(data.keys())
         values = list(data.values())
@@ -183,11 +183,11 @@ class QueryExecutor:
         try:
             rows = await self.db.execute_query(self.database, sql, *values)
             if not rows:
-                raise ValidationError("Insert succeeded but returned no data")
+                raise ValidationError(message="Insert succeeded but returned no data")
             return rows[0]
         except DatabaseError as e:
             if "unique constraint" in str(e).lower():
-                raise IntegrityError(str(e))
+                raise IntegrityError(original_error=e)
             raise DatabaseError(str(e))
 
     async def bulk_insert(self, query: dict[str, Any]) -> list[Model]:

@@ -106,8 +106,24 @@ class TestSanitizeDetails:
 class TestSubclasses:
     def test_validation_error(self):
         e = ValidationError(model=FakeModel, field="email", value="bad", reason="invalid format")
-        assert "Validation failed" in e.message
+        assert "invalid format" in e.message
         assert e.details["field"] == "email"
+
+    def test_validation_error_positional_message(self):
+        """Regression: ValidationError("msg") must work — string was wrongly interpreted as model."""
+        e = ValidationError("No data provided for insert")
+        assert e.message == "No data provided for insert"
+        assert e.model == "Unknown Model"
+
+    def test_validation_error_with_details(self):
+        """ValidationError supports details kwarg for extra context."""
+        e = ValidationError(
+            model=FakeModel,
+            reason="Data must be a list of dictionaries",
+            details={"provided_type": "str"},
+        )
+        assert "list of dictionaries" in e.message
+        assert e.details["provided_type"] == "str"
 
     def test_does_not_exist(self):
         e = DoesNotExist(model=FakeModel, filters={"id": 1})

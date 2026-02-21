@@ -1,10 +1,15 @@
 
+_RED = "\033[91m"
+_RESET = "\033[0m"
+
 
 class ORMException(Exception):
     """Base exception class for all ORM-related errors."""
 
     def __init__(self, message=None, model=None, details=None, class_name=None, method_name=None):
-        self.model = model.__name__ if model else "Unknown Model"
+        self.model = (
+            model.__name__ if hasattr(model, "__name__") else str(model) if model else "Unknown Model"
+        )
         self.details = self._sanitize_details(details or {})
         self._message = message
         self.class_name = class_name
@@ -86,18 +91,112 @@ class ORMException(Exception):
 
 
 class ValidationError(ORMException):
-    """Raised when data validation fails."""
+    """Raised when data validation fails.
 
-    def __init__(self, model=None, field=None, value=None, reason=None):
-        details = {"field": field, "value": value, "reason": reason}
-        message = f"Validation failed for {field if field else 'model'}"
-        super().__init__(message=message, model=model, details=details)
+    Supports multiple call patterns:
+        ValidationError("No data provided for insert")
+        ValidationError(reason="...", model=MyModel)
+        ValidationError(model=MyModel, reason="...", details={"invalid_fields": [...]})
+    """
+
+    def __init__(
+        self,
+        message=None,
+        model=None,
+        field=None,
+        value=None,
+        reason=None,
+        details=None,
+    ):
+        # Support ValidationError("msg") — first positional string is the message
+        if message is None and reason:
+            message = reason
+        elif message is None:
+            message = f"Validation failed for {field if field else 'model'}"
+
+        merged_details = {"field": field, "value": value, "reason": reason}
+        if details:
+            merged_details.update(details)
+        super().__init__(message=message, model=model, details=merged_details)
+
+    def format_message(self):
+        reason = self.details.get("reason")
+        field = self.details.get("field")
+        value = self.details.get("value")
+        lines = ["\n" + "-" * 80]
+        lines.append("Matrx ORM  |  ValidationError")
+        lines.append("")
+        lines.append(self.message)
+        if reason:
+            lines.append(f"  Reason:  {reason}")
+        if field and field != "multiple":
+            lines.append(f"  Field:   {field}")
+        if value is not None:
+            lines.append(f"  Value:   {value}")
+        lines.append("")
+        lines.append("Hint:")
+        # Contextual hints based on the reason string
+        if reason and "no update data" in reason.lower():
+            lines.append("  - You called update() or save() without passing any fields to change.")
+            lines.append("  - Ensure you are passing at least one keyword argument, e.g. update(status='active').")
+        elif reason and "invalid field" in reason.lower():
+            lines.append("  - One or more field names you passed do not exist on this model.")
+            lines.append("  - Check the model definition for the exact field names (case-sensitive).")
+            lines.append("  - Fields marked is_native=False (computed/virtual) cannot be updated directly.")
+        elif reason and "no lookup criteria" in reason.lower():
+            lines.append("  - You called get() or a cache lookup without any filter arguments.")
+            lines.append("  - Pass at least one field to match on, e.g. get(id='...').")
+        elif reason and "no data provided" in reason.lower():
+            lines.append("  - You called create() or insert() with an empty data dict.")
+            lines.append("  - Ensure the object has at least the required fields set before saving.")
+        elif reason and "cannot cache none" in reason.lower():
+            lines.append("  - The record returned from the database was None and cannot be cached.")
+            lines.append("  - Check that your query actually returns a record before caching it.")
+        else:
+            lines.append("  - Verify the field name exists on the model and the value is the correct type.")
+            lines.append("  - Check that required fields are populated before calling save() or create().")
+        lines.append("-" * 80 + "\n")
+        body = "\n".join(lines)
+        return f"{_RED}{body}{_RESET}"
 
 
 class QueryError(ORMException):
     """Base class for query-related errors."""
 
-    pass
+    def format_message(self):
+        error = self.details.get("error", "")
+        query = self.details.get("query", "")
+        operation = self.details.get("operation", "")
+        missing_keys = self.details.get("missing_keys", [])
+        lines = ["\n" + "-" * 80]
+        lines.append("Matrx ORM  |  QueryError")
+        lines.append("")
+        lines.append(self.message)
+        if operation:
+            lines.append(f"  Operation: {operation}")
+        if missing_keys:
+            lines.append(f"  Missing:   {missing_keys}")
+        if error:
+            lines.append(f"  Detail:    {error}")
+        if query:
+            short_query = str(query)[:300] + ("..." if len(str(query)) > 300 else "")
+            lines.append(f"  Query:     {short_query}")
+        lines.append("")
+        lines.append("Hint:")
+        if missing_keys:
+            lines.append("  - QueryExecutor requires a properly constructed query dict.")
+            lines.append("  - Do not instantiate QueryExecutor directly. Use QueryBuilder,")
+            lines.append("    which calls QueryBuilder._build_query() to produce the correct dict.")
+        elif "syntax" in str(error).lower() or "syntax" in self.message.lower():
+            lines.append("  - The SQL generated by the ORM was rejected by PostgreSQL for invalid syntax.")
+            lines.append("  - This is likely an ORM bug. Please report the Query above.")
+        else:
+            lines.append("  - An error occurred while executing a query that was not caught by a")
+            lines.append("    more specific exception handler.")
+            lines.append("  - Check the Detail and Query above for the root cause.")
+        lines.append("-" * 80 + "\n")
+        body = "\n".join(lines)
+        return f"{_RED}{body}{_RESET}"
 
 
 class DoesNotExist(QueryError):
@@ -116,16 +215,27 @@ class DoesNotExist(QueryError):
         )
 
     def format_message(self):
-        """Override to provide a cleaner, less alarming message"""
-        msg = ["\n" + "-" * 80 + "\n"]
-        msg.append("NOTICE: Requested item not found")
-        msg.append(f"\n{self.message}")
+        lines = ["\n" + "-" * 80]
+        lines.append("Matrx ORM  |  DoesNotExist")
+        lines.append("")
+        lines.append("NOTICE: Requested item not found")
+        lines.append("")
+        lines.append(self.message)
         if self.details.get("filters"):
-            msg.append("\nSearch criteria:")
+            lines.append("")
+            lines.append("Search criteria:")
             for k, v in self.details["filters"].items():
-                msg.append(f"  {k}: {v}")
-        msg.append("\n" + "-" * 80 + "\n")
-        return "\n".join(msg)
+                lines.append(f"  {k}: {v}")
+        lines.append("")
+        lines.append("Hint:")
+        lines.append("  - Use get() when the record is expected to exist — this error is intentional.")
+        lines.append("  - Use get_or_none() when a missing record is a valid, handled outcome.")
+        lines.append("  - Use filter(...).first() to get the first match or None without raising.")
+        lines.append("")
+        lines.append("This is not an ORM bug. The record does not exist in the database.")
+        lines.append("-" * 80 + "\n")
+        body = "\n".join(lines)
+        return f"{_RED}{body}{_RESET}"
 
 
 class MultipleObjectsReturned(QueryError):
@@ -136,6 +246,29 @@ class MultipleObjectsReturned(QueryError):
         filter_str = ", ".join(f"{k}={v}" for k, v in details["filters"].items())
         message = f"Found {count} objects when expecting one. Filters: {filter_str}"
         super().__init__(message=message, model=model, details=details)
+
+    def format_message(self):
+        count = self.details.get("count", "?")
+        lines = ["\n" + "-" * 80]
+        lines.append("Matrx ORM  |  MultipleObjectsReturned")
+        lines.append("")
+        lines.append(f"ERROR: get() returned {count} records — exactly one was expected")
+        lines.append("")
+        lines.append(self.message)
+        if self.details.get("filters"):
+            lines.append("")
+            lines.append("Search criteria:")
+            for k, v in self.details["filters"].items():
+                lines.append(f"  {k}: {v}")
+        lines.append("")
+        lines.append("Hint:")
+        lines.append("  - Your filter criteria matched more than one row.")
+        lines.append("  - Use filter(...).all() if multiple results are valid.")
+        lines.append("  - Use filter(...).first() to silently take the first match.")
+        lines.append("  - Narrow your filter (e.g. add unique fields like id or email).")
+        lines.append("-" * 80 + "\n")
+        body = "\n".join(lines)
+        return f"{_RED}{body}{_RESET}"
 
 
 class DatabaseError(ORMException):
@@ -152,6 +285,31 @@ class ConnectionError(DatabaseError):
         message = f"Failed to connect to database: {original_error}"
         super().__init__(message=message, model=model, details=details)
 
+    def format_message(self):
+        db_url = self.details.get("db_url", "")
+        original = self.details.get("original_error", "")
+        lines = ["\n" + "-" * 80]
+        lines.append("Matrx ORM  |  ConnectionError")
+        lines.append("")
+        lines.append(self.message)
+        if db_url:
+            lines.append(f"  Target:   {db_url}")
+        if original:
+            lines.append(f"  DB error: {original}")
+        lines.append("")
+        lines.append("Hint:")
+        lines.append("  - asyncpg could not establish a connection to the database.")
+        lines.append("  - This is raised in two cases:")
+        lines.append("      1. Connection pool creation failed (wrong host/port/credentials).")
+        lines.append("      2. A live connection was lost mid-operation (ConnectionDoesNotExistError).")
+        lines.append("  - Verify the host, port, database_name, user, and password in your")
+        lines.append("    DatabaseProjectConfig registration.")
+        lines.append("  - Check that the database server is reachable from this environment.")
+        lines.append("  - SSL is required — ensure the database accepts SSL connections.")
+        lines.append("-" * 80 + "\n")
+        body = "\n".join(lines)
+        return f"{_RED}{body}{_RESET}"
+
 
 class IntegrityError(DatabaseError):
     """Raised for database integrity violations."""
@@ -160,6 +318,35 @@ class IntegrityError(DatabaseError):
         details = {"constraint": constraint, "original_error": str(original_error)}
         message = f"Database integrity error: {original_error}"
         super().__init__(message=message, model=model, details=details)
+
+    def format_message(self):
+        constraint = self.details.get("constraint", "unknown")
+        original = self.details.get("original_error", "")
+        lines = ["\n" + "-" * 80]
+        lines.append("Matrx ORM  |  IntegrityError")
+        lines.append("")
+        lines.append(self.message)
+        if constraint and constraint != "unknown":
+            lines.append(f"  Constraint: {constraint}")
+        if original:
+            lines.append(f"  DB error:   {original}")
+        lines.append("")
+        lines.append("Hint:")
+        if constraint == "unique":
+            lines.append("  - A record with these values already exists in the database.")
+            lines.append("  - Use get_or_none() to check before inserting, or update the existing record.")
+            lines.append("  - If this is expected (e.g. race condition), wrap the call in a try/except IntegrityError.")
+        elif constraint == "foreign_key":
+            lines.append("  - The referenced record does not exist in the related table.")
+            lines.append("  - Ensure the parent record is created before the child.")
+            lines.append("  - Verify the foreign key ID is valid and the related model is saved.")
+        else:
+            lines.append("  - The database rejected the write due to a constraint violation.")
+            lines.append("  - Check for unique constraints, foreign key references, or NOT NULL fields.")
+            lines.append("  - Review the DB error above for the specific constraint name.")
+        lines.append("-" * 80 + "\n")
+        body = "\n".join(lines)
+        return f"{_RED}{body}{_RESET}"
 
 
 class TransactionError(DatabaseError):
@@ -179,6 +366,34 @@ class ConfigurationError(ORMException):
         message = f"Configuration error for {config_key}: {reason}"
         super().__init__(message=message, model=model, details=details)
 
+    def format_message(self):
+        config_key = self.details.get("config_key", "")
+        reason = self.details.get("reason", "")
+        lines = ["\n" + "-" * 80]
+        lines.append("Matrx ORM  |  ConfigurationError")
+        lines.append("")
+        lines.append(self.message)
+        if config_key:
+            lines.append(f"  Config key: {config_key}")
+        if reason:
+            lines.append(f"  Reason:     {reason}")
+        lines.append("")
+        lines.append("Hint:")
+        if config_key in ("model_state", "state_registration"):
+            lines.append("  - The model failed to initialize with the StateManager.")
+            lines.append("  - Ensure the model is registered via model_registry before making queries.")
+            lines.append("  - Check that the model class defines _meta, _database, and primary_keys.")
+        else:
+            lines.append("  - A database configuration was referenced that has not been registered.")
+            lines.append("  - Call register_database(DatabaseProjectConfig(...)) at startup before")
+            lines.append("    any model queries run.")
+            lines.append("  - Verify the config_key matches exactly what was passed to register_database().")
+            lines.append("  - Check that all required env vars (host, port, user, password, database_name)")
+            lines.append("    are set and non-empty.")
+        lines.append("-" * 80 + "\n")
+        body = "\n".join(lines)
+        return f"{_RED}{body}{_RESET}"
+
 
 class CacheError(ORMException):
     """Raised when there's an error related to caching."""
@@ -189,6 +404,36 @@ class CacheError(ORMException):
             details["original_error"] = str(original_error)
         message = f"Cache operation '{operation}' failed"
         super().__init__(message=message, model=model, details=details)
+
+    def format_message(self):
+        operation = self.details.get("operation") or ""
+        original = self.details.get("original_error", "")
+        lines = ["\n" + "-" * 80]
+        lines.append("Matrx ORM  |  CacheError")
+        lines.append("")
+        lines.append(self.message)
+        if original:
+            lines.append(f"  Cause:     {original}")
+        lines.append("")
+        lines.append("Hint:")
+        if operation in ("get_cache_key", "find_in_cache", "check_staleness"):
+            lines.append("  - An error occurred inside the in-memory cache lookup.")
+            lines.append("  - This is typically caused by a model missing primary_keys in _meta,")
+            lines.append("    or a cached record that doesn't have the expected attributes.")
+        elif operation == "create_lock":
+            lines.append("  - asyncio.Lock() creation failed, which should not normally happen.")
+            lines.append("  - This may indicate an issue with the event loop state.")
+        elif operation == "database_fetch":
+            lines.append("  - The cache miss triggered a database fetch, which then raised an")
+            lines.append("    unexpected error (not a DoesNotExist — that is handled separately).")
+            lines.append("  - Check the Cause above for the underlying database error.")
+        else:
+            lines.append("  - An unexpected error occurred in the cache layer.")
+            lines.append("  - CacheErrors do not indicate a data loss problem — the cache is")
+            lines.append("    a read-through layer; the database is always the source of truth.")
+        lines.append("-" * 80 + "\n")
+        body = "\n".join(lines)
+        return f"{_RED}{body}{_RESET}"
 
 
 class StateError(ORMException):
@@ -204,6 +449,40 @@ class StateError(ORMException):
         if reason:
             message += f": {reason}"
         super().__init__(message=message, model=model, details=details)
+
+    def format_message(self):
+        reason = self.details.get("reason", "")
+        original = self.details.get("original_error", "")
+        lines = ["\n" + "-" * 80]
+        lines.append("Matrx ORM  |  StateError")
+        lines.append("")
+        lines.append(self.message)
+        if reason:
+            lines.append(f"  Reason:   {reason}")
+        if original:
+            lines.append(f"  Cause:    {original}")
+        lines.append("")
+        lines.append("Hint:")
+        if reason and "not registered" in reason.lower():
+            lines.append("  - The model has not been registered with the StateManager.")
+            lines.append("  - This usually means the model file was not imported before queries ran.")
+            lines.append("  - Ensure all models are imported in your startup/init sequence so")
+            lines.append("    their metaclass registration runs before any query is attempted.")
+        elif "acquire_connection" in self.message or "pool" in reason.lower():
+            lines.append("  - The asyncpg connection pool encountered an interface error.")
+            lines.append("  - This can happen if you acquire a connection outside an async context,")
+            lines.append("    or if the pool was closed and not yet recreated.")
+            lines.append("  - The pool auto-recreates when the event loop changes (e.g. asyncio.run()).")
+        elif "cleanup" in self.message or "close" in reason.lower():
+            lines.append("  - A connection pool failed to close cleanly during shutdown.")
+            lines.append("  - This is usually safe to ignore during process exit.")
+            lines.append("  - If it happens during tests, ensure each test cleans up with AsyncDatabaseManager.cleanup().")
+        else:
+            lines.append("  - An unexpected error occurred in the ORM state/cache layer.")
+            lines.append("  - Check the Cause above for the underlying exception.")
+        lines.append("-" * 80 + "\n")
+        body = "\n".join(lines)
+        return f"{_RED}{body}{_RESET}"
 
 
 class RelationshipError(ORMException):
@@ -245,6 +524,52 @@ class MigrationError(ORMException):
         message = f"Migration '{migration}' failed: {original_error}"
         super().__init__(message=message, model=model, details=details)
 
+    def format_message(self):
+        migration = self.details.get("migration", "")
+        original = str(self.details.get("original_error", ""))
+        lines = ["\n" + "-" * 80]
+        lines.append("Matrx ORM  |  MigrationError")
+        lines.append("")
+        lines.append(self.message)
+        if migration:
+            lines.append(f"  Migration: {migration}")
+        if original:
+            lines.append(f"  Detail:    {original}")
+        lines.append("")
+        lines.append("Hint:")
+        if "modified after being applied" in original or "checksum" in original.lower():
+            lines.append("  - A migration file was edited after it was already applied to the database.")
+            lines.append("  - NEVER edit applied migration files. The checksums are stored in the")
+            lines.append("    matrx_migrations table and will no longer match.")
+            lines.append("  - Create a new migration file to make further changes.")
+        elif "missing an 'up' function" in original:
+            lines.append("  - The migration file does not define an 'up' coroutine.")
+            lines.append("  - Every migration file must define:  async def up(db): ...")
+            lines.append("  - Optionally define:                 async def down(db): ...")
+        elif "no 'down' function" in original:
+            lines.append("  - You tried to roll back a migration that has no 'down' function.")
+            lines.append("  - Add  async def down(db): ...  to the migration file to enable rollback.")
+        elif "not found on disk" in original:
+            lines.append("  - A migration recorded in the database no longer exists as a file.")
+            lines.append("  - Restore the deleted migration file before attempting rollback.")
+        elif "circular dependency" in original.lower():
+            lines.append("  - Two or more migrations declare each other as dependencies.")
+            lines.append("  - Review the 'dependencies' lists in those migration files and break the cycle.")
+        elif "dependency" in original.lower() and "not found" in original.lower():
+            lines.append("  - A migration declares a dependency on a migration file that doesn't exist.")
+            lines.append("  - Check the 'dependencies' list in the failing migration file.")
+            lines.append("  - Ensure the dependency name exactly matches the filename stem (without .py).")
+        elif "could not load" in original.lower():
+            lines.append("  - Python could not import the migration file as a module.")
+            lines.append("  - Check for syntax errors or invalid imports in that migration file.")
+        else:
+            lines.append("  - The migration SQL itself raised an error when executed against the database.")
+            lines.append("  - The database was not modified (each migration runs in a transaction).")
+            lines.append("  - Fix the SQL in the migration's 'up' function and re-run migrate.")
+        lines.append("-" * 80 + "\n")
+        body = "\n".join(lines)
+        return f"{_RED}{body}{_RESET}"
+
 
 class ParameterError(ORMException):
     """Raised when query parameters are invalid or malformed."""
@@ -272,6 +597,34 @@ class ParameterError(ORMException):
             method_name=method_name,
         )
 
+    def format_message(self):
+        reason = self.details.get("reason", "")
+        query = self.details.get("query", "")
+        args = self.details.get("args", [])
+        lines = ["\n" + "-" * 80]
+        lines.append("Matrx ORM  |  ParameterError")
+        lines.append("")
+        lines.append(self.message)
+        if reason:
+            lines.append(f"  Reason: {reason}")
+        if query:
+            short_query = str(query)[:200] + ("..." if len(str(query)) > 200 else "")
+            lines.append(f"  Query:  {short_query}")
+        if args:
+            lines.append(f"  Args:   {args}")
+        lines.append("")
+        lines.append("Hint:")
+        lines.append("  - asyncpg raised a DataError, meaning a bound parameter value is the wrong type")
+        lines.append("    or is out of range for the column's PostgreSQL type.")
+        lines.append("  - Common causes:")
+        lines.append("      - Passing a string where a UUID or integer is expected.")
+        lines.append("      - Passing None for a NOT NULL column.")
+        lines.append("      - Passing a Python list where a scalar is expected (use field__in=... instead).")
+        lines.append("  - Check the Args above and verify each value matches the column's type.")
+        lines.append("-" * 80 + "\n")
+        body = "\n".join(lines)
+        return f"{_RED}{body}{_RESET}"
+
 
 class UnknownDatabaseError(ORMException):
     """Raised when an unexpected database error occurs, capturing full context."""
@@ -294,3 +647,34 @@ class UnknownDatabaseError(ORMException):
         }
         message = f"Unexpected database error during {operation}: {str(original_error)}"
         super().__init__(message=message, model=model, details=details)
+
+    def format_message(self):
+        operation = self.details.get("operation", "")
+        original = self.details.get("original_error", "")
+        query = self.details.get("query", "")
+        args = self.details.get("args", [])
+        lines = ["\n" + "-" * 80]
+        lines.append("Matrx ORM  |  UnknownDatabaseError")
+        lines.append("")
+        lines.append(self.message)
+        if operation:
+            lines.append(f"  Operation: {operation}")
+        if original:
+            lines.append(f"  DB error:  {original}")
+        if query:
+            short_query = str(query)[:300] + ("..." if len(str(query)) > 300 else "")
+            lines.append(f"  Query:     {short_query}")
+        if args:
+            lines.append(f"  Args:      {args}")
+        lines.append("")
+        lines.append("Hint:")
+        lines.append("  - This is the catch-all for any asyncpg exception not handled by a more")
+        lines.append("    specific error class (not a syntax error, unique violation, data error,")
+        lines.append("    or connection failure).")
+        lines.append("  - The full Python traceback was captured at raise time — check your logs.")
+        lines.append("  - Common causes: permission denied, relation does not exist, column")
+        lines.append("    type mismatch, or a Postgres function raising an exception.")
+        lines.append("  - The Query and Args above are the exact SQL and parameters that failed.")
+        lines.append("-" * 80 + "\n")
+        body = "\n".join(lines)
+        return f"{_RED}{body}{_RESET}"
