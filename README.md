@@ -1,10 +1,19 @@
 # matrx-orm
 
-ORM utilities for the Matrx platform.
+A modern async PostgreSQL ORM with migrations, schema introspection, and full relationship support. Works with any PostgreSQL database—Supabase, AWS RDS, Google Cloud SQL, or self-hosted.
+
+## Features
+
+- **Async-first** — Built on `asyncpg` and `psycopg3` for high-performance database access
+- **PostgreSQL-generic** — No vendor lock-in; works with any standard PostgreSQL instance
+- **Bidirectional migrations** — Model-first or SQL-first; auto-generate migrations from schema diffs
+- **Schema introspection** — Generate Python models and managers from an existing database
+- **Relationships** — Foreign keys, inverse FKs, and many-to-many with junction tables
+- **Resilient FK fetching** — Optional `_unfetchable` flag for FKs pointing to external tables (e.g. `auth.users`)
+- **State management** — Built-in caching with configurable policies (permanent, long-term, short-term, instant)
+- **Type-safe** — Full type hints and Pydantic-ready patterns
 
 ## Installation
-
-### From PyPI (recommended)
 
 ```bash
 pip install matrx-orm
@@ -12,67 +21,103 @@ pip install matrx-orm
 uv add matrx-orm
 ```
 
-### From GitHub (for development)
+## Quick Start
 
-```bash
-pip install git+https://github.com/armanisadeghi/matrx-orm.git
+### 1. Register a database
+
+```python
+from matrx_orm import register_database, DatabaseProjectConfig
+
+register_database(DatabaseProjectConfig(
+    name="my_project",
+    host="localhost",
+    port="5432",
+    database_name="my_db",
+    user="postgres",
+    password="secret",
+    alias="main",
+))
 ```
 
-## Publishing a New Version
+### 2. Define a model
 
-### Automated PyPI Publishing (Current Process)
+```python
+from matrx_orm import Model, UUIDField, CharField, TextField, ForeignKey
 
-The package automatically publishes to PyPI when you push a version tag. Here's the workflow:
+class Recipe(Model):
+    id = UUIDField(primary_key=True)
+    name = CharField(max_length=200)
+    description = TextField(null=True)
+    author_id = ForeignKey("User", "id")
 
-1. **Make and test your changes locally**
-   ```bash
-   # Test your changes
-   ```
+    _table_name = "recipe"
+    _database = "my_project"
+```
 
-2. **Update the version in pyproject.toml**
-   ```toml
-   version = "1.0.5"  # Increment appropriately
-   ```
+### 3. CRUD operations
 
-3. **Commit and push changes**
-   ```bash
-   git add .
-   git commit -m "Add new feature - v1.0.5"
-   git push origin main
-   ```
+```python
+# Create
+recipe = await Recipe.create(id=uuid4(), name="Pasta", author_id=user_id)
 
-4. **Create and push the version tag**
-   ```bash
-   git tag v1.0.5
-   git push origin v1.0.5
-   ```
+# Read
+recipe = await Recipe.get(id=recipe_id)
+recipes = await Recipe.filter(author_id=user_id).all()
 
-5. **GitHub Actions automatically:**
-   - Verifies the tag matches pyproject.toml version
-   - Builds the package
-   - Publishes to PyPI
+# Update
+await Recipe.filter(id=recipe_id).update(name="Updated Pasta")
 
-6. **Update dependent projects**
-   
-   In projects like AI Dream, simply update the version:
-   ```bash
-   uv add matrx-orm@1.0.5
-   # or manually in pyproject.toml:
-   # matrx-orm = "^1.0.5"
-   ```
+# Delete
+await recipe.delete()
+```
 
-### Version History
+### 4. Migrations
 
-Check current tags: `git tag`
+```bash
+# Generate migration from model changes
+matrx-orm makemigrations --database my_project --dir migrations
 
-**Latest Versions:**
-- **v1.2.0** - Upgraded to psycopg3 (modern PostgreSQL adapter, no pg_config build required)
-- v1.1.3 - Legacy version (psycopg2)
-- v1.0.x - Earlier releases
+# Apply migrations
+matrx-orm migrate --database my_project --dir migrations
 
-### Important Notes
+# Rollback
+matrx-orm rollback --database my_project --dir migrations --steps 1
+```
 
-- **Always update pyproject.toml version before tagging**
-- The GitHub Action will fail if tag version ≠ pyproject.toml version
-- Semantic versioning: MAJOR.MINOR.PATCH (e.g., v1.0.5)
-- Tags trigger automatic PyPI publishing
+## Migrations
+
+The migration system supports:
+
+- **Model-first** — Define models in Python; `makemigrations` diffs against the DB and generates migration files
+- **SQL-first** — Write hand-crafted migrations with `create_empty` and `up`/`down` functions
+- **Hybrid** — Mix both approaches; migrations run in dependency order
+
+See [MIGRATIONS.md](MIGRATIONS.md) for full documentation.
+
+## Testing
+
+Tests are split into two levels:
+
+- **Level 1** — No database required; run with `pytest -m level1`
+- **Level 2** — Requires a live PostgreSQL database; run with `pytest -m level2`
+
+Configure Level 2 tests via environment variables: `MATRX_TEST_DB_HOST`, `MATRX_TEST_DB_PORT`, `MATRX_TEST_DB_NAME`, `MATRX_TEST_DB_USER`, `MATRX_TEST_DB_PASSWORD`.
+
+## Publishing
+
+1. Update `version` in `pyproject.toml`
+2. Commit and push
+3. Create and push a tag: `git tag v1.4.2 && git push origin v1.4.2`
+4. GitHub Actions builds and publishes to PyPI
+
+The tag must match the version in `pyproject.toml`.
+
+## Version History
+
+- **v1.4.x** — Migration system, resilient FK fetching, improved error handling
+- **v1.2.0** — Upgraded to psycopg3
+- **v1.0.x** — Initial releases
+
+## License
+
+MIT

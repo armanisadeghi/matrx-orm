@@ -1,19 +1,49 @@
 [project]
 name = "matrx-orm"
 version = "1.4.2"
-description = "Add your description here"
+description = "Async PostgreSQL ORM with migrations, schema introspection, and many-to-many support. Works with any PostgreSQL database (Supabase, RDS, self-hosted)."
 readme = "README.md"
+license = { text = "MIT" }
 authors = [
-    { email = "jatin.b.rx3@gmail.com" }
+    { name = "Matrx", email = "admin@aimatrx.com" }
+]
+maintainers = [
+    { name = "Matrx", email = "admin@aimatrx.com" }
+]
+keywords = [
+    "orm",
+    "postgresql",
+    "async",
+    "asyncpg",
+    "migrations",
+    "supabase",
+    "database",
 ]
 requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Database",
+]
 dependencies = [
-    "asyncpg==0.30.0",
-    "gitpython>=3.1.44",
+    "asyncpg>=0.30.0",
+    "gitpython>=3.1.40",
     "psycopg[binary]>=3.2.5",
     "psycopg-pool>=3.2.5",
-    "matrx-utils>=1.0.2",
+    "matrx-utils>=1.0.4",
 ]
+
+[project.urls]
+Homepage = "https://github.com/armanisadeghi/matrx-orm"
+Repository = "https://github.com/armanisadeghi/matrx-orm"
+Documentation = "https://github.com/armanisadeghi/matrx-orm#readme"
 
 [project.scripts]
 matrx-orm = "matrx_orm.migrations.cli:main"
