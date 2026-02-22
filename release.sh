@@ -78,7 +78,9 @@ ok "Commit amended"
 # ── Push commit ─────────────────────────────────────────────────────────────
 
 info "Pushing to $REMOTE/$BRANCH..."
+echo ""
 git push "$REMOTE" "$BRANCH"
+echo ""
 ok "Pushed to $REMOTE/$BRANCH"
 
 # ── Tag and push tag ───────────────────────────────────────────────────────
@@ -88,7 +90,9 @@ git tag "$NEW_TAG"
 ok "Tag created"
 
 info "Pushing tag $NEW_TAG..."
+echo ""
 git push "$REMOTE" "$NEW_TAG"
+echo ""
 ok "Tag pushed"
 
 # ── Done ────────────────────────────────────────────────────────────────────
