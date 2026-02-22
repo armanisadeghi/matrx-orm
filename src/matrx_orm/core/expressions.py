@@ -455,3 +455,252 @@ class StdDev(Aggregate):
 class Variance(Aggregate):
     """VARIANCE(field) — population variance."""
     function = "VARIANCE"
+
+
+# ---------------------------------------------------------------------------
+# Window expressions
+# ---------------------------------------------------------------------------
+
+class Window:
+    """Wrap an aggregate or ranking function with an OVER (...) clause.
+
+    Usage::
+
+        .annotate(row_num=Window(RowNumber(), partition_by="tenant_id", order_by="-created_at"))
+        .annotate(rank=Window(Rank(), order_by=["-score", "id"]))
+        .annotate(running_total=Window(Sum("amount"), partition_by=["user_id"], order_by="created_at"))
+    """
+
+    def __init__(
+        self,
+        expression: "Func | Aggregate",
+        *,
+        partition_by: str | list[str] | None = None,
+        order_by: str | list[str] | None = None,
+        frame: str | None = None,
+    ) -> None:
+        self.expression = expression
+        self.partition_by: list[str] = (
+            [partition_by] if isinstance(partition_by, str) else (partition_by or [])
+        )
+        self.order_by: list[str] = (
+            [order_by] if isinstance(order_by, str) else (order_by or [])
+        )
+        self.frame = frame  # e.g. "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW"
+
+    def as_sql(self, params: list[Any]) -> str:
+        expr_sql = self.expression.as_sql(params)
+        over_parts: list[str] = []
+
+        if self.partition_by:
+            over_parts.append("PARTITION BY " + ", ".join(self.partition_by))
+
+        if self.order_by:
+            terms: list[str] = []
+            for term in self.order_by:
+                if term.startswith("-"):
+                    terms.append(f"{term[1:]} DESC")
+                else:
+                    terms.append(f"{term} ASC")
+            over_parts.append("ORDER BY " + ", ".join(terms))
+
+        if self.frame:
+            over_parts.append(self.frame)
+
+        over_clause = "OVER (" + " ".join(over_parts) + ")"
+        return f"{expr_sql} {over_clause}"
+
+    def __repr__(self) -> str:
+        return f"Window({self.expression!r})"
+
+
+class RowNumber(Func):
+    """ROW_NUMBER() — sequential row number within the window partition."""
+    function = "ROW_NUMBER"
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def as_sql(self, params: list[Any]) -> str:
+        return "ROW_NUMBER()"
+
+
+class Rank(Func):
+    """RANK() — rank with gaps for ties."""
+    function = "RANK"
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def as_sql(self, params: list[Any]) -> str:
+        return "RANK()"
+
+
+class DenseRank(Func):
+    """DENSE_RANK() — rank without gaps for ties."""
+    function = "DENSE_RANK"
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def as_sql(self, params: list[Any]) -> str:
+        return "DENSE_RANK()"
+
+
+class Lag(Func):
+    """LAG(field[, offset[, default]]) — value from previous row."""
+    function = "LAG"
+
+    def __init__(self, field: str | F | Func, offset: int = 1, default: Any = None) -> None:
+        super().__init__(field)
+        self.offset = offset
+        self.default = default
+
+    def as_sql(self, params: list[Any]) -> str:
+        inner = _render_func_arg(self.args[0], params)
+        if self.default is not None:
+            params.append(self.default)
+            return f"LAG({inner}, {self.offset}, ${len(params)})"
+        return f"LAG({inner}, {self.offset})"
+
+
+class Lead(Func):
+    """LEAD(field[, offset[, default]]) — value from following row."""
+    function = "LEAD"
+
+    def __init__(self, field: str | F | Func, offset: int = 1, default: Any = None) -> None:
+        super().__init__(field)
+        self.offset = offset
+        self.default = default
+
+    def as_sql(self, params: list[Any]) -> str:
+        inner = _render_func_arg(self.args[0], params)
+        if self.default is not None:
+            params.append(self.default)
+            return f"LEAD({inner}, {self.offset}, ${len(params)})"
+        return f"LEAD({inner}, {self.offset})"
+
+
+class FirstValue(Func):
+    """FIRST_VALUE(field) — first value in the window frame."""
+    function = "FIRST_VALUE"
+
+
+class LastValue(Func):
+    """LAST_VALUE(field) — last value in the window frame."""
+    function = "LAST_VALUE"
+
+
+class NthValue(Func):
+    """NTH_VALUE(field, n) — nth value in the window frame."""
+    function = "NTH_VALUE"
+
+    def __init__(self, field: str | F | Func, n: int) -> None:
+        super().__init__(field)
+        self.n = n
+
+    def as_sql(self, params: list[Any]) -> str:
+        inner = _render_func_arg(self.args[0], params)
+        return f"NTH_VALUE({inner}, {self.n})"
+
+
+class Ntile(Func):
+    """NTILE(n) — divide rows into n buckets."""
+    function = "NTILE"
+
+    def __init__(self, n: int) -> None:
+        super().__init__()
+        self.n = n
+
+    def as_sql(self, params: list[Any]) -> str:
+        return f"NTILE({self.n})"
+
+
+class CumeDist(Func):
+    """CUME_DIST() — cumulative distribution."""
+    function = "CUME_DIST"
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def as_sql(self, params: list[Any]) -> str:
+        return "CUME_DIST()"
+
+
+class PercentRank(Func):
+    """PERCENT_RANK() — relative rank as a fraction."""
+    function = "PERCENT_RANK"
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def as_sql(self, params: list[Any]) -> str:
+        return "PERCENT_RANK()"
+
+
+# ---------------------------------------------------------------------------
+# CTE (Common Table Expressions)
+# ---------------------------------------------------------------------------
+
+class CTE:
+    """Define a named Common Table Expression for use in a query.
+
+    A CTE can wrap either a raw SQL string or a QueryBuilder instance.
+
+    Usage::
+
+        # Raw SQL CTE
+        recent_cte = CTE("recent_orders", "SELECT * FROM orders WHERE created_at > NOW() - interval '7 days'")
+
+        # QueryBuilder CTE
+        active_users = CTE("active_users", User.filter(is_active=True))
+
+        results = await Order.filter(is_active=True).with_cte(recent_cte).all()
+
+        # Recursive CTE
+        tree_cte = CTE(
+            "org_tree",
+            \"""
+            SELECT id, parent_id, name FROM org WHERE parent_id IS NULL
+            UNION ALL
+            SELECT o.id, o.parent_id, o.name FROM org o JOIN org_tree t ON o.parent_id = t.id
+            \""",
+            recursive=True,
+        )
+    """
+
+    def __init__(
+        self,
+        name: str,
+        query: "str | Any",  # str or QueryBuilder
+        *,
+        recursive: bool = False,
+    ) -> None:
+        self.name = name
+        self.query = query
+        self.recursive = recursive
+
+    def as_sql(self, params: list[Any]) -> str:
+        """Render as ``name AS (...)`` — used inside a WITH clause."""
+        if isinstance(self.query, str):
+            return f"{self.name} AS ({self.query})"
+        # QueryBuilder
+        from matrx_orm.query.builder import QueryBuilder
+        if isinstance(self.query, QueryBuilder):
+            query_dict = self.query._build_query()
+            # Build a minimal SELECT for the CTE
+            from matrx_orm.query.executor import QueryExecutor
+            executor = QueryExecutor(query_dict)
+            # Renumber params to continue from current offset
+            sub_sql, sub_params = executor.query, executor.params
+            # Shift param indices
+            offset = len(params)
+            if offset > 0:
+                for i, _ in enumerate(sub_params):
+                    sub_sql = sub_sql.replace(f"${i + 1}", f"${offset + i + 1}", 1)
+            params.extend(sub_params)
+            return f"{self.name} AS ({sub_sql})"
+        raise TypeError(f"CTE query must be str or QueryBuilder, got {type(self.query)}")
+
+    def __repr__(self) -> str:
+        return f"CTE({self.name!r})"

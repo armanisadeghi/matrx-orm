@@ -32,6 +32,8 @@ class QueryBuilder(Generic[ModelT]):
     limit_val: int | None
     offset_val: int | None
     select_fields: list[str]
+    deferred_fields: set[str]       # defer()
+    only_fields: set[str]           # only()
     prefetch_fields: list[str]
     joins: list[dict[str, Any]]
     group_by_fields: list[str]
@@ -40,6 +42,7 @@ class QueryBuilder(Generic[ModelT]):
     distinct_fields: list[str] | None   # None = no DISTINCT; [] = DISTINCT; [f...] = DISTINCT ON
     for_update_opts: dict[str, Any] | None
     select_related_fields: list[str]
+    ctes: list[Any]                     # CTE objects
 
     def __init__(self, model_cls: type[ModelT], database: str | None = None) -> None:
         self.model = model_cls
@@ -50,6 +53,8 @@ class QueryBuilder(Generic[ModelT]):
         self.limit_val = None
         self.offset_val = None
         self.select_fields = []
+        self.deferred_fields = set()
+        self.only_fields = set()
         self.prefetch_fields = []
         self.joins = []
         self.group_by_fields = []
@@ -58,6 +63,7 @@ class QueryBuilder(Generic[ModelT]):
         self.distinct_fields = None
         self.for_update_opts = None
         self.select_related_fields = []
+        self.ctes = []
 
     def _set_database(self, model_cls: type[ModelT]) -> str:
         if hasattr(model_cls, "_database") and model_cls._database:
@@ -165,8 +171,51 @@ class QueryBuilder(Generic[ModelT]):
         return self
 
     def using(self, database: str) -> QueryBuilder[ModelT]:
-        """Override the database for this query."""
+        """Override the database for this query.
+
+        Usage::
+
+            await User.filter(is_active=True).using("replica").all()
+        """
         self.database = database
+        return self
+
+    def only(self, *fields: str) -> QueryBuilder[ModelT]:
+        """Load only these columns. Unlisted columns on the model instance will be None.
+
+        Usage::
+
+            await User.filter(is_active=True).only("id", "email").all()
+        """
+        self.only_fields = set(fields)
+        self.select_fields = list(fields)
+        return self
+
+    def defer(self, *fields: str) -> QueryBuilder[ModelT]:
+        """Exclude these columns from the SELECT. They will be None on the returned instances.
+
+        Usage::
+
+            await User.filter(is_active=True).defer("large_blob", "heavy_json").all()
+        """
+        self.deferred_fields = set(fields)
+        return self
+
+    def with_cte(self, *ctes: Any) -> QueryBuilder[ModelT]:
+        """Prepend one or more CTEs (WITH clauses) to the query.
+
+        Usage::
+
+            from matrx_orm import CTE
+
+            recent = CTE("recent_orders", "SELECT * FROM orders WHERE created_at > NOW() - interval '7 days'")
+            results = await Order.filter(status="paid").with_cte(recent).all()
+
+            # Recursive CTE
+            tree = CTE("org_tree", raw_recursive_sql, recursive=True)
+            rows = await Org.filter().with_cte(tree).raw_sql(\"SELECT * FROM org_tree\")
+        """
+        self.ctes.extend(ctes)
         return self
 
     def reverse(self) -> QueryBuilder[ModelT]:
@@ -186,6 +235,8 @@ class QueryBuilder(Generic[ModelT]):
 
     def _build_query(self) -> dict[str, Any]:
         """Construct the query dict passed to QueryExecutor."""
+        # Resolve effective select fields considering only/defer
+        effective_select = self._effective_select()
         query: dict[str, Any] = {
             "model": self.model,
             "table": self.model._meta.qualified_table_name,
@@ -193,18 +244,29 @@ class QueryBuilder(Generic[ModelT]):
             "order_by": self.order_by_fields,
             "limit": self.limit_val,
             "offset": self.offset_val,
-            "select": self.select_fields or ["*"],
+            "select": effective_select,
             "prefetch": self.prefetch_fields,
             "database": self.database,
-            # New keys
+            # Advanced query keys
             "group_by": self.group_by_fields,
             "having": self._merge_having(),
             "aggregations": self.aggregations,
             "distinct": self.distinct_fields,
             "for_update": self.for_update_opts,
             "select_related": self.select_related_fields,
+            "ctes": self.ctes,
+            "deferred_fields": self.deferred_fields,
         }
         return query
+
+    def _effective_select(self) -> list[str]:
+        """Resolve the SELECT column list, accounting for only() and defer()."""
+        if self.only_fields:
+            return list(self.only_fields)
+        if self.deferred_fields and hasattr(self.model, "_fields"):
+            all_cols = list(self.model._fields.keys())
+            return [c for c in all_cols if c not in self.deferred_fields]
+        return self.select_fields or ["*"]
 
     def _collect_filters(self) -> list[Any]:
         """Return a list of filter items: each is a dict or a Q object."""

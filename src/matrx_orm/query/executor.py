@@ -143,6 +143,15 @@ class QueryExecutor:
         params: list[Any] = []
         table = self._full_query_dict["table"]
 
+        # -- CTEs --------------------------------------------------------
+        ctes: list[Any] = self._full_query_dict.get("ctes", [])
+        cte_prefix = ""
+        if ctes:
+            has_recursive = any(getattr(c, "recursive", False) for c in ctes)
+            cte_sqls = [c.as_sql(params) for c in ctes]
+            recursive_kw = " RECURSIVE" if has_recursive else ""
+            cte_prefix = f"WITH{recursive_kw} " + ", ".join(cte_sqls) + " "
+
         # -- SELECT clause -----------------------------------------------
         aggregations: list[dict[str, Any]] = self._full_query_dict.get("aggregations", [])
         select_related: list[str] = self._full_query_dict.get("select_related", [])
@@ -182,7 +191,7 @@ class QueryExecutor:
             for f in raw_select:
                 select_parts.insert(0, f)
 
-        # 3. Aggregation columns
+        # 3. Aggregation / window columns
         for agg in aggregations:
             name = agg["name"]
             func = agg["function"]
@@ -202,7 +211,7 @@ class QueryExecutor:
             distinct_clause = f"DISTINCT ON ({', '.join(distinct)}) "
 
         select_clause = ", ".join(select_parts) if select_parts else "*"
-        sql = f"SELECT {distinct_clause}{select_clause} FROM {table}"
+        sql = f"{cte_prefix}SELECT {distinct_clause}{select_clause} FROM {table}"
 
         # -- JOINs -------------------------------------------------------
         if join_clauses:

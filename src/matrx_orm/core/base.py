@@ -155,6 +155,33 @@ class ModelMeta(type):
         if name == "Model":
             return super().__new__(mcs, name, bases, attrs)
 
+        # ------------------------------------------------------------------
+        # Abstract models: skip table/field wiring entirely.
+        # Subclasses of an abstract model inherit its field definitions via
+        # normal Python class inheritance — ModelMeta will process them when
+        # the concrete subclass is created.
+        # ------------------------------------------------------------------
+        meta_inner = attrs.get("Meta") or attrs.get("_meta_class")
+        is_abstract = False
+        if meta_inner is not None and getattr(meta_inner, "abstract", False):
+            is_abstract = True
+        if not is_abstract and attrs.get("_abstract", False):
+            is_abstract = True
+        # Also honour abstract declared on a parent's Meta
+        for base in bases:
+            base_meta = getattr(base, "_meta", None)
+            if base_meta is None:
+                continue
+            if getattr(base_meta, "abstract", False) or getattr(base, "_abstract", False):
+                # The parent is abstract; concrete children are fine to continue
+                break
+
+        if is_abstract:
+            attrs["_abstract"] = True
+            # Still process field descriptors so subclasses can inherit them
+            cls = super().__new__(mcs, name, bases, attrs)
+            return cls
+
         fields = {}
         foreign_keys = {}
         inverse_foreign_keys = {}
@@ -164,7 +191,18 @@ class ModelMeta(type):
         dynamic_fields = set()
         pending_junction_tables: list[dict[str, Any]] = []
 
-        for key, value in attrs.items():
+        # Collect inherited fields from abstract base classes first so that
+        # concrete model attrs can override them.
+        inherited_attrs: dict[str, Any] = {}
+        for base in reversed(bases):
+            if getattr(base, "_abstract", False):
+                for k, v in vars(base).items():
+                    if isinstance(v, (Field, InverseForeignKeyReference, ManyToManyField)):
+                        inherited_attrs[k] = v
+
+        all_attrs = {**inherited_attrs, **attrs}
+
+        for key, value in all_attrs.items():
             if isinstance(value, ManyToManyField):
                 junction_name = value.get_junction_table_name(name)
                 source_col = f"{_to_snake_case(name)}_id"

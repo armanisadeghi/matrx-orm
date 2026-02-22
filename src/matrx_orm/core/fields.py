@@ -946,3 +946,39 @@ class CompositeField(Field):
         if value is None:
             return None
         return json.dumps(list(value))
+
+
+class VersionField(Field):
+    """Integer field that provides optimistic locking.
+
+    On every ``save()`` / ``update_instance()`` call the ORM automatically:
+      1. Adds ``WHERE version = <current>`` to the UPDATE statement.
+      2. Increments the column by 1.
+      3. Raises ``OptimisticLockError`` if 0 rows were affected (stale write).
+
+    Usage::
+
+        class Order(Model):
+            id = UUIDField(primary_key=True, default=uuid4)
+            total = DecimalField()
+            version = VersionField()   # starts at 1, auto-increments
+
+        order = await Order.get(id=some_id)
+        order.total = Decimal("99.99")
+        await order.save()             # raises OptimisticLockError if stale
+    """
+
+    def __init__(self, **kwargs) -> None:
+        kwargs.setdefault("default", 1)
+        kwargs.setdefault("null", False)
+        kwargs.setdefault("nullable", False)
+        super().__init__("INTEGER", **kwargs)
+        self.is_version_field = True
+
+    def to_python(self, value) -> int:
+        if value is None:
+            return 1
+        return int(value)
+
+    def get_db_prep_value(self, value):
+        return int(value) if value is not None else 1

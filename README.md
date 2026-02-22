@@ -1164,10 +1164,213 @@ post_save.disconnect(my_async_handler)
 
 ---
 
+## Advanced Querying (v1.8.0+)
+
+### Window Functions
+
+Annotate rows with ranking, lag/lead, or running aggregates using `Window()`:
+
+```python
+from matrx_orm import Window, RowNumber, Rank, DenseRank, Lag, Lead, Sum
+
+# ROW_NUMBER per partition
+rows = await Sale.filter().annotate(
+    row_num=Window(RowNumber(), partition_by="region", order_by="-amount")
+).all()
+
+# RANK (with gaps) ordered by score
+rows = await Player.filter().annotate(
+    rank=Window(Rank(), order_by=["-score", "id"])
+).all()
+
+# DENSE_RANK partitioned by department
+rows = await Employee.filter().annotate(
+    dept_rank=Window(DenseRank(), partition_by="department_id", order_by="-salary")
+).all()
+
+# Running total (SUM as window function)
+rows = await Order.filter().annotate(
+    running_total=Window(Sum("amount"), partition_by="user_id", order_by="created_at")
+).all()
+
+# Previous row value
+rows = await StockPrice.filter(ticker="AAPL").annotate(
+    prev_close=Window(Lag("close_price"), order_by="date")
+).all()
+
+# Available window functions
+# RowNumber, Rank, DenseRank, Lag, Lead, FirstValue, LastValue,
+# NthValue, Ntile, CumeDist, PercentRank
+# Any Aggregate (Sum, Avg, Min, Max, Count) also works as a window function
+```
+
+The `Window()` constructor accepts:
+- `partition_by` — single field name or list of field names
+- `order_by` — single field name, list of names (`"-field"` for DESC)
+- `frame` — optional SQL frame clause, e.g. `"ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW"`
+
+### Common Table Expressions (CTEs)
+
+Attach one or more CTEs to any query:
+
+```python
+from matrx_orm import CTE
+
+# Non-recursive CTE from raw SQL
+recent = CTE("recent_orders", "SELECT * FROM orders WHERE created_at > NOW() - interval '7 days'")
+results = await Order.filter(status="paid").with_cte(recent).all()
+
+# CTE from a QueryBuilder
+active_qs = User.filter(is_active=True).only("id", "email")
+active_cte = CTE("active_users", active_qs)
+rows = await Invoice.filter().with_cte(active_cte).all()
+
+# Recursive CTE
+tree_sql = """
+    SELECT id, parent_id, name, 0 AS depth FROM category WHERE parent_id IS NULL
+    UNION ALL
+    SELECT c.id, c.parent_id, c.name, t.depth + 1
+    FROM category c JOIN category_tree t ON c.parent_id = t.id
+"""
+tree_cte = CTE("category_tree", tree_sql, recursive=True)
+categories = await Category.filter().with_cte(tree_cte).all()
+
+# Multiple CTEs chained
+rows = await Order.filter().with_cte(recent, active_cte).all()
+```
+
+### Column Selection: `only()` and `defer()`
+
+Load only specific columns or omit heavy ones — unloaded columns are `None` on the returned instances:
+
+```python
+# only() — whitelist: fetch exactly these columns
+users = await User.filter(is_active=True).only("id", "email").all()
+
+# defer() — blacklist: fetch everything except these columns
+products = await Product.filter().defer("description", "large_blob").all()
+
+# Combine with other chainable methods
+rows = await Post.filter(published=True).only("id", "title", "author_id").order_by("-created_at").limit(20).all()
+```
+
+### Paginator
+
+Split any queryset into pages without writing LIMIT/OFFSET boilerplate:
+
+```python
+from matrx_orm import Paginator
+
+# Create paginator (queryset is not executed yet)
+paginator = Paginator(
+    User.filter(is_active=True).order_by("-created_at"),
+    per_page=20
+)
+
+# Fetch a specific page (executes COUNT + SELECT)
+page = await paginator.page(1)
+
+print(page.items)           # list[User] — rows on this page
+print(page.number)          # 1
+print(page.total_count)     # total matching rows
+print(page.total_pages)     # ceil(total_count / per_page)
+print(page.has_next)        # True / False
+print(page.has_previous)    # True / False
+print(page.next_number)     # int | None
+print(page.previous_number) # int | None
+print(page.start_index)     # 1-based start index
+print(page.end_index)       # 1-based end index
+
+# Iterate over all pages with async for
+async for page in paginator:
+    for user in page:
+        await process(user)
+```
+
+### Optimistic Locking with `VersionField`
+
+Add a `version` column to any model to detect concurrent modification conflicts:
+
+```python
+from matrx_orm import Model, UUIDField, DecimalField, VersionField, OptimisticLockError
+from uuid import uuid4
+
+class Order(Model):
+    _database = "default"
+    id = UUIDField(primary_key=True, default=uuid4)
+    total = DecimalField()
+    version = VersionField()   # starts at 1, auto-increments on every save
+
+# Normal save — version increments automatically
+order = await Order.get(id=some_id)
+order.total = Decimal("99.99")
+await order.save()             # version goes 1 → 2
+
+# Stale write detection
+order_a = await Order.get(id=some_id)  # version = 2
+order_b = await Order.get(id=some_id)  # version = 2 (another process)
+
+order_a.total = Decimal("50.00")
+await order_a.save()                   # OK, version 2 → 3
+
+order_b.total = Decimal("75.00")
+try:
+    await order_b.save()               # RAISES — row now at version 3, not 2
+except OptimisticLockError as e:
+    print("Conflict detected — re-fetch and retry")
+    order_b = await Order.get(id=some_id)
+    order_b.total = Decimal("75.00")
+    await order_b.save()               # OK now
+```
+
+### Abstract Base Models
+
+Mark a model `abstract = True` so it contributes shared fields to subclasses without creating its own table:
+
+```python
+from matrx_orm import Model, UUIDField, DateTimeField, CharField
+from uuid import uuid4
+from datetime import datetime
+
+class AuditedModel(Model):
+    _database = "default"
+
+    class Meta:
+        abstract = True
+
+    created_by = CharField(max_length=100)
+    updated_by = CharField(max_length=100, nullable=True)
+
+class Article(AuditedModel):
+    _database = "default"
+    id = UUIDField(primary_key=True, default=uuid4)
+    title = CharField(max_length=255)
+    # Inherits created_by and updated_by from AuditedModel
+
+class Comment(AuditedModel):
+    _database = "default"
+    id = UUIDField(primary_key=True, default=uuid4)
+    body = CharField(max_length=2000)
+    # Inherits created_by and updated_by from AuditedModel
+
+# AuditedModel itself has no _meta / table — only concrete subclasses do
+article = Article(id=str(uuid4()), title="Hello", created_by="alice")
+print(article.created_by)  # alice
+```
+
+Rules:
+- Declare `abstract = True` inside an inner `class Meta:` **or** set `_abstract = True` as a class attribute.
+- Abstract models do **not** get a table, `_meta`, or migration.
+- Fields, `_inverse_foreign_keys`, and M2M definitions are all inherited by concrete subclasses.
+- Concrete subclasses must still define their own primary key.
+
+---
+
 ## Version History
 
 | Version | Highlights |
 |---|---|
+| **v1.8.0** | Window functions (`ROW_NUMBER`, `RANK`, `DENSE_RANK`, `LAG`, `LEAD`, `NTILE`, `CUME_DIST`, `PERCENT_RANK`, …) with `Window(expr, partition_by=…, order_by=…)`; CTEs (`CTE`, `with_cte()`, recursive support); `only()` / `defer()` column selection; `Paginator` with `page(n)`, `has_next`, `total_pages`, async iteration; `VersionField` for optimistic locking (raises `OptimisticLockError` on stale writes); abstract base models (`class Meta: abstract = True` with full field inheritance) |
 | **v1.7.0** | `Q()` objects for OR/AND/NOT composition; aggregate expressions (`Sum`, `Avg`, `Min`, `Max`, `Count`); database functions (`Coalesce`, `Lower`, `Upper`, `Now`, `Cast`, `Extract`, …); `DISTINCT` / `DISTINCT ON`; `SELECT FOR UPDATE`; JSONB query operators; ORM-level `transaction()` context manager with savepoints; `Model.raw()` / `Model.raw_sql()`; `select_related()` JOIN eager loading; subquery expressions (`Subquery`, `Exists`, `OuterRef`); lifecycle signals (`pre_save`, `post_save`, `pre_create`, `post_create`, `pre_delete`, `post_delete`) |
 | **v1.6.4** | fix: complete field type coercion audit - get_db_prep_value and to_python for all field types |
 | **v1.6.3** | fix: coerce datetime/date/time strings to native types before asyncpg binding |

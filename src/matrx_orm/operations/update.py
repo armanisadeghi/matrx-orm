@@ -120,6 +120,7 @@ async def decrement(model_cls: type[Model], filters: dict[str, Any], **kwargs: A
 
 async def update_instance(instance: Model, fields: Iterable[str] | None = None) -> Model:
     from matrx_orm.core.signals import pre_save, post_save
+    from matrx_orm.exceptions import OptimisticLockError
 
     model_cls = instance.__class__
     await pre_save.send(model_cls, instance=instance)
@@ -131,6 +132,15 @@ async def update_instance(instance: Model, fields: Iterable[str] | None = None) 
     pk_value = getattr(instance, pk_name, None)
     if pk_value is None:
         raise ValueError(f"Cannot update {model_cls.__name__}, {pk_name} is None")
+
+    # Detect version field for optimistic locking
+    version_field_name: str | None = None
+    current_version: int | None = None
+    for fname, fobj in model_cls._fields.items():
+        if getattr(fobj, "is_version_field", False):
+            version_field_name = fname
+            current_version = getattr(instance, fname, None)
+            break
 
     update_data: dict[str, Any] = {}
     field_names: Iterable[str] = (
@@ -144,6 +154,11 @@ async def update_instance(instance: Model, fields: Iterable[str] | None = None) 
         if field_name not in model_cls._fields:
             continue
         field = model_cls._fields[field_name]
+        # Increment version column automatically
+        if field_name == version_field_name:
+            next_version = (current_version or 1) + 1
+            update_data[field_name] = next_version
+            continue
         value = getattr(instance, field_name, None)
         if value is not None:
             update_data[field_name] = field.get_db_prep_value(value)
@@ -151,7 +166,10 @@ async def update_instance(instance: Model, fields: Iterable[str] | None = None) 
             # Explicitly include nullable fields set to None so they're nulled in the DB
             update_data[field_name] = None
 
-    filters = {pk_name: pk_value}
+    # Build filters — include version guard when present
+    filters: dict[str, Any] = {pk_name: pk_value}
+    if version_field_name is not None and current_version is not None:
+        filters[version_field_name] = current_version
 
     if debug:
         vcprint(
@@ -162,6 +180,12 @@ async def update_instance(instance: Model, fields: Iterable[str] | None = None) 
     result = await update(model_cls, filters, **update_data)
 
     if result["rows_affected"] == 0:
+        if version_field_name is not None:
+            raise OptimisticLockError(
+                model=model_cls,
+                pk=pk_value,
+                expected_version=current_version,
+            )
         raise ValueError(
             f"No rows were updated for {model_cls.__name__} with {pk_name}={pk_value}"
         )
@@ -169,6 +193,9 @@ async def update_instance(instance: Model, fields: Iterable[str] | None = None) 
     if result["updated_rows"]:
         for key, value in result["updated_rows"][0].items():
             setattr(instance, key, value)
+    elif version_field_name is not None and version_field_name in update_data:
+        # Sync the new version onto the instance even when RETURNING is unavailable
+        setattr(instance, version_field_name, update_data[version_field_name])
 
     await post_save.send(model_cls, instance=instance, created=False)
     return instance

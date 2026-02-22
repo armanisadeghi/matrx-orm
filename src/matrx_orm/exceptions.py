@@ -678,3 +678,29 @@ class UnknownDatabaseError(ORMException):
         lines.append("-" * 80 + "\n")
         body = "\n".join(lines)
         return f"{_RED}{body}{_RESET}"
+
+
+class OptimisticLockError(ORMException):
+    """Raised when an optimistic-lock version conflict is detected.
+
+    This means another process has updated the row since it was last fetched.
+    Re-fetch the record and retry the operation.
+    """
+
+    def __init__(
+        self,
+        model=None,
+        pk=None,
+        expected_version: int | None = None,
+        message: str | None = None,
+    ) -> None:
+        msg = message or (
+            f"Optimistic lock conflict on {getattr(model, '__name__', model)} "
+            f"(pk={pk}, expected version={expected_version}). "
+            "The record was modified by another process — re-fetch and retry."
+        )
+        super().__init__(
+            message=msg,
+            model=model,
+            details={"pk": pk, "expected_version": expected_version},
+        )

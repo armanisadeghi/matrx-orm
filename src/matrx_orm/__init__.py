@@ -46,6 +46,7 @@ from .core.fields import (
     PointField,
     MoneyField,
     PrimitiveArrayField,
+    VersionField,
 )
 from .core.relations import ManyToManyField
 from .core.expressions import (
@@ -77,7 +78,23 @@ from .core.expressions import (
     Count,
     StdDev,
     Variance,
+    # Window functions
+    Window,
+    RowNumber,
+    Rank,
+    DenseRank,
+    Lag,
+    Lead,
+    FirstValue,
+    LastValue,
+    NthValue,
+    Ntile,
+    CumeDist,
+    PercentRank,
+    # CTEs
+    CTE,
 )
+from .core.paginator import Paginator, Page
 from .core.signals import (
     Signal,
     pre_create,
@@ -88,6 +105,7 @@ from .core.signals import (
     post_delete,
 )
 from .core.transaction import transaction
+from .exceptions import OptimisticLockError
 from .migrations import (
     MigrationDB,
     MigrationLoader,
@@ -166,6 +184,28 @@ __all__ = [
     "Count",
     "StdDev",
     "Variance",
+    # Window functions
+    "Window",
+    "RowNumber",
+    "Rank",
+    "DenseRank",
+    "Lag",
+    "Lead",
+    "FirstValue",
+    "LastValue",
+    "NthValue",
+    "Ntile",
+    "CumeDist",
+    "PercentRank",
+    # CTEs
+    "CTE",
+    # Paginator
+    "Paginator",
+    "Page",
+    # Fields
+    "VersionField",
+    # Exceptions
+    "OptimisticLockError",
     # Signals
     "Signal",
     "pre_create",
