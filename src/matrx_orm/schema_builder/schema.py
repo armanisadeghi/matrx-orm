@@ -6,9 +6,9 @@ from matrx_orm.schema_builder.helpers import (
     generate_complete_main_hooks_file,
     generate_multiple_entities,
 )
-from matrx_utils.file_handling.specific_handlers.code_handler import CodeHandler
 from matrx_orm import get_code_config, get_schema_builder_overrides
-from matrx_orm.schema_builder.common import DEBUG_CONFIG, dt_utils
+from matrx_orm.schema_builder.code_handler import SchemaCodeHandler
+from matrx_orm.schema_builder.common import DEBUG_CONFIG, OutputConfig, dt_utils
 import re
 
 
@@ -25,10 +25,13 @@ class Schema:
         self,
         name="public",
         database_project=None,
-        save_direct=False,
+        output_config: OutputConfig = None,
     ):
+        if output_config is None:
+            output_config = OutputConfig()
         self.utils = dt_utils
-        self.code_handler = CodeHandler(save_direct=save_direct)
+        self.output_config = output_config
+        self.code_handler = SchemaCodeHandler(output_config)
         self.name = name
         self.database_project = database_project
         self.tables = {}
@@ -37,7 +40,7 @@ class Schema:
         self.verbose = DEBUG_CONFIG["verbose"]
         self.debug = DEBUG_CONFIG["debug"]
         self.info = DEBUG_CONFIG["info"]
-        self.save_direct = save_direct
+        self.save_direct = output_config.save_direct
         self.initialized = False
         self._include_tables: set[str] | None = None
         self._exclude_tables: set[str] | None = None
@@ -91,13 +94,13 @@ class Schema:
             view.initialize_code_generation()
 
         self.initialized = True
-        vcprint(
-            self.to_dict(),
-            title="Schema started",
-            pretty=True,
-            verbose=self.verbose,
-            color="cyan",
-        )
+        # vcprint(
+        #     self.to_dict(),
+        #     title="Schema started",
+        #     pretty=True,
+        #     verbose=self.verbose,
+        #     color="cyan",
+        # )
 
     # Method to get file location based on the code version (schema or types)
     def get_file_location(self, code_version):

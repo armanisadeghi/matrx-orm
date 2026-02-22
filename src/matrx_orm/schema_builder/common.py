@@ -1,3 +1,5 @@
+from __future__ import annotations
+from dataclasses import dataclass, field
 from matrx_utils import DataTransformer
 import os
 import dotenv
@@ -12,6 +14,29 @@ ADMIN_TS_ROOT = os.getenv("ADMIN_TS_ROOT", "")
 
 
 dt_utils = DataTransformer()
+
+@dataclass
+class OutputConfig:
+    """
+    Controls which file types are written during schema generation and whether
+    output goes directly to the project roots (save_direct) or to the temp dir.
+
+    All three type flags default to True — set any to False to skip that output.
+    """
+    save_direct: bool = False
+    python: bool = True
+    typescript: bool = True
+    json: bool = True
+
+    @classmethod
+    def from_dict(cls, d: dict) -> OutputConfig:
+        return cls(
+            save_direct=bool(d.get("save_direct", False)),
+            python=bool(d.get("python", True)),
+            typescript=bool(d.get("typescript", True)),
+            json=bool(d.get("json", True)),
+        )
+
 
 # Central debug configuration for the entire schema builder.
 # Values can be overridden at runtime by run_schema_generation() from the yaml

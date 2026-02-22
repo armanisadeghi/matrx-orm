@@ -743,7 +743,7 @@ path = await diff.generate_migration_file("migrations/")
 When an included table has a foreign key column that references a table *outside* the migration scope, `matrx-orm` emits a `UserWarning` — the FK constraint will still be generated in the SQL, but the referenced table won't be created or managed by this migration set. Ensure it already exists in the target database.
 
 ```
-UserWarning: [matrx-orm] Cross-scope FK detected: 'post.author_id' references 'user',
+UserWarning: [MATRX ORM] Cross-scope FK detected: 'post.author_id' references 'user',
 which is outside the current migration scope. The FK constraint will be included
 in the generated SQL, but 'user' will not be created or managed by this migration
 set. Ensure it already exists in the target database.

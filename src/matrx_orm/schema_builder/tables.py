@@ -114,13 +114,6 @@ class Table:
         vcprint(
             self.junction_analysis_ts, pretty=True, verbose=self.verbose, color="blue"
         )
-        vcprint(
-            self.to_dict(),
-            title="Table initialized",
-            pretty=True,
-            verbose=self.verbose,
-            color="cyan",
-        )
 
     def pre_initialize(self):
         if self.pre_initialized:

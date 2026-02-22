@@ -1,6 +1,7 @@
 import json
 import os
 from typing import Any, Dict, List
+from urllib.parse import quote_plus
 
 from psycopg_pool import ConnectionPool
 from psycopg.rows import dict_row
@@ -30,7 +31,13 @@ def init_connection_details(config_name):
             raise ValueError(
                 f"Incomplete database configuration for '{config_name}'. " "Please check your environment variables or settings.")
 
-        connection_string = f"{db_protocol}://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+        # URL-encode user and password so special characters (#, $, @, etc.)
+        # don't corrupt the URI — this is the root cause of auth failures when
+        # passwords contain symbols.
+        connection_string = (
+            f"{db_protocol}://{quote_plus(db_user)}:{quote_plus(db_password)}"
+            f"@{db_host}:{db_port}/{db_name}"
+        )
         redacted = f"{db_protocol}://{db_user}:****@{db_host}:{db_port}/{db_name}"
 
         vcprint(f"\n[Matrx ORM] Connection String:\n{redacted}\n", color="yellow")
@@ -39,8 +46,10 @@ def init_connection_details(config_name):
             connection_string,
             min_size=1,
             max_size=10,
-            kwargs={"sslmode": "require"}
+            kwargs={"sslmode": "require"},
+            open=False,
         )
+        connection_pools[config_name].open(wait=True)
 
 
 def get_postgres_connection(
@@ -61,7 +70,12 @@ def execute_sql_query(query, params=None, database_project="this_will_cause_erro
             if params and isinstance(params, dict):
                 query, params = sql_param_to_psycopg2(query, params)
             cur.execute(query, params)
-            return cur.fetchall()
+            results = cur.fetchall()
+        conn.commit()
+        return results
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         connection_pools[database_project].putconn(conn)
 

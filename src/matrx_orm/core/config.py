@@ -186,7 +186,7 @@ def register_database_from_env(
     _REQUIRED = ["HOST", "PORT", "NAME", "USER", "PASSWORD"]
     _OPTIONAL = {"PROTOCOL": "postgresql"}
 
-    vcprint(f"[matrx-orm] Registering database '{name}'...", color="cyan")
+    vcprint(name, f"\n[MATRX ORM] Registering database", color="cyan")
 
     missing: list[str] = []
     resolved: dict[str, str] = {}

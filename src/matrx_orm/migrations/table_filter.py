@@ -114,7 +114,7 @@ class TableFilter:
                         continue
                     seen.add(key)
                     warnings.warn(
-                        f"[matrx-orm] Cross-scope FK detected: "
+                        f"[MATRX ORM] Cross-scope FK detected: "
                         f"'{table_name}.{col_name}' references '{ref_table}', "
                         f"which is outside the current migration scope. "
                         f"The FK constraint will be included in the generated SQL, "

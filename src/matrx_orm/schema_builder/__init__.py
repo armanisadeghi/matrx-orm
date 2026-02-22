@@ -3,6 +3,7 @@
 from matrx_orm.schema_builder import helpers
 from matrx_orm.schema_builder.common import (
     DEBUG_CONFIG,
+    OutputConfig,
 )
 from matrx_orm.schema_builder.generator import (
     get_schema_structure,
@@ -25,6 +26,7 @@ __all__ = [
     "ADMIN_PYTHON_ROOT",
     "ADMIN_TS_ROOT",
     "DEBUG_CONFIG",
+    "OutputConfig",
     "schema_builder_verbose",
     "SchemaManager",
     "run_schema_generation",

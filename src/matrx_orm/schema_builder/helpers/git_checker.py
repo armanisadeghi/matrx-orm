@@ -25,18 +25,18 @@ def check_git_status(save_direct: bool, python_root: str = "", ts_root: str = ""
 
     if not save_direct:
         vcprint(
-            "[MATRX GIT CHECKER] save_direct is False - skipping git checks",
+            "[MATRX ORM GIT CHECKER] save_direct is False - skipping git checks",
             color="green",
         )
         return True
 
-    vcprint("\n[MATRX GIT CHECKER] Checking git repository status...", color="yellow")
-    vcprint(f"[MATRX GIT CHECKER] Python root:     {python_root}", color="green")
-    vcprint(f"[MATRX GIT CHECKER] TypeScript root: {ts_root}", color="green")
+    vcprint("\n[MATRX ORM GIT CHECKER] Checking git repository status...\n", color="yellow")
+    vcprint(f"[MATRX ORM GIT CHECKER] Python root:     {python_root}", color="green")
+    vcprint(f"[MATRX ORM GIT CHECKER] TypeScript root: {ts_root}", color="green")
     print()
 
     for root_name, root_path in roots_to_check:
-        vcprint(f"\n[MATRX GIT CHECKER] Checking {root_name}...", color="yellow")
+        vcprint(f"\n[MATRX ORM GIT CHECKER] Checking {root_name}...", color="yellow")
 
         # Skip if path is not set
         if not root_path:
@@ -51,7 +51,7 @@ def check_git_status(save_direct: bool, python_root: str = "", ts_root: str = ""
         try:
             # Try to initialize repo object
             repo = Repo(root_path)
-            vcprint("- Git repository found! ✓", color="green")
+            vcprint("- [MATRX ORM GIT CHECKER] Git repository found! ✓", color="green")
             vcprint("- Checking git status...\n", color="green")
 
             # Check if there are uncommitted changes
@@ -83,15 +83,15 @@ def check_git_status(save_direct: bool, python_root: str = "", ts_root: str = ""
 
     if has_issues:
         vcprint(
-            "\n[MATRX GIT CHECKER] Error: Cannot proceed with save_direct=True\n",
+            "\n[MATRX ORM GIT CHECKER] Error: Cannot proceed with save_direct=True\n",
             color="red",
         )
         vcprint(
-            "[MATRX GIT CHECKER] Your Options:\n --> Option 1: Commit or stash your changes first.\n --> Option 2: Set save_direct=False.\n --> Option 3: Change your environmental variables to point to a different or temporary directory.\n",
+            "[MATRX ORM GIT CHECKER] Your Options:\n --> Option 1: Commit or stash your changes first.\n --> Option 2: Set save_direct=False.\n --> Option 3: Change your environmental variables to point to a different or temporary directory.\n",
             color="red",
         )
         sys.exit(1)
     else:
-        vcprint("\n[MATRX GIT CHECKER] All checks passed ✓", color="green")
+        vcprint("\n[MATRX ORM GIT CHECKER] All checks passed ✓", color="green")
 
     return True

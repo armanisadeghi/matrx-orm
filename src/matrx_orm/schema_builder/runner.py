@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 from matrx_utils import vcprint
 
 from matrx_orm.core.config import register_database_from_env, DatabaseConfigError
-from matrx_orm.schema_builder.common import DEBUG_CONFIG
+from matrx_orm.schema_builder.common import DEBUG_CONFIG, OutputConfig
 from matrx_orm.schema_builder.helpers.git_checker import check_git_status
 from matrx_orm.schema_builder.schema_manager import SchemaManager
 
@@ -54,7 +54,7 @@ def run_schema_generation(config_path: str | Path = "matrx_orm.yaml") -> None:
             f"Create a matrx_orm.yaml file next to your generate.py script."
         )
 
-    vcprint(f"[matrx-orm] Loading config: {config_path}", color="cyan")
+    vcprint(config_path, f"[MATRX ORM] Loading config", color="cyan")
 
     # Load .env from the same directory as the config file
     env_file = config_path.parent / ".env"
@@ -74,11 +74,10 @@ def run_schema_generation(config_path: str | Path = "matrx_orm.yaml") -> None:
     DEBUG_CONFIG["verbose"] = bool(debug_cfg.get("verbose", False))
 
     # -------------------------------------------------------------------------
-    # Output directories + save_direct
+    # Output config — resolves paths, type flags, and save_direct
     # -------------------------------------------------------------------------
     output_cfg = cfg.get("output", {})
     base = config_path.parent
-    save_direct = bool(output_cfg.get("save_direct", False))
 
     python_root = ""
     ts_root = ""
@@ -91,24 +90,26 @@ def run_schema_generation(config_path: str | Path = "matrx_orm.yaml") -> None:
         ts_root = str((base / output_cfg["typescript_root"]).resolve())
         os.environ["ADMIN_TS_ROOT"] = ts_root
 
+    output_config = OutputConfig.from_dict(output_cfg)
+
     # -------------------------------------------------------------------------
     # Git safety check — must run before any generation when save_direct=True
     # -------------------------------------------------------------------------
-    check_git_status(save_direct, python_root=python_root, ts_root=ts_root)
+    check_git_status(output_config.save_direct, python_root=python_root, ts_root=ts_root)
 
     # -------------------------------------------------------------------------
     # Register databases
     # -------------------------------------------------------------------------
     databases = cfg.get("databases", [])
     if not databases:
-        vcprint("[matrx-orm] No databases defined in matrx_orm.yaml — nothing to do.", color="yellow")
+        vcprint("[MATRX ORM] No databases defined in matrx_orm.yaml — nothing to do.", color="yellow")
         return
 
     for db in databases:
         name = db.get("name")
         prefix = db.get("env_prefix")
         if not name or not prefix:
-            vcprint(f"[matrx-orm] Skipping database entry missing 'name' or 'env_prefix': {db}", color="yellow")
+            vcprint(f"[MATRX ORM] Skipping database entry missing 'name' or 'env_prefix': {db}", color="yellow")
             continue
 
         register_database_from_env(
@@ -122,39 +123,38 @@ def run_schema_generation(config_path: str | Path = "matrx_orm.yaml") -> None:
     # -------------------------------------------------------------------------
     generate_list = cfg.get("generate", [])
     if not generate_list:
-        vcprint("[matrx-orm] No entries in 'generate' — databases registered but nothing generated.", color="yellow")
+        vcprint("[MATRX ORM] No entries in 'generate' — databases registered but nothing generated.", color="yellow")
         return
 
     for entry in generate_list:
         db_name = entry.get("database")
         schema = entry.get("schema", "public")
 
-        vcprint(
-            f"[matrx-orm] Generating schema for database='{db_name}' schema='{schema}'",
-            color="cyan",
-        )
+        vcprint(f"[MATRX ORM] Generating schema... \n\n- Database: '{db_name}'\n- Schema: '{schema}'", verbose=DEBUG_CONFIG["verbose"], color="cyan")
 
         try:
             manager = SchemaManager(
                 schema=schema,
                 database_project=db_name,
-                save_direct=save_direct,
+                output_config=output_config,
             )
             manager.initialize()
             manager.schema.generate_schema_files()
             manager.schema.generate_models()
             vcprint(
-                f"[matrx-orm] Done — database='{db_name}' schema='{schema}'",
+                f"[MATRX ORM] Done — database='{db_name}' schema='{schema}'\n",
                 color="green",
             )
+
+            manager.schema.code_handler.print_all_batched()
         except DatabaseConfigError as e:
             vcprint(
-                f"[matrx-orm] Skipping '{db_name}': {e}",
+                f"[MATRX ORM] Skipping '{db_name}': {e}",
                 color="red",
             )
         except Exception as e:
             vcprint(
-                f"[matrx-orm] Error generating '{db_name}': {e}",
+                f"[MATRX ORM] Error generating '{db_name}': {e}",
                 color="red",
             )
             raise

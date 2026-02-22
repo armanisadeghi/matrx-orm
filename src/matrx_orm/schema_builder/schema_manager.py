@@ -1,7 +1,7 @@
 from datetime import datetime
 from matrx_utils import vcprint
 
-from matrx_orm.schema_builder.common import DEBUG_CONFIG, dt_utils
+from matrx_orm.schema_builder.common import DEBUG_CONFIG, OutputConfig, dt_utils
 from matrx_orm.schema_builder.generator import get_relationship_data_model_types
 from matrx_orm.python_sql.db_objects import get_db_objects
 from matrx_orm.schema_builder.relationships import Relationship
@@ -17,6 +17,7 @@ class SchemaManager:
         schema="public",
         database_project=None,
         additional_schemas=None,
+        output_config: OutputConfig = None,
         save_direct=False,
         include_tables=None,
         exclude_tables=None,
@@ -40,12 +41,19 @@ class SchemaManager:
                 "SchemaManager accepts either 'include_tables' or 'exclude_tables', not both."
             )
 
-        # Ensure utils and Schema are properly imported or defined
-        self.utils = dt_utils  # Define or import `utils` properly
+        # Resolve output_config — explicit object wins; bare save_direct is the
+        # legacy fallback so existing call sites don't break.
+        if output_config is None:
+            output_config = OutputConfig(save_direct=save_direct)
+        self.output_config = output_config
+
+        self.utils = dt_utils
         self.database = database
         self.schema = Schema(
-            name=schema, database_project=database_project, save_direct=save_direct
-        )  # Define or import `Schema`
+            name=schema,
+            database_project=database_project,
+            output_config=output_config,
+        )
         self.additional_schemas = additional_schemas
         self.database_project = database_project
         self.processed_objects = None
@@ -55,7 +63,7 @@ class SchemaManager:
         self.overview_analysis = None
         self.frontend_full_relationships = []
         self.initialized = False
-        self.save_direct = save_direct
+        self.save_direct = output_config.save_direct
         self.verbose = DEBUG_CONFIG["verbose"]
         self.debug = DEBUG_CONFIG["debug"]
         self.info = DEBUG_CONFIG["info"]

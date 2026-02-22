@@ -119,14 +119,6 @@ class Column:
 
         self.initialize_code_generation()
 
-        vcprint(
-            self.to_dict(),
-            title="Column initialized",
-            pretty=True,
-            verbose=self.verbose,
-            color="cyan",
-        )
-
         if self.enum_labels:
             self.has_enum_labels = True
             vcprint(

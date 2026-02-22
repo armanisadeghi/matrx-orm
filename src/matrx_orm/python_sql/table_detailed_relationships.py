@@ -18,8 +18,6 @@ def get_table_relationships(schema, database_project):
         List of dictionaries with table relationship data including relationship types.
     """
 
-    print("get_table_relationships called with", database_project)
-
     query = """
     WITH fk_info AS (
         SELECT

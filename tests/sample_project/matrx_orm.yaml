@@ -10,10 +10,16 @@
 output:
   python_root: generated/python
   typescript_root: generated/typescript
-  # save_direct: false  — set to true to write directly to the roots above.
-  #                       When true, matrx-orm will refuse to run if either
-  #                       root has uncommitted git changes (safety guard).
-  save_direct: false
+
+  # save_direct: write directly to the roots above instead of the temp dir.
+  # When true, matrx-orm will refuse to run if either root has uncommitted
+  # git changes (safety guard).
+  save_direct: true
+
+  # Set any of these to false to skip generating that file type entirely.
+  python: true
+  typescript: true
+  json: true
 
 # =============================================================================
 # Databases
@@ -33,6 +39,8 @@ databases:
 
   - name: secondary
     env_prefix: SECONDARY_DB
+    additional_schemas:
+      - auth
 
 # =============================================================================
 # Schema generation
@@ -44,14 +52,16 @@ generate:
   - database: primary
     schema: public
 
+
   # Uncomment to also generate from the secondary database:
-  # - database: secondary
-  #   schema: public
+  - database: secondary
+    schema: public
 
 # =============================================================================
 # Debug
 # =============================================================================
 debug:
-  info: false
-  verbose: false
-  debug: false
+  info: true
+  debug: true
+  verbose: true
+  

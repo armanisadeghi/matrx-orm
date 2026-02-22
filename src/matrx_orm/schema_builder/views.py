@@ -40,13 +40,6 @@ class View:
         self.name_title = self.utils.to_title_case(self.name)
 
         self.unique_name_lookups = None
-        vcprint(
-            self.to_dict(),
-            title="View initialized",
-            pretty=True,
-            verbose=self.verbose,
-            color="cyan",
-        )
 
     def __repr__(self):
         return f"<View name={self.name}>"

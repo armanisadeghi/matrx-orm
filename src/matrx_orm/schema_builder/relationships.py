@@ -35,14 +35,6 @@ class Relationship:
         self.debug = DEBUG_CONFIG["debug"]
         self.info = DEBUG_CONFIG["info"]
 
-        vcprint(
-            self.to_dict(),
-            title="Relationship initialized",
-            pretty=True,
-            verbose=self.verbose,
-            color="yellow",
-        )
-
     def __repr__(self):
         return f"<Relationship {self.constraint_name}: {self.column} -> {self.foreign_column}>"
 
@@ -51,8 +43,8 @@ class Relationship:
             "constraint_name": self.constraint_name,
             "column": self.column,
             "foreign_column": self.foreign_column,
-            "target_table": self.target_table,
-            "source_table": self.source_table,
+            "target_table": repr(self.target_table) if self.target_table is not None else None,
+            "source_table": repr(self.source_table) if self.source_table is not None else None,
             "frontend_column": self.frontend_column,
             "frontend_foreign_column": self.frontend_foreign_column,
             "frontend_target_table": self.frontend_target_table,
