@@ -1,16 +1,10 @@
 import json
 from matrx_utils import vcprint
 from matrx_orm import get_manager_config, get_database_alias
-from matrx_orm.schema_builder.helpers.manager_dto_creator import generate_manager_class
-from matrx_orm.schema_builder.individual_managers.columns import Column
-from matrx_orm.schema_builder.individual_managers.common import (
-    DEBUG_SETTINGS,
-    schema_builder_verbose,
-    schema_builder_debug,
-    schema_builder_info,
-    schema_builder_utils,
-)
-from matrx_orm.schema_builder.helpers.manager_helpers import generate_dto_and_manager
+from matrx_orm.schema_builder.helpers import generate_manager_class
+from matrx_orm.schema_builder.generator import generate_dto_and_manager
+from matrx_orm.schema_builder.columns import Column
+from matrx_orm.schema_builder.common import DEBUG_CONFIG, dt_utils
 
 
 class Table:
@@ -37,13 +31,13 @@ class Table:
         table_columns=None,
         junction_analysis_ts=None,
     ):
-        self.utils = schema_builder_utils
+        self.utils = dt_utils
 
         self.pre_initialized = False
         self.initialized = False
 
         self.is_debug = False
-        if name in DEBUG_SETTINGS["tables"]:
+        if name in DEBUG_CONFIG["tables"]:
             self.is_debug = True
 
         self.oid = oid
@@ -90,9 +84,9 @@ class Table:
 
         self.python_model_name = None
 
-        self.verbose = schema_builder_verbose
-        self.debug = schema_builder_debug
-        self.info = schema_builder_info
+        self.verbose = DEBUG_CONFIG["verbose"]
+        self.debug = DEBUG_CONFIG["debug"]
+        self.info = DEBUG_CONFIG["info"]
 
         self.name_snake = self.utils.to_snake_case(self.name)
         self.name_camel = self.utils.to_camel_case(self.name)

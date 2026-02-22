@@ -469,36 +469,3 @@ def save_manager_class(
 
     plt(file_path, "Manager class saved")
     return model_class_str, file_path
-
-
-if __name__ == "__main__":
-    # Updated flat configuration
-    ai_model_auto_config = {
-        "model_pascal": "AiModel",
-        "model_name": "ai_model",
-        "model_name_plural": "ai_models",
-        "model_name_snake": "ai_model",
-        "relations": [
-            "ai_provider",
-            "ai_model_endpoint",
-            "ai_settings",
-            "recipe_model",
-        ],
-        "filter_fields": [
-            "name",
-            "common_name",
-            "provider",
-            "model_class",
-            "model_provider",
-        ],
-        "include_core_relations": True,
-        "include_active_relations": False,
-        "include_filter_fields": True,
-        "include_active_methods": False,
-        "include_or_not_methods": False,
-        "include_to_dict_methods": True,
-        "include_to_dict_relations": True,
-    }
-    os.system("cls")
-
-    model_class_str, file_path = save_manager_class(**ai_model_auto_config)

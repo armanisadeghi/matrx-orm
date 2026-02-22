@@ -1,11 +1,6 @@
 from matrx_utils import vcprint
 
-from matrx_orm.schema_builder.individual_managers.common import (
-    schema_builder_verbose,
-    schema_builder_debug,
-    schema_builder_info,
-    schema_builder_utils,
-)
+from matrx_orm.schema_builder.common import DEBUG_CONFIG, dt_utils
 
 
 class Relationship:
@@ -17,7 +12,7 @@ class Relationship:
         target_table=None,
         source_table=None,
     ):
-        self.utils = schema_builder_utils
+        self.utils = dt_utils
         self.constraint_name = constraint_name
         self.column = column
         self.foreign_column = foreign_column
@@ -36,9 +31,9 @@ class Relationship:
             else None
         )
 
-        self.verbose = schema_builder_verbose
-        self.debug = schema_builder_debug
-        self.info = schema_builder_info
+        self.verbose = DEBUG_CONFIG["verbose"]
+        self.debug = DEBUG_CONFIG["debug"]
+        self.info = DEBUG_CONFIG["info"]
 
         vcprint(
             self.to_dict(),

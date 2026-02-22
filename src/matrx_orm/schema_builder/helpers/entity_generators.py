@@ -1,4 +1,159 @@
-import os
+from matrx_orm.schema_builder.generator import get_default_component_props
+from copy import deepcopy
+from collections import OrderedDict
+import re
+import json
+
+
+def generate_imports():
+    #     return """import { EntityKeys } from '@/types';
+    # import { EntityOverrides } from './overrideTypes';
+    # """
+    return ""
+
+
+def generate_typescript_entity(entity_name, overrides=None):
+    overrides = overrides or {}
+    ts_template = f"""
+const {entity_name}EntityOverrides: EntityOverrides<'{entity_name}'> = {{
+    schemaType: {overrides.get("schemaType", "null")},
+    entityName: {overrides.get("entityName", "null")},
+    uniqueTableId: {overrides.get("uniqueTableId", "null")},
+    uniqueEntityId: {overrides.get("uniqueEntityId", "null")},
+    primaryKey: {overrides.get("primaryKey", "null")},
+    primaryKeyMetadata: {overrides.get("primaryKeyMetadata", "null")},
+    displayFieldMetadata: {overrides.get("displayFieldMetadata", "null")},
+    defaultFetchStrategy: {overrides.get("defaultFetchStrategy", "null")},
+    componentProps: {overrides.get("componentProps", "null")},
+    entityNameFormats: {overrides.get("entityNameFormats", "null")},
+    relationships: {overrides.get("relationships", "null")},
+    entityFields: {overrides.get("entityFields", "null")}
+}};
+"""
+    return ts_template
+
+
+def generate_multiple_entities(entity_names, system_overrides):
+    imports = generate_imports()
+    entities_code = "\n\n".join(
+        generate_typescript_entity(name, system_overrides.get(name, {}))
+        for name in entity_names
+    )
+
+    entity_overrides_list = "\n".join(
+        f"    {name}: {name}EntityOverrides," for name in entity_names
+    )
+
+    entity_overrides_block = f"""
+
+export const ENTITY_OVERRIDES: Record<EntityKeys, EntityOverrides<EntityKeys>> = {{
+{entity_overrides_list}
+}};
+"""
+
+    return imports + "\n" + entities_code + entity_overrides_block
+
+
+def merge_component_props(overrides=None):
+    """
+    Merges provided overrides with the default componentProps while retaining order.
+    Returns a TypeScript-friendly string.
+    """
+    props_without_required_entry = get_default_component_props()
+    props_without_required_entry.pop("required", None)  # Avoid KeyError if missing
+
+    merged_props = deepcopy(props_without_required_entry)
+
+    if overrides:  # Ensure overrides is not None
+        merged_props.update(overrides)  # Apply overrides
+
+    # Ensure "required" is always last in the object
+    merged_props["required"] = False
+
+    # Convert to an OrderedDict to maintain key order
+    ordered_props = OrderedDict(merged_props)
+
+    # Convert to a formatted TypeScript object string
+    formatted_props = json.dumps(ordered_props, indent=4)
+
+    # Remove quotes from keys to match TypeScript syntax
+    formatted_props = re.sub(r'"(\w+)"\s*:', r"\1:", formatted_props)
+
+    return formatted_props
+
+
+def format_ts_object(ts_object_str):
+    """
+    Formats a JSON-like string to remove quotes from keys for TypeScript compatibility.
+    Ensures TypeScript style object notation.
+    """
+    return re.sub(r'"(\w+)"\s*:', r"\1:", ts_object_str)
+
+
+def generate_typescript_field_overrides(entity_name, overrides):
+    """
+    Generates a TypeScript field overrides object for a given entity.
+    If no overrides exist, returns an empty object.
+    """
+    if not overrides:
+        return f"const {entity_name}FieldOverrides: AllFieldOverrides = {{}};"
+
+    ts_template = f"const {entity_name}FieldOverrides: AllFieldOverrides = {{\n"
+
+    for field, value in overrides.items():
+        if isinstance(value, str):
+            # Handle string-based field overrides (non-componentProps)
+            formatted_value = format_ts_object(value)
+            ts_template += f"    {field}: {formatted_value},\n"
+        elif isinstance(value, dict):
+            # Handle componentProps while keeping other field properties
+            component_props_override = value.get("componentProps", {})
+            merged_component_props = (
+                merge_component_props(component_props_override)
+                if component_props_override
+                else None
+            )
+
+            # Start field object
+            ts_template += f"    {field}: {{\n"
+
+            # Add other field properties (excluding componentProps)
+            for key, val in value.items():
+                if key != "componentProps":
+                    ts_template += f"        {key}: {json.dumps(val)},\n"
+
+            # Add merged componentProps if it exists
+            if merged_component_props:
+                ts_template += f"        componentProps: {merged_component_props},\n"
+
+            # Close field object
+            ts_template += f"    }},\n"
+
+    ts_template += "};\n"
+    return ts_template
+
+
+def generate_full_typescript_file(entity_names, system_overrides):
+    """
+    Generates the entire TypeScript file as a string, including all entity field overrides
+    and the final `ENTITY_FIELD_OVERRIDES` export.
+    """
+    entity_overrides_blocks = "\n\n".join(
+        generate_typescript_field_overrides(name, system_overrides.get(name, {}))
+        for name in entity_names
+    )
+
+    entity_overrides_list = "\n".join(
+        f"    {name}: {name}FieldOverrides," for name in entity_names
+    )
+
+    entity_overrides_export = f"""
+export const ENTITY_FIELD_OVERRIDES: AllEntityFieldOverrides = {{
+{entity_overrides_list}
+}};
+"""
+
+    return entity_overrides_blocks + "\n\n" + entity_overrides_export
 
 
 def to_camel_case(snake_str):
@@ -148,20 +303,3 @@ def generate_complete_main_hooks_file(entity_names):
     hooks = generate_all_entity_main_hooks(entity_names)
 
     return f"{imports}\n\n{hooks}"
-
-
-if __name__ == "__main__":
-    os.system("cls")
-
-    entity_names = [
-        "workflow",
-        "registered_function",
-        "arg",
-    ]
-
-    result = generate_complete_main_hooks_file(entity_names)
-    print(result)
-
-# # Optionally, write to a file
-# with open('generated_types.ts', 'w') as f:
-#     f.write(result)

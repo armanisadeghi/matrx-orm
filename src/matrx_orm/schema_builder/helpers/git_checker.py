@@ -2,14 +2,7 @@ import os
 import sys
 from git import Repo, GitCommandError, InvalidGitRepositoryError
 from matrx_utils import vcprint
-
-# ====== IMPORTANT: If save_direct = True in generator.py, live files will be overwritten with auto-generated files ======
-
-# If this environmental variable is set to your actual project root, auto-generated python files will overwrite the live, existing files
-ADMIN_PYTHON_ROOT = os.getenv("ADMIN_PYTHON_ROOT", "")
-
-# If this environmental variable is set to your actual project root, auto-generated typescript files will overwrite the live, existing files
-ADMIN_TS_ROOT = os.getenv("ADMIN_TS_ROOT", "")
+from matrx_orm.schema_builder.common import ADMIN_PYTHON_ROOT, ADMIN_TS_ROOT
 
 
 def check_git_status(save_direct):
@@ -98,25 +91,3 @@ def check_git_status(save_direct):
         vcprint("\n[MATRX GIT CHECKER] All checks passed ✓", color="green")
 
     return True
-
-
-def clear_terminal():
-    if os.name == "nt":
-        os.system("cls")
-    else:
-        os.system("clear")
-
-
-if __name__ == "__main__":
-    clear_terminal()
-
-    schema = "public"
-    database_project = "your_database_project"  # replace with your registered project name
-    additional_schemas = ["auth"]
-    save_direct = False
-
-    if save_direct:
-        check_git_status(save_direct)
-        input(
-            "WARNING: This will overwrite the existing schema files. Press Enter to continue..."
-        )

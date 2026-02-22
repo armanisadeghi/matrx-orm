@@ -1,6 +1,6 @@
 [project]
 name = "matrx-orm"
-version = "2.0.0"
+version = "2.0.1"
 description = "Async-first PostgreSQL ORM with bidirectional migrations, schema introspection, many-to-many relationships, and built-in state caching. Works with any PostgreSQL database."
 readme = "README.md"
 license = { text = "MIT" }

@@ -1,27 +1,15 @@
 from collections import defaultdict
 import json
 from matrx_utils import vcprint
-from matrx_orm.schema_builder.individual_managers.common import (
-    schema_builder_verbose,
-    schema_builder_debug,
-    schema_builder_info,
-    schema_builder_utils,
-)
-from matrx_utils.file_handling.specific_handlers.code_handler import CodeHandler
-from matrx_orm.schema_builder.parts_generators.entity_field_override_generator import (
+from matrx_orm.schema_builder.helpers import (
     generate_full_typescript_file,
-)
-from matrx_orm.schema_builder.parts_generators.entity_main_hook_generator import (
     generate_complete_main_hooks_file,
-)
-from matrx_orm.schema_builder.parts_generators.entity_override_generator import (
     generate_multiple_entities,
 )
+from matrx_utils.file_handling.specific_handlers.code_handler import CodeHandler
 from matrx_orm import get_code_config, get_schema_builder_overrides
-
+from matrx_orm.schema_builder.common import DEBUG_CONFIG, dt_utils
 import re
-
-LOCAL_DEBUG_MODE = False
 
 
 def format_ts_object(ts_object_str):
@@ -39,16 +27,16 @@ class Schema:
         database_project=None,
         save_direct=False,
     ):
-        self.utils = schema_builder_utils
+        self.utils = dt_utils
         self.code_handler = CodeHandler(save_direct=save_direct)
         self.name = name
         self.database_project = database_project
         self.tables = {}
         self.views = {}
         self.relationships = []
-        self.verbose = schema_builder_verbose
-        self.debug = schema_builder_debug
-        self.info = schema_builder_info
+        self.verbose = DEBUG_CONFIG["verbose"]
+        self.debug = DEBUG_CONFIG["debug"]
+        self.info = DEBUG_CONFIG["info"]
         self.save_direct = save_direct
         self.initialized = False
         self._include_tables: set[str] | None = None
@@ -832,10 +820,11 @@ class Schema:
         main_code = "\n".join(py_structure)
         additional_code = "\n".join(py_manager_structure)
 
-        if LOCAL_DEBUG_MODE:
+        if DEBUG_CONFIG["debug"]:
             print("DEBUG.....")
             print(
-                "python_models", get_code_config(self.database_project)["python_models"]
+                "python_models",
+                get_code_config(self.database_project)["python_models"],
             )
             print("-----------------------------\n")
 

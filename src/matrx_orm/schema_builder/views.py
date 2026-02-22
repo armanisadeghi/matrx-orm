@@ -1,10 +1,5 @@
 from matrx_utils import vcprint
-from matrx_orm.schema_builder.individual_managers.common import (
-    schema_builder_verbose,
-    schema_builder_debug,
-    schema_builder_info,
-    schema_builder_utils,
-)
+from matrx_orm.schema_builder.common import DEBUG_CONFIG, dt_utils
 
 
 class View:
@@ -21,7 +16,7 @@ class View:
         view_definition,
         column_data,
     ):
-        self.utils = schema_builder_utils
+        self.utils = dt_utils
         self.oid = oid
         self.name = name
         self.type = type_
@@ -32,9 +27,9 @@ class View:
         self.description = description
         self.view_definition = view_definition
         self.column_data = column_data
-        self.verbose = schema_builder_verbose
-        self.debug = schema_builder_debug
-        self.info = schema_builder_info
+        self.verbose = DEBUG_CONFIG["verbose"]
+        self.debug = DEBUG_CONFIG["debug"]
+        self.info = DEBUG_CONFIG["info"]
 
         self.initialized = False
 

@@ -1,14 +1,4 @@
-import os
-from matrx_utils import vcprint
-from matrx_orm.schema_builder.helpers.git_checker import check_git_status
-from matrx_orm.schema_builder.schema_manager import SchemaManager
-
-generator_verbose = False
-generator_debug = False
-generator_info = True
-
-
-def generate_schema_structure(schema_manager, table_name):
+def get_schema_structure(schema_manager, table_name):
     """
     Generates the schema structure with defaultFetchStrategy, foreignKeys, inverseForeignKeys, and manyToMany relationships.
 
@@ -85,75 +75,168 @@ def generate_schema_structure(schema_manager, table_name):
     return schema_structure
 
 
-def example_usage(schema_manager):
-    table = schema_manager.get_table("flashcard_data")
-    print()
-    if table:
-        vcprint(f"Table: {table.name}")
-        vcprint("Foreign Keys:")
-        for target, rel in table.foreign_keys.items():
-            vcprint(f"  - {target}: {rel}")
-        vcprint("Referenced By:")
-        for source, rel in table.referenced_by.items():
-            vcprint(f"  - {source}: {rel}")
-        vcprint("Many-to-Many Relationships:")
-        for mm in table.many_to_many:
-            vcprint(f"  - {mm['related_table']} (via {mm['junction_table']})")
-
-    example_column = schema_manager.get_column("flashcard_data", "id").to_dict()
-    vcprint(
-        example_column,
-        title="Flashcard ID Column",
-        pretty=True,
-        verbose=generator_verbose,
-        color="cyan",
-    )
-
-    example_view = schema_manager.get_view(
-        "view_registered_function_all_rels"
-    ).to_dict()
-    vcprint(
-        example_view,
-        title="Full Registered Function View",
-        pretty=True,
-        verbose=generator_verbose,
-        color="yellow",
-    )
-
-    example_table = schema_manager.get_table("registered_function").to_dict()
-    vcprint(
-        example_table,
-        title="Flashcard History Table",
-        pretty=True,
-        verbose=generator_verbose,
-        color="cyan",
-    )
-
-    # full_schema = schema_manager.schema.to_dict()
-    # vcprint(full_schema, title="Full Schema", pretty=True, verbose=verbose, color="cyan")
-
-
-def get_full_schema_object(schema, database_project):
-    schema_manager = SchemaManager(schema=schema, database_project=database_project)
-    schema_manager.initialize()
-    matrx_schema_entry = schema_manager.schema.generate_schema_files()
-    matrx_models = schema_manager.schema.generate_models()
-    analysis = schema_manager.analyze_schema()
-
-    full_schema_object = {
-        "schema": matrx_schema_entry,
-        "models": matrx_models,
-        "analysis": analysis,
+def get_default_component_props():
+    return {
+        "subComponent": "default",
+        "variant": "default",
+        "section": "default",
+        "placeholder": "default",
+        "size": "default",
+        "textSize": "default",
+        "textColor": "default",
+        "rows": "default",
+        "animation": "default",
+        "fullWidthValue": "default",
+        "fullWidth": "default",
+        "disabled": "default",
+        "className": "default",
+        "type": "default",
+        "onChange": "default",
+        "onBlur": "default",
+        "formatString": "default",
+        "min": "default",
+        "max": "default",
+        "step": "default",
+        "numberType": "default",
+        "options": "default",
     }
-    return full_schema_object
 
 
-# ====== IMPORTANT: If save_direct = True in generator.py, live files will be overwritten with auto-generated files ======
+# Method to generate the AutomationSchema
+def generate_automation_schema():  # TODO: Currently not used.
+    lines = [
+        "export type AutomationSchema = {",
+        "    [tableName in AutomationTableName]: {",
+        "        entityNameFormats: {",
+        "            frontend: string;",
+        "            backend: string;",
+        "            database: string;",
+        "            pretty: string;",
+        "            component: string;",
+        "            kebab: string;",
+        "            [key: string]: string;",
+        "        };",
+        "        schemaType: 'table' | 'view' | 'dynamic' | 'other';",
+        "        entityFields: {",
+        "            [fieldName: string]: {",
+        "                fieldNameFormats: {",
+        "                    frontend: string;",
+        "                    backend: string;",
+        "                    database: string;",
+        "                    pretty: string;",
+        "                    component: string;",
+        "                    kebab: string;",
+        "                    [key: string]: string;",
+        "                };",
+        "                dataType: DataType;",
+        "                isRequired?: boolean;",
+        "                maxLength?: number | null;",
+        "                isArray?: boolean;",
+        "                defaultValue?: any;",
+        "                isPrimaryKey?: boolean;",
+        "                defaultGeneratorFunction?: string | null;",
+        "                validationFunctions?: string[];",
+        "                exclusionRules?: string[];",
+        "                defaultComponent?: string;",
+        "                structure: 'single' | 'array' | 'object' | 'foreignKey' | 'inverseForeignKey' | 'manyToMany';",
+        "                isNative: boolean;",
+        "                typeReference: TypeBrand<any>;",
+        "                databaseTable: string;",
+        "            };",
+        "        };",
+        "        defaultFetchStrategy: 'simple' | 'fk' | 'ifk' | 'm2m' | 'fkAndIfk' | 'm2mAndFk' | 'm2mAndIfk' | 'fkIfkAndM2M';",
+        "        relationships: Array<{",
+        "            relationshipType: 'foreignKey' | 'inverseForeignKey' | 'manyToMany';",
+        "            column: string;",
+        "            relatedTable: string;",
+        "            relatedColumn: string;",
+        "            junctionTable: string | null;",
+        "        }>;",
+        "    };",
+        "};",
+    ]
 
-# If this environmental variable is set to your actual project root, auto-generated python files will overwrite the live, existing files
-ADMIN_PYTHON_ROOT = os.getenv("ADMIN_PYTHON_ROOT", "")
+    return "\n".join(lines)
 
-# If this environmental variable is set to your actual project root, auto-generated typescript files will overwrite the live, existing files
-ADMIN_TS_ROOT = os.getenv("ADMIN_TS_ROOT", "")
 
-# =========================================================================================================================
+def get_relationship_data_model_types():
+    ts_code_content = """
+
+    import { AnyEntityDatabaseTable, EntityKeys } from "@/types";
+
+    export type EntityRelationshipType =
+        | "self-referential"
+        | "one-to-one"
+        | "one-to-many"
+        | "many-to-one"
+        | "many-to-many";
+
+    export type ForeignKeyDetails = {
+        foreignTable: AnyEntityDatabaseTable;
+        foreignEntity: EntityKeys;
+        column: string;
+        fieldName: string;
+        foreignField: string;
+        foreignColumn: string;
+        relationshipType: EntityRelationshipType;
+        constraintName: string;
+    };
+
+    export type ReferencedByDetails = {
+        foreignTable: AnyEntityDatabaseTable;
+        foreignEntity: EntityKeys;
+        field: string;
+        column: string;
+        foreignField: string;
+        foreignColumn: string;
+        constraintName: string;
+    };
+
+    export type RelationshipDetails = {
+        entityName: EntityKeys;
+        tableName: AnyEntityDatabaseTable;
+        foreignKeys: Partial<Record<EntityKeys, ForeignKeyDetails>> | Record<string, never>;
+        referencedBy: Partial<Record<EntityKeys, ReferencedByDetails>> | Record<string, never>;
+    };
+
+    export type FullEntityRelationships = {
+        selfReferential: EntityKeys[];
+        manyToMany: EntityKeys[];
+        oneToOne: EntityKeys[];
+        manyToOne: EntityKeys[];
+        oneToMany: EntityKeys[];
+        undefined: EntityKeys[];
+        inverseReferences: EntityKeys[];
+        relationshipDetails: RelationshipDetails;
+    };
+
+    export const asEntityRelationships = (data: any): Record<EntityKeys, FullEntityRelationships> => {
+        return data as Record<EntityKeys, FullEntityRelationships>;
+    };
+
+    """
+    return ts_code_content
+
+
+def generate_dto_and_manager(name, name_camel):
+    return f"""
+
+@dataclass
+class {name_camel}DTO(BaseDTO):
+    id: str
+
+    @classmethod
+    async def from_model(cls, model):
+        return cls(id=str(model.id))
+
+
+class {name_camel}Manager(BaseManager):
+    def __init__(self):
+        super().__init__({name_camel}, {name_camel}DTO)
+
+    def _initialize_manager(self):
+        super()._initialize_manager()
+
+    async def _initialize_runtime_data(self, {name}):
+        pass
+    """

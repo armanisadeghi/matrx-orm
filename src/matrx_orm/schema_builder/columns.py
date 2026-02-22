@@ -4,13 +4,10 @@ import keyword
 import re
 
 from matrx_utils import vcprint
-from matrx_orm.constants import get_default_component_props
-from matrx_orm.schema_builder.individual_managers.common import (
-    DEBUG_SETTINGS,
-    schema_builder_debug,
-    schema_builder_info,
-    schema_builder_utils,
-    schema_builder_verbose,
+from matrx_orm.schema_builder.common import dt_utils
+from matrx_orm.schema_builder.generator import get_default_component_props
+from matrx_orm.schema_builder import (
+    DEBUG_CONFIG,
 )
 
 
@@ -44,7 +41,7 @@ class Column:
         parent_table_instance,
         is_display_field=False,
     ):
-        self.utils = schema_builder_utils
+        self.utils = dt_utils
         self.database_project = database_project
         self.table_name = table_name
         self.unique_column_id = unique_column_id
@@ -72,9 +69,9 @@ class Column:
         self.is_display_field = is_display_field
         self.has_enum_labels = True if self.enum_labels else False
 
-        self.verbose = schema_builder_verbose
-        self.debug = schema_builder_debug
-        self.info = schema_builder_info
+        self.verbose = DEBUG_CONFIG["verbose"]
+        self.debug = DEBUG_CONFIG["debug"]
+        self.info = DEBUG_CONFIG["info"]
 
         self.pre_initialized = False
         self.initialized = False
@@ -83,7 +80,7 @@ class Column:
 
         self.is_debug = False
         if self.parent_table_instance.is_debug:
-            if self.name in DEBUG_SETTINGS["columns"]:
+            if self.name in DEBUG_CONFIG["columns"]:
                 self.is_debug = True
 
         self.foreign_key_reference = (

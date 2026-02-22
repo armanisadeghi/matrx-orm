@@ -1,4 +1,3 @@
-
 from datetime import datetime, timedelta
 from enum import Enum
 import asyncio
@@ -13,6 +12,7 @@ from matrx_orm.exceptions import (
 )
 
 debug = False
+
 
 class CachePolicy(Enum):
     PERMANENT = "permanent"
@@ -186,7 +186,9 @@ class ModelState:
         """Cache a record with proper error handling."""
         try:
             if not record:
-                raise ValidationError(model=self.model_class, reason="Cannot cache None record")
+                raise ValidationError(
+                    model=self.model_class, reason="Cannot cache None record"
+                )
 
             cache_key = self._get_record_cache_key(record)
             if not cache_key:
@@ -250,8 +252,6 @@ class ModelState:
 
 class StateManager:
     _states = {}
-
-
 
     @classmethod
     def register_model(cls, model_class):
@@ -373,7 +373,11 @@ class StateManager:
         state = cls._states[(database, model_class.__name__)]
 
         # Step 1: Try getting cached records with the given filter
-        cached_records = [record for record in state.get_all_cached() if all(getattr(record, key) == value for key, value in kwargs.items())]
+        cached_records = [
+            record
+            for record in state.get_all_cached()
+            if all(getattr(record, key) == value for key, value in kwargs.items())
+        ]
         if cached_records:
             if debug:
                 vcprint(
