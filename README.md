@@ -1293,6 +1293,95 @@ with warnings.catch_warnings(record=True) as w:
 
 Keep `_unfetchable = True` only for tables that are genuinely inaccessible (e.g. Supabase internal system tables your Postgres role cannot query).
 
+### Complete Setup Example — Supabase + Second Database
+
+The most common real-world setup is a Supabase project (with `auth.users`) plus a separate standalone PostgreSQL database. Put everything in one `database_registry.py` at the root of your project and import it at startup:
+
+```python
+# database_registry.py
+from dotenv import load_dotenv
+load_dotenv()
+
+from matrx_utils.conf import settings
+from matrx_orm import DatabaseProjectConfig, register_database
+import logging
+
+# ---------------------------------------------------------------------------
+# Primary — Supabase project
+# additional_schemas=["auth"] enables auth.users FK resolution and schema
+# builder introspection of the auth schema. Add "storage" if needed.
+# ---------------------------------------------------------------------------
+register_database(DatabaseProjectConfig(
+    name="supabase_main",
+    alias="main",
+    host=settings.SUPABASE_HOST,           # e.g. aws-0-us-west-1.pooler.supabase.com
+    port=settings.SUPABASE_PORT,           # typically 6543 (pgBouncer) or 5432 (direct)
+    database_name=settings.SUPABASE_DB,    # "postgres"
+    user=settings.SUPABASE_USER,           # "postgres.<project-ref>"
+    password=settings.SUPABASE_PASSWORD,
+    additional_schemas=["auth"],           # introspect auth.users and emit to_schema='auth'
+))
+
+# ---------------------------------------------------------------------------
+# Secondary — standalone PostgreSQL (no cross-FK relationships yet)
+# Wrapped in try/except so the app still starts if this DB is unavailable
+# in a given environment (e.g. during local dev without the VPN).
+# ---------------------------------------------------------------------------
+try:
+    register_database(DatabaseProjectConfig(
+        name="external_postgres",
+        alias="external",
+        host=settings.POSTGRES_HOST,
+        port=settings.POSTGRES_PORT,
+        database_name=settings.POSTGRES_DB,
+        user=settings.POSTGRES_USER,
+        password=settings.POSTGRES_PASSWORD,
+        additional_schemas=[],             # public schema only for now
+    ))
+except Exception as e:
+    logging.warning(f"external_postgres not registered: {e}")
+```
+
+**How models use each database:**
+
+```python
+# Model in the Supabase database (default)
+class Recipe(Model):
+    _database = "supabase_main"
+    id = UUIDField(primary_key=True)
+    user_id = ForeignKey(to_model="Users", to_column="id", to_schema="auth")
+
+# Supabase auth.users stub (generated automatically by schema builder)
+class Users(Model):
+    _database = "supabase_main"
+    _db_schema = "auth"    # qualified_table_name = "auth.users"
+    id = UUIDField(primary_key=True)
+    email = CharField()
+
+# Model in the separate external database
+class AnalyticsEvent(Model):
+    _database = "external_postgres"
+    id = UUIDField(primary_key=True)
+    event_name = CharField()
+
+# Cross-database FK (fetch routes to external_postgres pool)
+class UserActivity(Model):
+    _database = "supabase_main"
+    id = UUIDField(primary_key=True)
+    analytics_event_id = ForeignKey(
+        to_model=AnalyticsEvent,
+        to_column="id",
+        to_db="external_postgres",    # routes fetch to the right pool
+    )
+```
+
+**Per-query database override with `.using()`:**
+
+```python
+# Force a specific query to a different registered database
+rows = await Recipe.filter(is_active=True).using("external_postgres").all()
+```
+
 ### `additional_schemas` in Config
 
 Declare which non-public schemas exist in each database so the schema builder introspects them automatically:
@@ -1545,10 +1634,168 @@ Rules:
 
 ---
 
+## Vector Search — pgvector (v2.0.0+)
+
+matrx-orm has first-class support for [pgvector](https://github.com/pgvector/pgvector), giving you AI-native vector similarity search directly alongside your relational data — no separate vector database client to manage, and no sync issues.
+
+### Prerequisites
+
+Install pgvector on your PostgreSQL instance and enable the extension:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+```
+
+### Defining a Model with Embeddings
+
+```python
+from uuid import uuid4
+from matrx_orm import Model, UUIDField, TextField, VectorField
+
+class Document(Model):
+    id = UUIDField(primary_key=True, default=uuid4)
+    title = TextField(null=False)
+    content = TextField()
+    embedding = VectorField(dimensions=1536)   # OpenAI text-embedding-3-small
+
+    class Meta:
+        table_name = "documents"
+        database = "my_project"
+```
+
+`VectorField` parameters:
+- `dimensions` (required) — vector size; enforced at the ORM layer before any DB round-trip
+- `dtype` (default `"float32"`) — reserved for future `halfvec`/`sparsevec` support
+
+### Saving a Document with an Embedding
+
+```python
+import openai
+
+client = openai.AsyncOpenAI()
+
+async def embed_and_store(title: str, content: str) -> Document:
+    resp = await client.embeddings.create(model="text-embedding-3-small", input=content)
+    vector = resp.data[0].embedding  # list[float] with 1536 dims
+
+    doc = await Document.create(title=title, content=content, embedding=vector)
+    return doc
+```
+
+### Similarity Search with `.nearest()`
+
+```python
+async def search(query: str, top_k: int = 10) -> list[Document]:
+    resp = await client.embeddings.create(model="text-embedding-3-small", input=query)
+    query_vec = resp.data[0].embedding
+
+    return await (
+        Document
+        .nearest("embedding", query_vec, metric="cosine")
+        .limit(top_k)
+        .all()
+    )
+```
+
+Each returned instance has a `_vector_distance` attribute set to the computed distance:
+
+```python
+results = await search("async PostgreSQL ORM")
+for doc in results:
+    print(f"{doc._vector_distance:.4f}  {doc.title}")
+```
+
+### Supported Distance Metrics
+
+| Metric | pgvector operator | Notes |
+|--------|-------------------|-------|
+| `"cosine"` (default) | `<=>` | Best for normalised embeddings |
+| `"l2"` | `<->` | Euclidean distance |
+| `"inner"` | `<#>` | Negative inner product |
+| `"l1"` | `<+>` | Manhattan distance (pgvector 0.7+) |
+
+### Hybrid Search — Filters + Vector Distance
+
+Scalar filters compose naturally with `.nearest()`:
+
+```python
+results = await (
+    Document
+    .filter(is_published=True, category="science")
+    .nearest("embedding", query_vec, metric="cosine")
+    .limit(20)
+    .all()
+)
+```
+
+> **Performance note:** HNSW/IVFFlat indexes work best when the vector ordering happens *before* heavy filtering. For high-recall hybrid queries, consider pre-filtering on a small indexed scalar column and post-filtering on the result set, or use pgvector's `ef_search` / `probes` session parameters for tuned recall (set these via `Model.raw("SET hnsw.ef_search = 200")` before your query).
+
+### Null Guard
+
+pgvector operators raise an error if the column contains `NULL`. `.nearest()` automatically injects `WHERE embedding IS NOT NULL` to prevent this. Disable it if you are certain the column has no nulls:
+
+```python
+.nearest("embedding", query_vec, null_guard=False)
+```
+
+### Creating Vector Indexes
+
+Use `IndexDef` from the migrations module to create HNSW or IVFFlat indexes:
+
+```python
+from matrx_orm import IndexDef, DDLGenerator
+
+# HNSW index — fast ANN, good recall, no training required
+hnsw_index = IndexDef(
+    name="documents_embedding_hnsw_idx",
+    table="documents",
+    columns=["embedding"],
+    method="hnsw",
+    vector_ops="vector_cosine_ops",
+    # Optional HNSW tuning (defaults: m=16, ef_construction=64)
+    index_params={"m": 16, "ef_construction": 64},
+)
+print(DDLGenerator.add_index(hnsw_index))
+# CREATE INDEX IF NOT EXISTS "documents_embedding_hnsw_idx"
+#   ON "documents" USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64)
+
+# IVFFlat index — smaller, requires training data, better for large datasets
+ivfflat_index = IndexDef(
+    name="documents_embedding_ivfflat_idx",
+    table="documents",
+    columns=["embedding"],
+    method="ivfflat",
+    vector_ops="vector_l2_ops",
+    index_params={"lists": 100},   # sqrt(row_count) is a common starting point
+)
+print(DDLGenerator.add_index(ivfflat_index))
+# CREATE INDEX IF NOT EXISTS "documents_embedding_ivfflat_idx"
+#   ON "documents" USING ivfflat (embedding vector_l2_ops) WITH (lists = 100)
+```
+
+**Operator class reference:**
+
+| Metric | Operator class |
+|--------|---------------|
+| Cosine | `vector_cosine_ops` |
+| L2 / Euclidean | `vector_l2_ops` |
+| Inner product | `vector_ip_ops` |
+
+### asyncpg Codec — Zero Configuration
+
+matrx-orm automatically registers a pgvector text codec on every connection pool. Vector columns arrive as `list[float]` natively — no manual parsing needed. On databases where pgvector is not installed, the codec registration is silently skipped.
+
+### Schema Builder — Auto-Detection
+
+When you run the schema builder against a database that has `vector(n)` columns, matrx-orm automatically generates `VectorField(dimensions=n)` in the model output.
+
+---
+
 ## Version History
 
 | Version | Highlights |
 |---|---|
+| **v2.0.0** | pgvector support: `VectorField(dimensions=n)` with serialization/validation; `VectorDistance` expression; `.nearest(column, vector, metric)` query builder method; automatic null guard; `_vector_distance` in results; asyncpg codec auto-registered on pool init; `IndexDef` extended with `vector_ops` / `index_params` for HNSW & IVFFlat DDL; schema builder recognises `vector(n)` columns |
 | **v1.9.0** | Schema builder externalization: app-specific entity/field overrides removed from the ORM package and moved to `DatabaseProjectConfig` (`entity_overrides`, `field_overrides`); new `get_schema_builder_overrides()` accessor; `sql_executor/queries.py` reduced to generic TypedDicts + empty registry with a `register_query()` helper; all hardcoded project-name defaults removed from public APIs |
 | **v1.9.0** | Cross-schema & multi-database FK support: `ForeignKey(to_schema='auth')` for same-database cross-schema FKs (e.g. `auth.users`); `ForeignKey(to_db='other_project')` for cross-database routing; `ForeignKeyReference` gains `to_db`/`to_schema`; `_unfetchable` now emits a `UserWarning` instead of silently returning `None`; `Users` stub removes `_unfetchable = True` so `auth.users` fetches work out of the box; introspection SQL captures referenced schema via `pg_namespace`; schema builder emits `to_schema` in generated code; `DatabaseProjectConfig.additional_schemas` replaces hardcoded `["auth"]` everywhere |
 | **v1.8.0** | Window functions (`ROW_NUMBER`, `RANK`, `DENSE_RANK`, `LAG`, `LEAD`, `NTILE`, `CUME_DIST`, `PERCENT_RANK`, …) with `Window(expr, partition_by=…, order_by=…)`; CTEs (`CTE`, `with_cte()`, recursive support); `only()` / `defer()` column selection; `Paginator` with `page(n)`, `has_next`, `total_pages`, async iteration; `VersionField` for optimistic locking (raises `OptimisticLockError` on stale writes); abstract base models (`class Meta: abstract = True` with full field inheritance) |

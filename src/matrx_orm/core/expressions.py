@@ -704,3 +704,61 @@ class CTE:
 
     def __repr__(self) -> str:
         return f"CTE({self.name!r})"
+
+
+# ---------------------------------------------------------------------------
+# Vector distance expressions (pgvector)
+# ---------------------------------------------------------------------------
+
+VECTOR_METRICS: dict[str, str] = {
+    "l2":     "<->",   # L2 / Euclidean distance
+    "cosine": "<=>",   # Cosine distance
+    "inner":  "<#>",   # Negative inner product
+    "l1":     "<+>",   # L1 / Manhattan distance (pgvector 0.7+)
+}
+
+
+class VectorDistance:
+    """Renders a pgvector distance expression for ORDER BY and SELECT.
+
+    The four supported metrics map to pgvector's custom operators::
+
+        l2     →  embedding <-> $1
+        cosine →  embedding <=> $1
+        inner  →  embedding <#> $1
+        l1     →  embedding <+> $1
+
+    The vector literal is passed as a positional parameter so asyncpg handles
+    quoting safely — never interpolated directly into SQL.
+
+    Usage::
+
+        from matrx_orm import VectorDistance
+
+        expr = VectorDistance("embedding", [0.1, 0.2, 0.3], metric="cosine")
+        sql = expr.as_sql(params=[])   # "embedding <=> $1"
+    """
+
+    def __init__(
+        self,
+        column: str,
+        vector: list[float],
+        metric: str = "cosine",
+    ) -> None:
+        if metric not in VECTOR_METRICS:
+            raise ValueError(
+                f"Unknown vector metric {metric!r}. Choose from: {list(VECTOR_METRICS)}"
+            )
+        self.column = column
+        self.vector = vector
+        self.metric = metric
+
+    def as_sql(self, params: list[Any]) -> str:
+        """Render as ``<column> <op> $n``, appending the vector literal to params."""
+        op = VECTOR_METRICS[self.metric]
+        literal = "[" + ",".join(str(float(x)) for x in self.vector) + "]"
+        params.append(literal)
+        return f"{self.column} {op} ${len(params)}"
+
+    def __repr__(self) -> str:
+        return f"VectorDistance({self.column!r}, dims={len(self.vector)}, metric={self.metric!r})"

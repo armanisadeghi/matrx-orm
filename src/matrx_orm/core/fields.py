@@ -986,3 +986,58 @@ class VersionField(Field):
 
     def get_db_prep_value(self, value):
         return int(value) if value is not None else 1
+
+
+class VectorField(Field):
+    """Stores a fixed-dimension float vector using pgvector's ``vector(n)`` type.
+
+    Handles serialization between Python ``list[float]`` and the pgvector wire
+    format ``[0.1,0.2,...]``.  Validates dimensionality before writing to avoid
+    silent truncation errors from the database.
+
+    The ``dtype`` parameter is reserved for forward-compatibility with
+    pgvector 0.7+ types (``halfvec``, ``sparsevec``) and does not affect the
+    generated DDL in the current release.
+
+    Usage::
+
+        class Document(Model):
+            id = UUIDField(primary_key=True, default=uuid4)
+            content = TextField()
+            embedding = VectorField(dimensions=1536)
+
+        # Similarity search
+        results = await Document.nearest("embedding", query_vector, metric="cosine").limit(20).all()
+    """
+
+    def __init__(self, dimensions: int, dtype: str = "float32", **kwargs) -> None:
+        self.dimensions = dimensions
+        self.dtype = dtype
+        super().__init__(f"vector({dimensions})", **kwargs)
+        self.is_vector_field = True
+
+    def to_python(self, value) -> list[float] | None:
+        if value is None:
+            return None
+        if isinstance(value, list):
+            return value
+        return [float(x) for x in str(value).strip("[]").split(",")]
+
+    def get_db_prep_value(self, value) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, (list, tuple)):
+            if len(value) != self.dimensions:
+                raise ValueError(
+                    f"VectorField expects {self.dimensions} dimensions, got {len(value)}"
+                )
+            return "[" + ",".join(str(float(x)) for x in value) + "]"
+        return str(value)
+
+    async def validate(self, value) -> None:
+        await super().validate(value)
+        if value is not None and isinstance(value, (list, tuple)):
+            if len(value) != self.dimensions:
+                raise ValueError(
+                    f"VectorField expects {self.dimensions} dimensions, got {len(value)}"
+                )

@@ -201,6 +201,19 @@ class QueryExecutor:
                 expr = str(func)
             select_parts.append(f"{expr} AS {name}")
 
+        # 4. Vector distance column (nearest())
+        vector_order = self._full_query_dict.get("vector_order")
+        _vector_distance_sql: str | None = None
+        if vector_order:
+            from matrx_orm.core.expressions import VectorDistance
+            vd = VectorDistance(
+                column=vector_order["column"],
+                vector=vector_order["vector"],
+                metric=vector_order["metric"],
+            )
+            _vector_distance_sql = vd.as_sql(params)
+            select_parts.append(f"{_vector_distance_sql} AS _vector_distance")
+
         # -- DISTINCT clause ---------------------------------------------
         distinct = self._full_query_dict.get("distinct")
         if distinct is None:
@@ -220,6 +233,10 @@ class QueryExecutor:
         # -- WHERE clause ------------------------------------------------
         filter_items: list[Any] = self._full_query_dict.get("filters", [])
         where_conditions: list[str] = []
+
+        # Vector null guard — pgvector operators error on NULL values
+        if vector_order and self._full_query_dict.get("vector_null_guard", True):
+            where_conditions.append(f"{vector_order['column']} IS NOT NULL")
 
         for item in filter_items:
             from matrx_orm.core.expressions import Q as _Q
@@ -263,8 +280,16 @@ class QueryExecutor:
 
         # -- ORDER BY ---------------------------------------------------
         order_by = self._full_query_dict.get("order_by", [])
+        order_by_terms: list[str] = []
+
+        # Vector distance is always the first ORDER BY term when nearest() is used.
+        # _vector_distance_sql was already rendered (and params already appended) in
+        # the SELECT block above, so we reuse the same param index here by referencing
+        # the alias rather than re-appending the vector literal.
+        if vector_order and _vector_distance_sql:
+            order_by_terms.append("_vector_distance ASC")
+
         if order_by:
-            order_by_terms: list[str] = []
             for term in order_by:
                 if isinstance(term, str):
                     if term.startswith("-"):
@@ -284,6 +309,8 @@ class QueryExecutor:
                     order_by_terms.append(f"{fname} {direction}")
                 else:
                     raise ValueError(f"Invalid order_by term: {term}")
+
+        if order_by_terms:
             sql += " ORDER BY " + ", ".join(order_by_terms)
 
         # -- LIMIT / OFFSET ---------------------------------------------

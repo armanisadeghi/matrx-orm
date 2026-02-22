@@ -19,6 +19,32 @@ from matrx_orm.exceptions import (
 from matrx_orm.error_handling import handle_orm_operation
 
 
+async def _init_vector_codec(conn: asyncpg.Connection) -> None:
+    """Register a text codec for pgvector's ``vector`` type on each new connection.
+
+    Without this, asyncpg returns vector columns as raw strings like
+    ``[0.1,0.2,...]``.  With it, they arrive as ``list[float]`` so
+    ``VectorField.to_python`` receives an already-parsed value.
+
+    The encoder is a passthrough — ``VectorField.get_db_prep_value`` converts
+    Python lists to the ``[x,y,...]`` string before writing to the DB.
+
+    This is a no-op when pgvector is not installed (the type simply won't exist
+    and asyncpg will raise ``UndefinedTypeError`` which we silently swallow).
+    """
+    try:
+        await conn.set_type_codec(
+            "vector",
+            encoder=lambda v: v,
+            decoder=lambda v: [float(x) for x in v.strip("[]").split(",")],
+            schema="pg_catalog",
+            format="text",
+        )
+    except Exception:
+        # pgvector not installed on this database — silently skip
+        pass
+
+
 class AsyncDatabaseManager:
     _instance = None
     _pools = {}
@@ -88,6 +114,7 @@ class AsyncDatabaseManager:
                             command_timeout=10,
                             ssl="require",
                             statement_cache_size=0,
+                            init=_init_vector_codec,
                         )
                         cls._pools[config_name] = pool
                         

@@ -568,6 +568,12 @@ class Column:
             self.update_prop(prop="subComponent", value="default", priority=1)
             self.update_prop(prop="rows", value=3, priority=1)
 
+        # pgvector vector type (vector(n) or bare "vector")
+        elif self.full_type.startswith("vector(") or self.full_type == "vector":
+            self.update_component(component="NUMBER_INPUT", priority=8)
+            self.update_prop(prop="subComponent", value="vector", priority=5)
+            self.update_prop(prop="readOnly", value=True, priority=5)
+
         # Handle PostgreSQL-specific types (full-text search, geometry, etc.)
         elif self.full_type in [
             "tsvector",
@@ -1323,6 +1329,14 @@ class Column:
             field_def = (
                 f"{self.name} = EnumField(enum_class={enum_class}, {options_str})"
             )
+        elif self.full_type.startswith("vector(") or self.full_type == "vector":
+            # Extract dimension from "vector(1536)" → 1536; bare "vector" defaults to 0
+            try:
+                dims = int(self.full_type.replace("vector(", "").rstrip(")"))
+            except ValueError:
+                dims = 0
+            dims_arg = f"dimensions={dims}, " if dims else ""
+            field_def = f"{self.name} = VectorField({dims_arg}{options_str})"
         else:
             field_def = f"{self.name} = {self.python_field_type}({options_str})"
         return field_def

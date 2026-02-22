@@ -47,13 +47,40 @@ class ForeignKeyDef:
 
 @dataclass
 class IndexDef:
-    """Describes a database index."""
+    """Describes a database index, including pgvector HNSW/IVFFlat indexes.
+
+    For standard indexes, only ``name``, ``table``, ``columns``, and optionally
+    ``method`` and ``where`` are needed.
+
+    For pgvector indexes, also set:
+
+    - ``method``: ``"hnsw"`` or ``"ivfflat"``
+    - ``vector_ops``: the operator class, e.g. ``"vector_cosine_ops"``,
+      ``"vector_l2_ops"``, ``"vector_ip_ops"``
+    - ``index_params``: extra ``WITH`` clause parameters, e.g.
+      ``{"lists": 100}`` for IVFFlat or ``{"m": 16, "ef_construction": 64}``
+      for HNSW
+
+    Example::
+
+        IndexDef(
+            name="docs_embedding_hnsw_idx",
+            table="documents",
+            columns=["embedding"],
+            method="hnsw",
+            vector_ops="vector_cosine_ops",
+        )
+        # → CREATE INDEX IF NOT EXISTS "docs_embedding_hnsw_idx"
+        #     ON "documents" USING hnsw (embedding vector_cosine_ops)
+    """
     name: str
     table: str
     columns: list[str]
     unique: bool = False
     method: str = "btree"
     where: str | None = None
+    vector_ops: str | None = None       # e.g. "vector_cosine_ops"
+    index_params: dict | None = None    # e.g. {"lists": 100} → WITH (lists = 100)
 
 
 @dataclass
@@ -153,10 +180,17 @@ class DDLGenerator:
     @staticmethod
     def add_index(index: IndexDef) -> str:
         unique = "UNIQUE " if index.unique else ""
-        cols = ", ".join(f'"{c}"' for c in index.columns)
         using = f" USING {index.method}" if index.method != "btree" else ""
         where = f" WHERE {index.where}" if index.where else ""
-        return f'CREATE {unique}INDEX IF NOT EXISTS "{index.name}" ON "{index.table}"{using} ({cols}){where}'
+        # Vector indexes need the operator class appended to each column
+        ops = f" {index.vector_ops}" if index.vector_ops else ""
+        cols = ", ".join(f'"{c}"{ops}' for c in index.columns)
+        # WITH clause for pgvector index tuning params (lists, m, ef_construction…)
+        with_clause = ""
+        if index.index_params:
+            pairs = ", ".join(f"{k} = {v}" for k, v in index.index_params.items())
+            with_clause = f" WITH ({pairs})"
+        return f'CREATE {unique}INDEX IF NOT EXISTS "{index.name}" ON "{index.table}"{using} ({cols}){with_clause}{where}'
 
     @staticmethod
     def drop_index(name: str) -> str:

@@ -48,6 +48,7 @@ from .core.fields import (
     MoneyField,
     PrimitiveArrayField,
     VersionField,
+    VectorField,
 )
 from .core.relations import ManyToManyField
 from .core.expressions import (
@@ -94,6 +95,9 @@ from .core.expressions import (
     PercentRank,
     # CTEs
     CTE,
+    # Vector search
+    VectorDistance,
+    VECTOR_METRICS,
 )
 from .core.paginator import Paginator, Page
 from .core.signals import (
@@ -113,6 +117,7 @@ from .migrations import (
     MigrationState,
     MigrationExecutor,
     DDLGenerator,
+    IndexDef,
     SchemaDiff,
     TableFilter,
     makemigrations,
@@ -200,6 +205,10 @@ __all__ = [
     "PercentRank",
     # CTEs
     "CTE",
+    # Vector search
+    "VectorField",
+    "VectorDistance",
+    "VECTOR_METRICS",
     # Paginator
     "Paginator",
     "Page",
@@ -238,6 +247,7 @@ __all__ = [
     "MigrationState",
     "MigrationExecutor",
     "DDLGenerator",
+    "IndexDef",
     "SchemaDiff",
     "TableFilter",
     "makemigrations",

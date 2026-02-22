@@ -43,6 +43,8 @@ class QueryBuilder(Generic[ModelT]):
     for_update_opts: dict[str, Any] | None
     select_related_fields: list[str]
     ctes: list[Any]                     # CTE objects
+    vector_order: dict[str, Any] | None  # nearest() params: {column, vector, metric}
+    vector_null_guard: bool              # auto-add IS NOT NULL guard for vector column
 
     def __init__(self, model_cls: type[ModelT], database: str | None = None) -> None:
         self.model = model_cls
@@ -64,6 +66,8 @@ class QueryBuilder(Generic[ModelT]):
         self.for_update_opts = None
         self.select_related_fields = []
         self.ctes = []
+        self.vector_order = None
+        self.vector_null_guard = True
 
     def _set_database(self, model_cls: type[ModelT]) -> str:
         if hasattr(model_cls, "_database") and model_cls._database:
@@ -218,6 +222,45 @@ class QueryBuilder(Generic[ModelT]):
         self.ctes.extend(ctes)
         return self
 
+    def nearest(
+        self,
+        column: str,
+        vector: list[float],
+        metric: str = "cosine",
+        null_guard: bool = True,
+    ) -> QueryBuilder[ModelT]:
+        """Order results by vector distance (pgvector similarity search).
+
+        Adds ``ORDER BY <column> <op> $n`` to the query and includes
+        ``<distance_expr> AS _vector_distance`` in the SELECT so callers can
+        read the computed distance from each row.
+
+        By default a ``WHERE <column> IS NOT NULL`` guard is injected
+        automatically — pgvector operators raise errors on NULL values.
+
+        Args:
+            column:     Name of the ``VectorField`` column to search.
+            vector:     Query embedding as a Python ``list[float]``.
+            metric:     Distance metric — ``"cosine"`` (default), ``"l2"``,
+                        ``"inner"``, or ``"l1"``.
+            null_guard: When ``True`` (default), auto-add IS NOT NULL filter.
+
+        Usage::
+
+            results = (
+                await Document
+                .nearest("embedding", query_vec, metric="cosine")
+                .filter(is_published=True)
+                .limit(20)
+                .all()
+            )
+            for doc in results:
+                print(doc._vector_distance, doc.title)
+        """
+        self.vector_order = {"column": column, "vector": vector, "metric": metric}
+        self.vector_null_guard = null_guard
+        return self
+
     def reverse(self) -> QueryBuilder[ModelT]:
         """Reverse each ordering term."""
         reversed_fields = []
@@ -256,6 +299,8 @@ class QueryBuilder(Generic[ModelT]):
             "select_related": self.select_related_fields,
             "ctes": self.ctes,
             "deferred_fields": self.deferred_fields,
+            "vector_order": self.vector_order,
+            "vector_null_guard": self.vector_null_guard,
         }
         return query
 
