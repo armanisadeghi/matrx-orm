@@ -736,27 +736,27 @@ class Column:
 
         callable_outcomes = {
             "::smallint": lambda value: {
-                "blank": str(int(value.split("'")[1].strip())),  # Extract smallint value
+                "blank": int(value.split("'")[1].strip()),
                 "generator": "",
             },
             "::integer": lambda value: {
-                "blank": str(int(value.split("'")[1].strip())),  # Extract integer value
+                "blank": int(value.split("'")[1].strip()),
                 "generator": "",
             },
             "::bigint": lambda value: {
-                "blank": str(int(value.split("'")[1].strip())),  # Extract bigint value
+                "blank": int(value.split("'")[1].strip()),
                 "generator": "",
             },
             "::real": lambda value: {
-                "blank": value.split("'")[1].strip(),  # Extract the real value
+                "blank": float(value.split("'")[1].strip()),
                 "generator": "",
             },
             "::double precision": lambda value: {
-                "blank": str(float(value.split("'")[1].strip())),  # Extract double value
+                "blank": float(value.split("'")[1].strip()),
                 "generator": "",
             },
             "::numeric": lambda value: {
-                "blank": value.split("'")[1].strip(),  # Extract numeric value
+                "blank": float(value.split("'")[1].strip()),
                 "generator": "",
             },
             "::character varying": lambda value: {
@@ -868,7 +868,15 @@ class Column:
                     vcprint(data=value, verbose=self.verbose, color="blue")
                     vcprint(data=self.base_type, verbose=self.verbose, color="yellow")
 
-                return outcomes[value].get(context, callable_outcomes[self.base_type](value))
+                # Normalize full PostgreSQL type names to the short keys used in callable_outcomes
+                _type_key_map = {
+                    "timestamp with time zone": "timestamptz",
+                    "timestamp without time zone": "timestamp",
+                    "time with time zone": "time",
+                    "time without time zone": "time",
+                }
+                _short_key = _type_key_map.get(self.base_type, self.base_type)
+                return outcomes[value].get(context, callable_outcomes.get(_short_key, callable_outcomes["default"])(value))
 
             # Handle specific cases with static entries
             elif value == "null":
@@ -1021,27 +1029,34 @@ class Column:
             }
             return self.clean_default
 
-        # Parse the default value for each context and store them as strings
+        # Parse each context once and reuse the result for both dicts.
+        _py  = clean_value(self.default, "python")
+        _db  = clean_value(self.default, "database")
+        _js  = clean_value(self.default, "json")
+        _ts  = clean_value(self.default, "typescript")
+
+        # Keep the raw Python value so to_python_model_field can inspect its type.
+        # All other contexts are stringified for template rendering.
         self.clean_default = {
-            "python": str(clean_value(self.default, "python")["blank"]),
-            "database": str(clean_value(self.default, "database")["blank"]),
-            "json": str(clean_value(self.default, "json")["blank"]),
-            "typescript": str(clean_value(self.default, "typescript")["blank"]) or "",
+            "python": _py["blank"],
+            "database": str(_db["blank"]),
+            "json": str(_js["blank"]),
+            "typescript": str(_ts["blank"]) or "",
         }
 
         self.calc_default_generator_functions = {
-            "python": clean_value(self.default, "python")["generator"] or "",
-            "database": clean_value(self.default, "database")["generator"] or "",
-            "json": clean_value(self.default, "json")["generator"] or "",
-            "typescript": clean_value(self.default, "typescript")["generator"] or "",
+            "python": _py["generator"] or "",
+            "database": _db["generator"] or "",
+            "json": _js["generator"] or "",
+            "typescript": _ts["generator"] or "",
         }
 
         return self.clean_default
 
     def get_default_value(self):
-        # TODO: Update this to always directly give the properly formatted empty value as well: None, [], {}, etc.
-
-        self.calc_default_value = self.parse_default_value()
+        # parse_default_value() is already called during initialize_code_generation()
+        # and sets self.clean_default. Return it directly to avoid parsing twice.
+        self.calc_default_value = self.clean_default
         return self.calc_default_value
 
     def get_type_reference(self):
@@ -1160,25 +1175,29 @@ class Column:
             field_options.append("null=False")
         if self.clean_default is not None:
             python_default = self.clean_default["python"]
-            if python_default:
-                if isinstance(python_default, (dict, list)):  # Proper JSON-like structure
-                    field_options.append(f"default={python_default}")  # No quotes!
+            # Treat empty string and None as "no default"
+            if python_default is not None and python_default != "":
+                if isinstance(python_default, bool):
+                    field_options.append(f"default={python_default}")
+                elif isinstance(python_default, (int, float)):
+                    field_options.append(f"default={python_default}")
+                elif isinstance(python_default, (dict, list)):
+                    field_options.append(f"default={python_default}")
                 elif isinstance(python_default, str):
-                    if python_default == "false":  # Existing fix for 'false'
+                    if python_default == "false":
                         field_options.append("default=False")
-                    elif python_default == "true":  # New surgical fix for 'true'
+                    elif python_default == "true":
                         field_options.append("default=True")
                     else:
+                        # Last resort: try to parse in case it's a stringified literal
                         try:
                             parsed_default = ast.literal_eval(python_default)
-                            if isinstance(parsed_default, (dict, list)):
-                                field_options.append(f"default={parsed_default}")
-                            elif isinstance(parsed_default, (int, float)):
+                            if isinstance(parsed_default, (bool, int, float, dict, list)):
                                 field_options.append(f"default={parsed_default}")
                             else:
                                 field_options.append(f"default='{python_default}'")
                         except (ValueError, SyntaxError):
-                            field_options.append(f"default='{python_default}'")  # Keep as string if parsing fails
+                            field_options.append(f"default='{python_default}'")
 
         if self.character_maximum_length:
             field_options.append(f"max_length={self.character_maximum_length}")
