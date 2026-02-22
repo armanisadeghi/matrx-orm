@@ -892,6 +892,8 @@ class ForeignKey(Field):
         related_name: str = None,
         on_delete: str = "CASCADE",
         on_update: str = "CASCADE",
+        to_db: str = None,
+        to_schema: str = None,
         **kwargs,
     ):
         super().__init__("UUID", **kwargs)
@@ -900,6 +902,8 @@ class ForeignKey(Field):
         self.related_name = related_name
         self.on_delete = on_delete
         self.on_update = on_update
+        self.to_db = to_db          # target database project name (cross-database FK)
+        self.to_schema = to_schema  # target schema hint (e.g. 'auth' for auth.users)
 
     def to_python(self, value):
         """Convert database UUID value to Python string (consistent with UUIDField)"""

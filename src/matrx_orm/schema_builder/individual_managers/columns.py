@@ -89,6 +89,7 @@ class Column:
         self.foreign_key_reference = (
             {
                 "table": foreign_key_reference["table"],
+                "schema": foreign_key_reference.get("schema"),
                 "column": foreign_key_reference["column"],
                 "entity": self.utils.to_camel_case(foreign_key_reference["table"]),
                 "field": self.utils.to_camel_case(foreign_key_reference["column"]),
@@ -1307,10 +1308,14 @@ class Column:
             related_model = self.utils.to_pascal_case(
                 self.foreign_key_reference["table"]
             )
+            fk_schema = self.foreign_key_reference.get("schema")
+            to_schema_arg = ""
+            if fk_schema and fk_schema != "public":
+                to_schema_arg = f", to_schema='{fk_schema}'"
             if related_model == self.utils.to_pascal_case(self.table_name):
-                field_def = f"{self.name} = ForeignKey(to_model='{related_model}', to_column='{self.foreign_key_reference['column']}', {options_str})"
+                field_def = f"{self.name} = ForeignKey(to_model='{related_model}', to_column='{self.foreign_key_reference['column']}'{to_schema_arg}, {options_str})"
             else:
-                field_def = f"{self.name} = ForeignKey(to_model={related_model}, to_column='{self.foreign_key_reference['column']}', {options_str})"
+                field_def = f"{self.name} = ForeignKey(to_model={related_model}, to_column='{self.foreign_key_reference['column']}'{to_schema_arg}, {options_str})"
         elif self.python_field_type == "ObjectField":
             field_def = f"{self.name} = ObjectField({options_str})"
         elif self.has_enum_labels:

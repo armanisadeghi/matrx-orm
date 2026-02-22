@@ -29,7 +29,17 @@ class SchemaManager:
         exclude_tables=None,
     ):
         if additional_schemas is None:
-            additional_schemas = ["auth"]
+            # Read from the registered database config if a project name is provided;
+            # fall back to ["auth"] for backward compatibility when no project is set.
+            if database_project:
+                try:
+                    from matrx_orm.core.config import get_database_config
+                    cfg = get_database_config(database_project)
+                    additional_schemas = cfg.get("additional_schemas", [])
+                except Exception:
+                    additional_schemas = ["auth"]
+            else:
+                additional_schemas = ["auth"]
 
         if include_tables is not None and exclude_tables is not None:
             raise ValueError(

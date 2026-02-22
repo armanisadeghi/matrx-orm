@@ -1212,6 +1212,137 @@ post_save.disconnect(my_async_handler)
 
 ---
 
+## Cross-Schema & Multi-Database Relationships (v1.9.0+)
+
+### The Problem This Solves
+
+Every Supabase project has `auth.users` — a table that lives in the `auth` schema, not `public`. Before v1.9.0, any FK pointing to `auth.users` was silently blocked by `_unfetchable = True`, and `fetch_fk()` returned `None` without any warning. The same issue affects apps that split data across multiple registered databases.
+
+### Same-Database Cross-Schema FKs (e.g. `auth.users`)
+
+For tables in a different schema on the **same** PostgreSQL database, set `_db_schema` on the target model and add `to_schema` to the `ForeignKey`. The ORM uses `qualified_table_name` (`schema.table`) for all queries:
+
+```python
+from matrx_orm import Model, UUIDField, CharField, ForeignKey
+
+# The auth.users stub — generated automatically by schema builder,
+# or written manually. No _unfetchable needed.
+class Users(Model):
+    _database = "myproject"
+    _db_schema = "auth"       # makes qualified_table_name = "auth.users"
+    id = UUIDField(primary_key=True)
+    email = CharField()
+
+class Post(Model):
+    _database = "myproject"
+    id = UUIDField(primary_key=True)
+    title = CharField()
+    user_id = ForeignKey(to_model=Users, to_column="id", to_schema="auth")
+
+# fetch_fk works — issues a query to auth.users via the same connection pool
+post = await Post.get(id=some_id)
+user = await post.fetch_fk("user_id")   # returns Users instance
+```
+
+The `to_schema` parameter is informational — the actual schema routing comes from `Users._db_schema`. `to_schema` is stored on `ForeignKeyReference` so callers and schema builders can inspect it.
+
+### Cross-Database FKs (two registered databases)
+
+For FKs that point to a table in a **different** registered database project, use `to_db`. The ORM routes the fetch query to the correct connection pool:
+
+```python
+from matrx_orm import Model, UUIDField, CharField, ForeignKey, register_database, DatabaseProjectConfig
+
+register_database(DatabaseProjectConfig(
+    name="analytics_db", host="...", port="5432",
+    database_name="analytics", user="...", password="...", alias="analytics"
+))
+
+class AnalyticsUser(Model):
+    _database = "analytics_db"
+    id = UUIDField(primary_key=True)
+    name = CharField()
+
+class Order(Model):
+    _database = "myproject"
+    id = UUIDField(primary_key=True)
+    # FK to a model in a different database — routes to analytics_db pool
+    analytics_user_id = ForeignKey(
+        to_model=AnalyticsUser,
+        to_column="id",
+        to_db="analytics_db",
+    )
+
+order = await Order.get(id=some_id)
+analytics_user = await order.fetch_fk("analytics_user_id")  # queries analytics_db
+```
+
+Cross-database JOINs (`select_related`) are not supported — PostgreSQL doesn't support cross-database SQL joins without Foreign Data Wrappers. Cross-database FKs always use the two-query approach.
+
+### `_unfetchable` Now Warns
+
+If a model is still marked `_unfetchable = True`, `fetch_fk()` now emits a `UserWarning` instead of silently returning `None`. This makes misconfigurations visible:
+
+```python
+import warnings
+
+# Will print: "fetch_fk('user_id') skipped: SomeModel is marked _unfetchable = True ..."
+with warnings.catch_warnings(record=True) as w:
+    result = await instance.fetch_fk("user_id")  # None + warning
+```
+
+Keep `_unfetchable = True` only for tables that are genuinely inaccessible (e.g. Supabase internal system tables your Postgres role cannot query).
+
+### `additional_schemas` in Config
+
+Declare which non-public schemas exist in each database so the schema builder introspects them automatically:
+
+```python
+from matrx_orm import register_database, DatabaseProjectConfig
+
+register_database(DatabaseProjectConfig(
+    name="myproject",
+    host="db.abc.supabase.co",
+    port="5432",
+    database_name="postgres",
+    user="postgres",
+    password="...",
+    alias="myproject",
+    additional_schemas=["auth", "storage"],  # introspect these schemas too
+))
+```
+
+`SchemaManager` and the introspection SQL helpers now read `additional_schemas` from the registry config rather than hardcoding `["auth"]`. Running `SchemaManager(database_project="myproject")` will automatically include `auth` and `storage` schema tables.
+
+### Auto-Generated Code
+
+When the schema builder introspects a FK that points to `auth.users`, the generated model code now includes `to_schema='auth'`:
+
+```python
+# Before v1.9.0:
+user_id = ForeignKey(to_model=Users, to_column='id', null=True)
+
+# After v1.9.0:
+user_id = ForeignKey(to_model=Users, to_column='id', to_schema='auth', null=True)
+```
+
+And the `Users` stub no longer has `_unfetchable = True`:
+
+```python
+# Before v1.9.0:
+class Users(Model):
+    _db_schema = "auth"
+    _unfetchable = True   # blocked all fetches
+    ...
+
+# After v1.9.0:
+class Users(Model):
+    _db_schema = "auth"   # qualified_table_name = auth.users — fetches work
+    ...
+```
+
+---
+
 ## Advanced Querying (v1.8.0+)
 
 ### Window Functions
@@ -1419,6 +1550,7 @@ Rules:
 | Version | Highlights |
 |---|---|
 | **v1.9.0** | Schema builder externalization: app-specific entity/field overrides removed from the ORM package and moved to `DatabaseProjectConfig` (`entity_overrides`, `field_overrides`); new `get_schema_builder_overrides()` accessor; `sql_executor/queries.py` reduced to generic TypedDicts + empty registry with a `register_query()` helper; all hardcoded project-name defaults removed from public APIs |
+| **v1.9.0** | Cross-schema & multi-database FK support: `ForeignKey(to_schema='auth')` for same-database cross-schema FKs (e.g. `auth.users`); `ForeignKey(to_db='other_project')` for cross-database routing; `ForeignKeyReference` gains `to_db`/`to_schema`; `_unfetchable` now emits a `UserWarning` instead of silently returning `None`; `Users` stub removes `_unfetchable = True` so `auth.users` fetches work out of the box; introspection SQL captures referenced schema via `pg_namespace`; schema builder emits `to_schema` in generated code; `DatabaseProjectConfig.additional_schemas` replaces hardcoded `["auth"]` everywhere |
 | **v1.8.0** | Window functions (`ROW_NUMBER`, `RANK`, `DENSE_RANK`, `LAG`, `LEAD`, `NTILE`, `CUME_DIST`, `PERCENT_RANK`, …) with `Window(expr, partition_by=…, order_by=…)`; CTEs (`CTE`, `with_cte()`, recursive support); `only()` / `defer()` column selection; `Paginator` with `page(n)`, `has_next`, `total_pages`, async iteration; `VersionField` for optimistic locking (raises `OptimisticLockError` on stale writes); abstract base models (`class Meta: abstract = True` with full field inheritance) |
 | **v1.7.0** | `Q()` objects for OR/AND/NOT composition; aggregate expressions (`Sum`, `Avg`, `Min`, `Max`, `Count`); database functions (`Coalesce`, `Lower`, `Upper`, `Now`, `Cast`, `Extract`, …); `DISTINCT` / `DISTINCT ON`; `SELECT FOR UPDATE`; JSONB query operators; ORM-level `transaction()` context manager with savepoints; `Model.raw()` / `Model.raw_sql()`; `select_related()` JOIN eager loading; subquery expressions (`Subquery`, `Exists`, `OuterRef`); lifecycle signals (`pre_save`, `post_save`, `pre_create`, `post_create`, `pre_delete`, `post_delete`) |
 | **v1.6.4** | fix: complete field type coercion audit - get_db_prep_value and to_python for all field types |

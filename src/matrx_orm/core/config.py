@@ -28,6 +28,11 @@ class DatabaseProjectConfig:
     entity_overrides: Dict = field(default_factory=dict)
     field_overrides: Dict = field(default_factory=dict)
 
+    # Extra PostgreSQL schemas to introspect and include in schema builder output.
+    # For Supabase projects this typically includes ["auth", "storage"].
+    # These schemas live in the same database but outside the default "public" schema.
+    additional_schemas: list = field(default_factory=list)
+
 
 class DatabaseRegistry:
     _instance = None
@@ -85,7 +90,8 @@ class DatabaseRegistry:
             "database_name": config.database_name,
             "user": config.user,
             "password": config.password,
-            "alias": config.alias
+            "alias": config.alias,
+            "additional_schemas": config.additional_schemas,
         }
 
     def get_config_dataclass(self, config_name: str) -> DatabaseProjectConfig:

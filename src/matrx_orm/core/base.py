@@ -247,6 +247,8 @@ class ModelMeta(type):
                         related_name=value.related_name,
                         on_delete=value.on_delete,
                         on_update=value.on_update,
+                        to_db=getattr(value, "to_db", None),
+                        to_schema=getattr(value, "to_schema", None),
                     )
                     dynamic_fields.add(f"_{key}_related")
 
@@ -932,6 +934,16 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
 
         related_model = fk_ref.related_model
         if related_model and getattr(related_model._meta, "unfetchable", False):
+            import warnings
+            warnings.warn(
+                f"fetch_fk('{field_name}') skipped: {related_model.__name__} is marked "
+                "_unfetchable = True and cannot be queried. "
+                "For cross-schema tables on the same database (e.g. auth.users), remove "
+                "_unfetchable and ensure _db_schema is set on the model. "
+                "For cross-database FKs, add to_db='<project_name>' to the ForeignKey field.",
+                UserWarning,
+                stacklevel=2,
+            )
             return None
 
         value = getattr(self, field_name)

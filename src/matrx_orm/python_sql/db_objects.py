@@ -138,6 +138,7 @@ def get_full_db_objects(schema, database_project):
                     'foreign_key_reference', (
                         SELECT json_build_object(
                             'table', (SELECT relname FROM pg_class WHERE oid = fk.confrelid),
+                            'schema', (SELECT nspname FROM pg_namespace WHERE oid = (SELECT relnamespace FROM pg_class WHERE oid = fk.confrelid)),
                             'column', (
                                 SELECT attname 
                                 FROM pg_attribute ref_att 
@@ -189,7 +190,17 @@ def get_db_objects(schema, database_project):
     # Retrieve the raw database objects
     objects = get_full_db_objects(schema, database_project)
 
-    ts_objects, full_relationships, full_junction_analysis, overview_analysis = get_ts_object(schema, database_project, additional_schemas=["auth"])
+    # Read additional_schemas from the registered database config if available,
+    # falling back to ["auth"] for backward compatibility.
+    _additional_schemas = ["auth"]
+    if database_project:
+        try:
+            from matrx_orm.core.config import get_database_config
+            _cfg = get_database_config(database_project)
+            _additional_schemas = _cfg.get("additional_schemas", [])
+        except Exception:
+            pass
+    ts_objects, full_relationships, full_junction_analysis, overview_analysis = get_ts_object(schema, database_project, additional_schemas=_additional_schemas)
 
     # Define the fields relevant for views
     relevant_view_fields = {

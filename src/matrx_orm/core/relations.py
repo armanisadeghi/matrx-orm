@@ -21,6 +21,8 @@ class ForeignKeyReference:
     is_native: bool = False
     on_delete: str = "CASCADE"
     on_update: str = "CASCADE"
+    to_db: str | None = None      # target database project name (cross-database FK)
+    to_schema: str | None = None  # target schema hint (e.g. 'auth' for auth.users)
 
     @cached_property
     def _related_model(self) -> type[Model]:
@@ -50,14 +52,24 @@ class ForeignKeyReference:
 
     async def fetch_data(self, instance: Model, column_value: Any) -> Model | None:
         """
-        Fetches the related object based on the foreign key value and stores it in the instance
+        Fetches the related object based on the foreign key value and stores it in the instance.
+
+        For cross-database FKs (to_db is set), the query is routed to the correct
+        connection pool via QueryBuilder.using(). For same-database cross-schema FKs
+        (to_schema is set), the related model's _db_schema / qualified_table_name
+        already handles schema qualification transparently.
 
         Args:
             instance: The model instance we're fetching related data for
             column_value: The value stored in this model's foreign key field
         """
         filter_kwargs = {self.to_column: column_value}
-        related_object = await self.related_model.get(**filter_kwargs)
+        if self.to_db:
+            # Cross-database FK: route to the explicit database connection pool
+            related_object = await self.related_model.filter(**filter_kwargs).using(self.to_db).get()
+        else:
+            # Same-database FK; cross-schema is handled by qualified_table_name on the model
+            related_object = await self.related_model.get(**filter_kwargs)
         instance.set_related(self.column_name, related_object)
         return related_object
 

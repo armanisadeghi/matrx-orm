@@ -714,12 +714,13 @@ class Schema:
         self.code_handler.write_to_json(json_code_temp_path, json_structure, clean=True)
 
     def get_string_user_model(self):
+        # auth.users lives in the same PostgreSQL database — _db_schema = "auth" makes
+        # qualified_table_name produce "auth.users" so fetches work without _unfetchable.
         users_model = f"""class Users(Model):
     id = UUIDField(primary_key=True, null=False)
     email = CharField(null=False)\n
     _table_name = \"users\"
     _db_schema = \"auth\"
-    _unfetchable = True
     _database = \"{self.database_project}\"\n"""
         return users_model
 
