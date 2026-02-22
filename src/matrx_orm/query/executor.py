@@ -151,6 +151,18 @@ class QueryExecutor:
 
         return sql, params
 
+    def _coerce_param(self, field_name: str, value: Any) -> Any:
+        """Pass a value through its field's get_db_prep_value() if the field exists.
+
+        This ensures that strings are converted to the native Python types that
+        asyncpg expects (e.g. ISO datetime strings → datetime objects) before
+        being bound to a prepared statement.
+        """
+        field = self.model._fields.get(field_name)
+        if field is not None and hasattr(field, "get_db_prep_value"):
+            return field.get_db_prep_value(value)
+        return value
+
     async def _execute(self) -> list[dict[str, Any]]:
         """Executes the built SQL query with proper error handling."""
         from matrx_orm.exceptions import ORMException
@@ -175,7 +187,7 @@ class QueryExecutor:
             raise ValidationError(message="No data provided for insert")
 
         columns = list(data.keys())
-        values = list(data.values())
+        values = [self._coerce_param(col, val) for col, val in data.items()]
         placeholders = [f"${i + 1}" for i in range(len(values))]
 
         sql = f"INSERT INTO {table} ({', '.join(columns)}) " f"VALUES ({', '.join(placeholders)}) " f"RETURNING *"
@@ -232,7 +244,7 @@ class QueryExecutor:
             row_placeholders: list[str] = []
             for col in columns:
                 row_placeholders.append(f"${param_index}")
-                all_values.append(row_data[col])
+                all_values.append(self._coerce_param(col, row_data[col]))
                 param_index += 1
             placeholders_list.append(f"({', '.join(row_placeholders)})")
 
@@ -268,7 +280,7 @@ class QueryExecutor:
             raise ValidationError(message="No conflict fields provided for upsert")
 
         columns = list(data.keys())
-        values = list(data.values())
+        values = [self._coerce_param(col, val) for col, val in data.items()]
         placeholders = [f"${i + 1}" for i in range(len(values))]
 
         fields_to_update = update_fields or [c for c in columns if c not in conflict_fields]
@@ -328,7 +340,7 @@ class QueryExecutor:
             row_placeholders: list[str] = []
             for col in columns:
                 row_placeholders.append(f"${param_index}")
-                all_values.append(row_data[col])
+                all_values.append(self._coerce_param(col, row_data[col]))
                 param_index += 1
             placeholders_list.append(f"({', '.join(row_placeholders)})")
 
@@ -398,7 +410,7 @@ class QueryExecutor:
             param_index = 1
             for field_name, value in update_data.items():
                 set_clause.append(f"{field_name} = ${param_index}")
-                params.append(value)
+                params.append(self._coerce_param(field_name, value))
                 param_index += 1
 
             if not set_clause:

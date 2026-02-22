@@ -311,20 +311,6 @@ class BooleanField(Field):
 
         # Ensure the result is a bool before sending to the database
         if not isinstance(python_value, bool):
-            raise ValueError(f"Expected boolean, got {type(python_value)} after conversion")
-
-        return python_value
-
-    def get_db_prep_value(self, value):
-        """Prepare value for database, ensuring it's a bool."""
-        if value is None:
-            return None
-
-        # Convert the input to a Python bool using to_python
-        python_value = self.to_python(value)
-
-        # Ensure the result is a bool before sending to the database
-        if not isinstance(python_value, bool):
             raise ValueError(f"[ORM BooleanField] Expected boolean, got {type(python_value)} after conversion")
 
         return python_value
@@ -342,8 +328,10 @@ class DateTimeField(Field):
         return value
 
     def get_db_prep_value(self, value):
-        if isinstance(value, datetime):
-            return value
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return datetime.fromisoformat(value)
         return value
 
 
@@ -357,8 +345,10 @@ class TimeField(Field):
         return value
 
     def get_db_prep_value(self, value):
-        if isinstance(value, time):
-            return value  # Fixed: Return time object
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return time.fromisoformat(value)
         return value
 
 
@@ -372,8 +362,10 @@ class DateField(Field):
         return value
 
     def get_db_prep_value(self, value):
-        if isinstance(value, date):
-            return value  # Fixed: Return date object
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return date.fromisoformat(value)
         return value
 
 
@@ -382,14 +374,12 @@ class JSONField(Field):
         super().__init__("JSONB", **kwargs)
 
     def to_python(self, value):
-        print("value", value)
         if isinstance(value, str):
             return json.loads(value)
         return value
 
     def get_db_prep_value(self, value):
-        print("value", value)
-        if value is not None:
+        if value is not None and not isinstance(value, str):
             return json.dumps(value)
         return value
 
