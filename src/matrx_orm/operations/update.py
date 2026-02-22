@@ -137,10 +137,15 @@ async def update_instance(instance: Model, fields: Iterable[str] | None = None) 
     for field_name in field_names:
         if field_name == pk_name:
             continue
+        if field_name not in model_cls._fields:
+            continue
+        field = model_cls._fields[field_name]
         value = getattr(instance, field_name, None)
         if value is not None:
-            field = model_cls._fields[field_name]
             update_data[field_name] = field.get_db_prep_value(value)
+        elif field.nullable:
+            # Explicitly include nullable fields set to None so they're nulled in the DB
+            update_data[field_name] = None
 
     filters = {pk_name: pk_value}
 

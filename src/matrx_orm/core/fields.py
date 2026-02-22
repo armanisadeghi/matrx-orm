@@ -1,7 +1,8 @@
 import json
 import re
 import uuid
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
+from decimal import Decimal, InvalidOperation
 from enum import Enum as PythonEnum
 from ipaddress import IPv4Address, IPv6Address, ip_network
 from typing import List, Type, Union
@@ -155,10 +156,10 @@ class UUIDField(Field):
         return self.default
 
     def to_python(self, value):
-        return str(value) if value else None
+        return str(value) if value is not None else None
 
     def from_db_value(self, value):
-        return str(value) if value else None
+        return str(value) if value is not None else None
 
 
 class UUIDFieldREAL(Field):
@@ -256,6 +257,14 @@ class IntegerField(Field):
 class FloatField(Field):
     def __init__(self, **kwargs):
         super().__init__("FLOAT", **kwargs)
+
+    def get_db_prep_value(self, value):
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"Field {self.name} must be convertible to float")
 
     async def validate(self, value: float) -> None:
         await super().validate(value)
@@ -544,6 +553,22 @@ class DecimalField(Field):
         self.max_digits = max_digits
         self.decimal_places = decimal_places
 
+    def to_python(self, value):
+        if value is None:
+            return None
+        try:
+            return Decimal(str(value))
+        except InvalidOperation:
+            raise ValueError(f"Field {self.name} must be convertible to Decimal")
+
+    def get_db_prep_value(self, value):
+        if value is None:
+            return None
+        try:
+            return Decimal(str(value))
+        except InvalidOperation:
+            raise ValueError(f"Field {self.name} must be convertible to Decimal")
+
     async def validate(self, value) -> None:
         await super().validate(value)
         if value is not None:
@@ -560,6 +585,22 @@ class BigIntegerField(Field):
     def __init__(self, **kwargs):
         super().__init__("BIGINT", **kwargs)
 
+    def to_python(self, value):
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"Field {self.name} must be convertible to integer")
+
+    def get_db_prep_value(self, value):
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"Field {self.name} must be convertible to integer")
+
     async def validate(self, value: int) -> None:
         await super().validate(value)
         if value is not None and not isinstance(value, int):
@@ -569,6 +610,22 @@ class BigIntegerField(Field):
 class SmallIntegerField(Field):
     def __init__(self, **kwargs):
         super().__init__("SMALLINT", **kwargs)
+
+    def to_python(self, value):
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"Field {self.name} must be convertible to integer")
+
+    def get_db_prep_value(self, value):
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"Field {self.name} must be convertible to integer")
 
     async def validate(self, value: int) -> None:
         await super().validate(value)
@@ -617,6 +674,21 @@ class HStoreField(Field):
     def __init__(self, **kwargs):
         super().__init__("HSTORE", **kwargs)
 
+    def to_python(self, value):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return json.loads(value)
+        return value
+
+    def get_db_prep_value(self, value):
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            raise ValueError(f"Field {self.name} must be a dictionary")
+        # asyncpg expects all hstore values as strings
+        return {str(k): str(v) if v is not None else None for k, v in value.items()}
+
     async def validate(self, value: dict) -> None:
         await super().validate(value)
         if value is not None and not isinstance(value, dict):
@@ -632,7 +704,11 @@ class JSONBField(Field):
             return json.loads(value)
         return value
 
-    def get_db_prep_value(self, value) -> str:
+    def get_db_prep_value(self, value):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return value
         return json.dumps(value)
 
 
@@ -650,10 +726,28 @@ class TimeDeltaField(Field):
     def __init__(self, **kwargs):
         super().__init__("INTERVAL", **kwargs)
 
+    def to_python(self, value):
+        if value is None:
+            return None
+        if isinstance(value, timedelta):
+            return value
+        if isinstance(value, (int, float)):
+            return timedelta(seconds=value)
+        return value
+
+    def get_db_prep_value(self, value):
+        if value is None:
+            return None
+        if isinstance(value, timedelta):
+            return value
+        if isinstance(value, (int, float)):
+            return timedelta(seconds=value)
+        raise ValueError(f"Field {self.name} must be a timedelta or numeric seconds value")
+
     async def validate(self, value) -> None:
         await super().validate(value)
-        if value is not None and not isinstance(value, (int, float)):
-            raise ValueError("Value must be a time delta (duration in seconds)")
+        if value is not None and not isinstance(value, (int, float, timedelta)):
+            raise ValueError("Value must be a timedelta or duration in seconds (int/float)")
 
 
 class UUIDArrayField(ArrayField):
@@ -665,9 +759,23 @@ class PointField(Field):
     def __init__(self, **kwargs):
         super().__init__("POINT", **kwargs)
 
+    def to_python(self, value):
+        if value is None:
+            return None
+        if isinstance(value, (list, tuple)) and len(value) == 2:
+            return (float(value[0]), float(value[1]))
+        return value
+
+    def get_db_prep_value(self, value):
+        if value is None:
+            return None
+        if not (isinstance(value, (list, tuple)) and len(value) == 2):
+            raise ValueError(f"Field {self.name} must be a (x, y) tuple")
+        return (float(value[0]), float(value[1]))
+
     async def validate(self, value):
         await super().validate(value)
-        if value is not None and (not isinstance(value, tuple) or len(value) != 2):
+        if value is not None and (not isinstance(value, (tuple, list)) or len(value) != 2):
             raise ValueError("Value must be a tuple of two float numbers representing a point")
 
 

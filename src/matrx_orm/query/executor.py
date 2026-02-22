@@ -187,7 +187,7 @@ class QueryExecutor:
             raise ValidationError(message="No data provided for insert")
 
         columns = list(data.keys())
-        values = [self._coerce_param(col, val) for col, val in data.items()]
+        values = list(data.values())
         placeholders = [f"${i + 1}" for i in range(len(values))]
 
         sql = f"INSERT INTO {table} ({', '.join(columns)}) " f"VALUES ({', '.join(placeholders)}) " f"RETURNING *"
@@ -244,7 +244,7 @@ class QueryExecutor:
             row_placeholders: list[str] = []
             for col in columns:
                 row_placeholders.append(f"${param_index}")
-                all_values.append(self._coerce_param(col, row_data[col]))
+                all_values.append(row_data[col])
                 param_index += 1
             placeholders_list.append(f"({', '.join(row_placeholders)})")
 
@@ -280,7 +280,7 @@ class QueryExecutor:
             raise ValidationError(message="No conflict fields provided for upsert")
 
         columns = list(data.keys())
-        values = [self._coerce_param(col, val) for col, val in data.items()]
+        values = list(data.values())
         placeholders = [f"${i + 1}" for i in range(len(values))]
 
         fields_to_update = update_fields or [c for c in columns if c not in conflict_fields]
@@ -340,7 +340,7 @@ class QueryExecutor:
             row_placeholders: list[str] = []
             for col in columns:
                 row_placeholders.append(f"${param_index}")
-                all_values.append(self._coerce_param(col, row_data[col]))
+                all_values.append(row_data[col])
                 param_index += 1
             placeholders_list.append(f"({', '.join(row_placeholders)})")
 

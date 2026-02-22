@@ -971,6 +971,7 @@ The tag **must** match the `version` field in `pyproject.toml` exactly (e.g. tag
 
 | Version | Highlights |
 |---|---|
+| **v1.6.4** | fix: complete field type coercion audit - get_db_prep_value and to_python for all field types |
 | **v1.6.3** | fix: coerce datetime/date/time strings to native types before asyncpg binding |
 | **v1.6.2** | fix: schema builder default value parsing overhaul in columns.py |
 | **v1.6.1** | fix: numeric defaults no longer emitted as strings in generated Python models |
