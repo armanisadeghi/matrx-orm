@@ -971,6 +971,7 @@ The tag **must** match the `version` field in `pyproject.toml` exactly (e.g. tag
 
 | Version | Highlights |
 |---|---|
+| **v1.6.1** | fix: numeric defaults no longer emitted as strings in generated Python models |
 | **v1.6.0** | `upsert()` / `bulk_upsert()` (INSERT … ON CONFLICT DO UPDATE), `count()`, `exists()`, `update_where()`, `delete_where()` on Model and BaseManager; sync wrappers for all new methods |
 | **v1.5.3** | `SchemaManager` now accepts `include_tables` and `exclude_tables` to generate models/managers for a specific subset of tables |
 | **v1.5.2** | Fix migration dependency name bug — generated files now reference the full preceding migration stem (e.g. `"0001_baseline"`) instead of just the zero-padded number (`"0001"`) |

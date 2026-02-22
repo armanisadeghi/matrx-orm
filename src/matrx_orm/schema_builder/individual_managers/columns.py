@@ -1171,7 +1171,9 @@ class Column:
                     else:
                         try:
                             parsed_default = ast.literal_eval(python_default)
-                            if isinstance(parsed_default, (dict, list)):  # Confirm it's valid JSON-like structure
+                            if isinstance(parsed_default, (dict, list)):
+                                field_options.append(f"default={parsed_default}")
+                            elif isinstance(parsed_default, (int, float)):
                                 field_options.append(f"default={parsed_default}")
                             else:
                                 field_options.append(f"default='{python_default}'")
