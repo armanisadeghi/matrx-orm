@@ -80,7 +80,13 @@ class TestBuildQuery:
         q = qb._build_query()
         assert q["model"] is M
         assert q["table"] == "qb_table"
-        assert q["filters"]["name"] == "Alice"
+        # filters is now a list of dicts/Q objects — find the dict that contains "name"
+        filter_items = q["filters"]
+        combined = {}
+        for item in filter_items:
+            if isinstance(item, dict):
+                combined.update(item)
+        assert combined.get("name") == "Alice"
         assert q["limit"] == 10
 
     def test_build_query_default_select(self):

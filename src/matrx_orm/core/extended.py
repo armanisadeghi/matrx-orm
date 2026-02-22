@@ -831,9 +831,30 @@ class BaseManager(Generic[ModelT]):
         return self._item_to_dict(item)
 
     async def get_item_with_related(
-        self, item_id: Any, relation_name: str
+        self, item_id: Any, relation_name: str, *, use_join: bool | None = None
     ) -> tuple[ModelT, Model | list[Model] | None]:
-        """Get an item with a specific relationship."""
+        """Get an item with a specific relationship.
+
+        For FK relations, uses a JOIN by default to avoid a second round-trip.
+        Pass ``use_join=False`` to use the legacy lazy-fetch path.
+        """
+        is_fk = relation_name in self.model._meta.foreign_keys
+        should_use_join = use_join if use_join is not None else is_fk
+
+        if should_use_join and is_fk:
+            pk_field = self.model._meta.primary_keys[0]
+            items = (
+                await self.model.filter(**{pk_field: item_id})
+                .select_related(relation_name)
+                .all()
+            )
+            if not items:
+                return None, None  # type: ignore[return-value]
+            item = items[0]
+            item = await self._initialize_item_runtime(item)
+            related = item.get_related(relation_name) if item else None
+            return item, related  # type: ignore[return-value]
+
         item = await self.load_by_id(item_id)
         vcprint(
             item,
@@ -878,8 +899,34 @@ class BaseManager(Generic[ModelT]):
             return item, related_items
         return item, None
 
-    async def get_items_with_related(self, relation_name: str) -> list[ModelT]:
-        """Get all active items with a specific relationship."""
+    async def get_items_with_related(
+        self, relation_name: str, *, use_join: bool | None = None
+    ) -> list[ModelT]:
+        """Get items with a specific relationship.
+
+        When *use_join* is True (or auto-detected as a FK), loads the relation
+        via a single JOIN query instead of N+1 separate queries.
+
+        Args:
+            relation_name: The FK / IFK / M2M field name.
+            use_join: Force JOIN loading (True) or lazy loading (False/None).
+                      Defaults to JOIN for FK, lazy for IFK/M2M.
+        """
+        # Determine if this is a FK that supports JOIN loading
+        is_fk = relation_name in self.model._meta.foreign_keys
+        should_use_join = use_join if use_join is not None else is_fk
+
+        if should_use_join and is_fk:
+            # Single JOIN query — no N+1
+            items = await self.model.filter().select_related(relation_name).all()
+            initialized: list[ModelT] = []
+            for item in items:
+                init = await self._initialize_item_runtime(item)
+                if init:
+                    initialized.append(init)  # type: ignore[arg-type]
+            return initialized
+
+        # Lazy fallback for IFK / M2M (or explicit use_join=False)
         items = await self.load_items()
         await asyncio.gather(
             *(self._fetch_related(item, relation_name) for item in items if item)

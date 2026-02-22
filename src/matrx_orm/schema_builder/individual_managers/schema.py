@@ -10,7 +10,7 @@ from matrx_orm.schema_builder.individual_managers.common import (
 from matrx_utils.file_handling.specific_handlers.code_handler import CodeHandler
 from matrx_orm.schema_builder.helpers.manual_overrides import (
     SYSTEM_OVERRIDES_ENTITIES,
-    SYSTEM_OVERRIDES_FIELDS
+    SYSTEM_OVERRIDES_FIELDS,
 )
 from matrx_orm.schema_builder.parts_generators.entity_field_override_generator import (
     generate_full_typescript_file,
@@ -28,14 +28,12 @@ import re
 LOCAL_DEBUG_MODE = False
 
 
-
 def format_ts_object(ts_object_str):
     """
     Formats a JSON-like string to remove quotes from keys for TypeScript compatibility.
     Ensures TypeScript-style object notation.
     """
     return re.sub(r'"(\w+)"\s*:', r"\1:", ts_object_str)
-
 
 
 class Schema:
@@ -68,15 +66,15 @@ class Schema:
             color="cyan",
         )
 
-
-
     def add_table(self, table):
         self.tables[table.name] = table
 
     def add_all_table_instances(self):
         """Assigns each table an instance of every other table in the schema."""
         for table in self.tables.values():
-            table.all_table_instances = {name: tbl for name, tbl in self.tables.items() if name != table.name}
+            table.all_table_instances = {
+                name: tbl for name, tbl in self.tables.items() if name != table.name
+            }
 
     def add_view(self, view):
         self.views[view.name] = view
@@ -204,8 +202,16 @@ class Schema:
         ts_entities.extend(ts_tables)
         ts_entities.extend(ts_views)
 
-        ts_tables_type = "export type AutomationTableName =\n    '" + "'\n    | '".join(ts_tables) + "';"
-        ts_views_type = "export type AutomationViewName =\n    '" + "'\n    | '".join(ts_views) + "';"
+        ts_tables_type = (
+            "export type AutomationTableName =\n    '"
+            + "'\n    | '".join(ts_tables)
+            + "';"
+        )
+        ts_views_type = (
+            "export type AutomationViewName =\n    '"
+            + "'\n    | '".join(ts_views)
+            + "';"
+        )
         ts_entities_type = (
             "export type AutomationEntityName = AutomationTableName | AutomationViewName;\n\n"
             "// export type ProcessedSchema = ReturnType<typeof initializeTableSchema>;\n\n// export type UnifiedSchemaCache = ReturnType<typeof initializeSchemaSystem>\n\n"
@@ -227,11 +233,18 @@ class Schema:
             frontend_keys = ", ".join(f"'{key}'" for key in pk_entry["frontend_name"])
             database_keys = ", ".join(f"'{key}'" for key in pk_entry["database_name"])
 
-            result += f"  {table_name}: {{\n" f"    frontendFields: [{frontend_keys}],\n" f"    databaseColumns: [{database_keys}],\n" f"  }},\n"
+            result += (
+                f"  {table_name}: {{\n"
+                f"    frontendFields: [{frontend_keys}],\n"
+                f"    databaseColumns: [{database_keys}],\n"
+                f"  }},\n"
+            )
         result += "};\n"
 
         main_code = result
-        self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["primary_keys"], main_code)
+        self.code_handler.generate_and_save_code_from_object(
+            get_code_config(self.database_project)["primary_keys"], main_code
+        )
 
     # Method to generate TypeBrand utility type
     def generate_type_brand_util(self):
@@ -272,7 +285,12 @@ class Schema:
             ]
 
         # Generating the TypeScript type definition using the list
-        return "export type FieldDataOptionsType =\n" + "    | '" + "'\n    | '".join(data_types) + "';"
+        return (
+            "export type FieldDataOptionsType =\n"
+            + "    | '"
+            + "'\n    | '".join(data_types)
+            + "';"
+        )
 
     def generate_data_structure(self, data_structures=None):
         # Default list of values for DataStructure
@@ -287,7 +305,12 @@ class Schema:
             ]
 
         # Generating the TypeScript type definition using the list
-        return "export type DataStructure =\n" + "    | '" + "'\n    | '".join(data_structures) + "';"
+        return (
+            "export type DataStructure =\n"
+            + "    | '"
+            + "'\n    | '".join(data_structures)
+            + "';"
+        )
 
     def generate_fetch_strategy(self, fetch_strategies=None):
         # Default list of values for FetchStrategy
@@ -305,7 +328,12 @@ class Schema:
             ]
 
         # Generating the TypeScript type definition using the list
-        return "export type FetchStrategy =\n" + "    | '" + "'\n    | '".join(fetch_strategies) + "';"
+        return (
+            "export type FetchStrategy =\n"
+            + "    | '"
+            + "'\n    | '".join(fetch_strategies)
+            + "';"
+        )
 
     def generate_name_formats(self):
         return (
@@ -340,7 +368,12 @@ class Schema:
             ]
 
         # Generating the TypeScript type definition using the list
-        return "export type AutomationDynamicName =\n" + "    | '" + "'\n    | '".join(dynamic_names) + "';"
+        return (
+            "export type AutomationDynamicName =\n"
+            + "    | '"
+            + "'\n    | '".join(dynamic_names)
+            + "';"
+        )
 
     def generate_automation_custom_name(self, custom_names=None):
         # Default list of values for AutomationCustomName
@@ -348,7 +381,12 @@ class Schema:
             custom_names = ["flashcard", "mathTutor", "scraper"]
 
         # Generating the TypeScript type definition using the list
-        return "export type AutomationCustomName =\n" + "    | '" + "'\n    | '".join(custom_names) + "';"
+        return (
+            "export type AutomationCustomName =\n"
+            + "    | '"
+            + "'\n    | '".join(custom_names)
+            + "';"
+        )
 
     def generate_static_ts_Initial_table_schema(self):
         ts_structure = (
@@ -425,11 +463,21 @@ class Schema:
         ts_reverse_field_name_lookup = []
         ts_view_name_lookup = []
 
-        ts_table_name_lookup_line_1 = "export const entityNameToCanonical: EntityNameToCanonicalMap = {"
-        ts_field_name_lookup_line_1 = "export const fieldNameToCanonical: FieldNameToCanonicalMap = {"
-        ts_reverse_table_name_lookup_line_1 = "export const entityNameFormats: EntityNameFormatMap = {"
-        ts_reverse_field_name_lookup_line_1 = "export const fieldNameFormats: FieldNameFormatMap = {"
-        ts_view_name_lookup_line_1 = "export const viewNameLookup: Record<string, string> = {"
+        ts_table_name_lookup_line_1 = (
+            "export const entityNameToCanonical: EntityNameToCanonicalMap = {"
+        )
+        ts_field_name_lookup_line_1 = (
+            "export const fieldNameToCanonical: FieldNameToCanonicalMap = {"
+        )
+        ts_reverse_table_name_lookup_line_1 = (
+            "export const entityNameFormats: EntityNameFormatMap = {"
+        )
+        ts_reverse_field_name_lookup_line_1 = (
+            "export const fieldNameFormats: FieldNameFormatMap = {"
+        )
+        ts_view_name_lookup_line_1 = (
+            "export const viewNameLookup: Record<string, string> = {"
+        )
 
         ts_common_close = "};"
 
@@ -440,30 +488,60 @@ class Schema:
             # Properly format field name lookup to prevent double brackets
             field_lookup_data = table.field_name_lookup_structure
             if isinstance(field_lookup_data, dict):
-                formatted_field_lookup = json.dumps(field_lookup_data, indent=4)[1:-1]  # Removes outer {}
-                formatted_field_lookup = format_ts_object(formatted_field_lookup)  # Remove unnecessary quotes
-                formatted_field_lookup = f"{{\n{formatted_field_lookup}\n}}"  # Ensure correct brackets
+                formatted_field_lookup = json.dumps(field_lookup_data, indent=4)[
+                    1:-1
+                ]  # Removes outer {}
+                formatted_field_lookup = format_ts_object(
+                    formatted_field_lookup
+                )  # Remove unnecessary quotes
+                formatted_field_lookup = (
+                    f"{{\n{formatted_field_lookup}\n}}"  # Ensure correct brackets
+                )
             else:
                 formatted_field_lookup = str(field_lookup_data)
 
-            ts_field_name_lookup.append(f"    {table.name_camel}: {formatted_field_lookup},")
+            ts_field_name_lookup.append(
+                f"    {table.name_camel}: {formatted_field_lookup},"
+            )
 
             # Convert to JSON and remove quotes from keys
-            formatted_reverse_table_lookup = format_ts_object(json.dumps(table.reverse_table_lookup[table.name_camel], indent=4))
-            formatted_reverse_field_lookup = format_ts_object(json.dumps(table.reverse_field_name_lookup[table.name_camel], indent=4))
+            formatted_reverse_table_lookup = format_ts_object(
+                json.dumps(table.reverse_table_lookup[table.name_camel], indent=4)
+            )
+            formatted_reverse_field_lookup = format_ts_object(
+                json.dumps(table.reverse_field_name_lookup[table.name_camel], indent=4)
+            )
 
-            ts_reverse_table_name_lookup.append(f"    {table.name_camel}: {formatted_reverse_table_lookup},")
-            ts_reverse_field_name_lookup.append(f"    {table.name_camel}: {formatted_reverse_field_lookup},")
+            ts_reverse_table_name_lookup.append(
+                f"    {table.name_camel}: {formatted_reverse_table_lookup},"
+            )
+            ts_reverse_field_name_lookup.append(
+                f"    {table.name_camel}: {formatted_reverse_field_lookup},"
+            )
 
         for view in self.views.values():
             for key, value in view.unique_name_lookups.items():
                 ts_view_name_lookup.append(f'    {key}: "{value}",')
 
-        ts_table_name_lookup_code = "\n".join([ts_table_name_lookup_line_1] + ts_table_name_lookup + [ts_common_close])
-        ts_field_name_lookup_code = "\n".join([ts_field_name_lookup_line_1] + ts_field_name_lookup + [ts_common_close])
-        ts_reverse_table_name_lookup_code = "\n".join([ts_reverse_table_name_lookup_line_1] + ts_reverse_table_name_lookup + [ts_common_close])
-        ts_reverse_field_name_lookup_code = "\n".join([ts_reverse_field_name_lookup_line_1] + ts_reverse_field_name_lookup + [ts_common_close])
-        ts_view_name_lookup_code = "\n".join([ts_view_name_lookup_line_1] + ts_view_name_lookup + [ts_common_close])
+        ts_table_name_lookup_code = "\n".join(
+            [ts_table_name_lookup_line_1] + ts_table_name_lookup + [ts_common_close]
+        )
+        ts_field_name_lookup_code = "\n".join(
+            [ts_field_name_lookup_line_1] + ts_field_name_lookup + [ts_common_close]
+        )
+        ts_reverse_table_name_lookup_code = "\n".join(
+            [ts_reverse_table_name_lookup_line_1]
+            + ts_reverse_table_name_lookup
+            + [ts_common_close]
+        )
+        ts_reverse_field_name_lookup_code = "\n".join(
+            [ts_reverse_field_name_lookup_line_1]
+            + ts_reverse_field_name_lookup
+            + [ts_common_close]
+        )
+        ts_view_name_lookup_code = "\n".join(
+            [ts_view_name_lookup_line_1] + ts_view_name_lookup + [ts_common_close]
+        )
 
         main_code = (
             f"{ts_table_name_lookup_code}\n\n"
@@ -473,7 +551,9 @@ class Schema:
             f"{ts_view_name_lookup_code}"
         )
 
-        self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["typescript_lookup"], main_code)
+        self.code_handler.generate_and_save_code_from_object(
+            get_code_config(self.database_project)["typescript_lookup"], main_code
+        )
 
     def generate_entity_typescript_types_file(self):
         ts_type_entries = []
@@ -481,20 +561,31 @@ class Schema:
             ts_type_entries.append(table.to_typescript_type_entry())
 
         main_code = "\n".join(ts_type_entries)
-        self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["entity_typescript_types"], main_code)
+        self.code_handler.generate_and_save_code_from_object(
+            get_code_config(self.database_project)["entity_typescript_types"], main_code
+        )
 
     def generate_schema_file(self):
         ts_structure, const_structure = self.generate_schema_structure()
         table_schema_structure = self.generate_static_ts_Initial_table_schema()
         ts_code_content = f"{ts_structure}\n\n{table_schema_structure}"
 
-        self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["typescript_schema"], ts_code_content)
+        self.code_handler.generate_and_save_code_from_object(
+            get_code_config(self.database_project)["typescript_schema"], ts_code_content
+        )
 
-        self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["typescript_individual_table_schemas"], const_structure)
+        self.code_handler.generate_and_save_code_from_object(
+            get_code_config(self.database_project)[
+                "typescript_individual_table_schemas"
+            ],
+            const_structure,
+        )
 
     # Method to generate and save the types file (AutomationSchemaTypes.ts)
     def generate_types_file(self):
-        ts_tables_type, ts_views_type, ts_entities_type = self.generate_typescript_list_tables_and_views()
+        ts_tables_type, ts_views_type, ts_entities_type = (
+            self.generate_typescript_list_tables_and_views()
+        )
         data_type_entry = self.generate_data_type()
         data_structure_entry = self.generate_data_structure()
         fetch_strategy_entry = self.generate_fetch_strategy()
@@ -518,7 +609,9 @@ class Schema:
             f"{type_inference_entries}\n\n"
         )
 
-        self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["typescript_types"], ts_code_content)
+        self.code_handler.generate_and_save_code_from_object(
+            get_code_config(self.database_project)["typescript_types"], ts_code_content
+        )
 
         self.generate_field_name_list()
 
@@ -545,7 +638,9 @@ class Schema:
         entity_field_names = {}
         for table in self.tables.values():
             entity_name = table.name_camel
-            vcprint(f"Processing entity: {entity_name}", verbose=self.verbose, color="blue")
+            vcprint(
+                f"Processing entity: {entity_name}", verbose=self.verbose, color="blue"
+            )
             entity_field_names[entity_name] = table.Field_name_groups
             vcprint(
                 f"Field names: {entity_field_names[entity_name]}",
@@ -555,7 +650,10 @@ class Schema:
 
         main_code = self.convert_to_typescript(entity_field_names)
 
-        self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["typescript_entity_fields"], main_code)
+        self.code_handler.generate_and_save_code_from_object(
+            get_code_config(self.database_project)["typescript_entity_fields"],
+            main_code,
+        )
 
         self.generate_entity_overrides()
 
@@ -564,9 +662,14 @@ class Schema:
         for table in self.tables.values():
             entity_names.append(table.name_camel)
 
-        overrides_code = generate_multiple_entities(entity_names, SYSTEM_OVERRIDES_ENTITIES)
+        overrides_code = generate_multiple_entities(
+            entity_names, SYSTEM_OVERRIDES_ENTITIES
+        )
 
-        self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["typescript_entity_overrides"], overrides_code)
+        self.code_handler.generate_and_save_code_from_object(
+            get_code_config(self.database_project)["typescript_entity_overrides"],
+            overrides_code,
+        )
 
         self.generate_entity_main_hooks()
         self.generate_entity_field_overrides()
@@ -574,16 +677,24 @@ class Schema:
     def generate_entity_main_hooks(self):
         all_table_snake_names = [table.name for table in self.tables.values()]
         main_hook_code = generate_complete_main_hooks_file(all_table_snake_names)
-        self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["typescript_entity_main_hooks"], main_hook_code)
+        self.code_handler.generate_and_save_code_from_object(
+            get_code_config(self.database_project)["typescript_entity_main_hooks"],
+            main_hook_code,
+        )
 
     def generate_entity_field_overrides(self):
         entity_names = []
         for table in self.tables.values():
             entity_names.append(table.name_camel)
 
-        overrides_code = generate_full_typescript_file(entity_names, SYSTEM_OVERRIDES_FIELDS)
+        overrides_code = generate_full_typescript_file(
+            entity_names, SYSTEM_OVERRIDES_FIELDS
+        )
 
-        self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["typescript_entity_field_overrides"], overrides_code)
+        self.code_handler.generate_and_save_code_from_object(
+            get_code_config(self.database_project)["typescript_entity_field_overrides"],
+            overrides_code,
+        )
 
         self.generate_entity_typescript_types_file()
 
@@ -620,7 +731,11 @@ class Schema:
         all_models.append("Users")  # Always include the Users model
 
         # Join the models into a string with appropriate formatting
-        model_registry_string = "\nmodel_registry.register_all(\n[\n        " + ",\n        ".join(all_models) + "\n    ]\n)"
+        model_registry_string = (
+            "\nmodel_registry.register_all(\n[\n        "
+            + ",\n        ".join(all_models)
+            + "\n    ]\n)"
+        )
 
         return model_registry_string
 
@@ -633,7 +748,10 @@ class Schema:
 
         for table_name, table in self.tables.items():
             for relationship in table.referenced_by_relationships:
-                if relationship.source_table and relationship.source_table.name in self.tables:
+                if (
+                    relationship.source_table
+                    and relationship.source_table.name in self.tables
+                ):
                     source_table_name = relationship.source_table.name
                     dependencies[source_table_name].add(table_name)
 
@@ -643,7 +761,9 @@ class Schema:
         while remaining_tables:
             ready_tables = []
             for table_name in remaining_tables:
-                if not dependencies[table_name] or dependencies[table_name].issubset(set(sorted_tables)):
+                if not dependencies[table_name] or dependencies[table_name].issubset(
+                    set(sorted_tables)
+                ):
                     ready_tables.append(table_name)
 
             if not ready_tables:
@@ -690,17 +810,23 @@ class Schema:
             py_manager_structure.append(py_manager_entry)
 
             py_auto_config_entry = table.base_class_auto_config
-            py_auto_config_string = f"{table.name}_auto_config = {repr(py_auto_config_entry)}\n\n"
+            py_auto_config_string = (
+                f"{table.name}_auto_config = {repr(py_auto_config_entry)}\n\n"
+            )
             py_auto_config_structure.append(py_auto_config_string)
 
             py_base_manager_entry = table.model_base_class_str
 
-            default_manager_config = get_code_config(self.database_project)["python_base_manager"]
+            default_manager_config = get_code_config(self.database_project)[
+                "python_base_manager"
+            ]
             default_manager_config["temp_path"] += f"{table.name}.py"
             default_manager_config["file_location"] += f"{table.name}.py"
 
-            self.code_handler.generate_and_save_code_from_object(default_manager_config, py_base_manager_entry)
-            py_all_manager_import_names_str+= f"from .{table.name} import {table.python_model_name}DTO, {table.python_model_name}Base\n"
+            self.code_handler.generate_and_save_code_from_object(
+                default_manager_config, py_base_manager_entry
+            )
+            py_all_manager_import_names_str += f"from .{table.name} import {table.python_model_name}DTO, {table.python_model_name}Base\n"
 
         py_structure.append(self.get_string_model_registry())
 
@@ -709,7 +835,9 @@ class Schema:
 
         if LOCAL_DEBUG_MODE:
             print("DEBUG.....")
-            print("python_models", get_code_config(self.database_project)["python_models"])
+            print(
+                "python_models", get_code_config(self.database_project)["python_models"]
+            )
             print("-----------------------------\n")
 
         models_config = get_code_config(self.database_project)["python_models"]
@@ -724,16 +852,21 @@ class Schema:
         dynamic_import_lines.append("from dataclasses import dataclass")
         models_config["import_lines"] = dynamic_import_lines
 
-        self.code_handler.generate_and_save_code_from_object(models_config, main_code, additional_code)
+        self.code_handler.generate_and_save_code_from_object(
+            models_config, main_code, additional_code
+        )
 
-        
         py_auto_config_code = "\n".join(py_auto_config_structure)
 
         self.code_handler.generate_and_save_code_from_object(
-            get_code_config(self.database_project)["python_auto_config"], py_auto_config_code)
-        
-        self.code_handler.generate_and_save_code_from_object(get_code_config(self.database_project)["python_all_managers"], py_all_manager_import_names_str)
+            get_code_config(self.database_project)["python_auto_config"],
+            py_auto_config_code,
+        )
 
+        self.code_handler.generate_and_save_code_from_object(
+            get_code_config(self.database_project)["python_all_managers"],
+            py_all_manager_import_names_str,
+        )
 
     def save_analysis_json(self, analysis_dict):
         json_code_temp_path = "schemaAnalysis.json"

@@ -12,18 +12,18 @@ def generate_typescript_entity(entity_name, overrides=None):
     overrides = overrides or {}
     ts_template = f"""
 const {entity_name}EntityOverrides: EntityOverrides<'{entity_name}'> = {{
-    schemaType: {overrides.get('schemaType', 'null')},
-    entityName: {overrides.get('entityName', 'null')},
-    uniqueTableId: {overrides.get('uniqueTableId', 'null')},
-    uniqueEntityId: {overrides.get('uniqueEntityId', 'null')},
-    primaryKey: {overrides.get('primaryKey', 'null')},
-    primaryKeyMetadata: {overrides.get('primaryKeyMetadata', 'null')},
-    displayFieldMetadata: {overrides.get('displayFieldMetadata', 'null')},
-    defaultFetchStrategy: {overrides.get('defaultFetchStrategy', 'null')},
-    componentProps: {overrides.get('componentProps', 'null')},
-    entityNameFormats: {overrides.get('entityNameFormats', 'null')},
-    relationships: {overrides.get('relationships', 'null')},
-    entityFields: {overrides.get('entityFields', 'null')}
+    schemaType: {overrides.get("schemaType", "null")},
+    entityName: {overrides.get("entityName", "null")},
+    uniqueTableId: {overrides.get("uniqueTableId", "null")},
+    uniqueEntityId: {overrides.get("uniqueEntityId", "null")},
+    primaryKey: {overrides.get("primaryKey", "null")},
+    primaryKeyMetadata: {overrides.get("primaryKeyMetadata", "null")},
+    displayFieldMetadata: {overrides.get("displayFieldMetadata", "null")},
+    defaultFetchStrategy: {overrides.get("defaultFetchStrategy", "null")},
+    componentProps: {overrides.get("componentProps", "null")},
+    entityNameFormats: {overrides.get("entityNameFormats", "null")},
+    relationships: {overrides.get("relationships", "null")},
+    entityFields: {overrides.get("entityFields", "null")}
 }};
 """
     return ts_template
@@ -31,9 +31,14 @@ const {entity_name}EntityOverrides: EntityOverrides<'{entity_name}'> = {{
 
 def generate_multiple_entities(entity_names, system_overrides):
     imports = generate_imports()
-    entities_code = "\n\n".join(generate_typescript_entity(name, system_overrides.get(name, {})) for name in entity_names)
+    entities_code = "\n\n".join(
+        generate_typescript_entity(name, system_overrides.get(name, {}))
+        for name in entity_names
+    )
 
-    entity_overrides_list = "\n".join(f"    {name}: {name}EntityOverrides," for name in entity_names)
+    entity_overrides_list = "\n".join(
+        f"    {name}: {name}EntityOverrides," for name in entity_names
+    )
 
     entity_overrides_block = f"""
 

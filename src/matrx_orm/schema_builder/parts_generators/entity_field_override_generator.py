@@ -59,7 +59,11 @@ def generate_typescript_field_overrides(entity_name, overrides):
         elif isinstance(value, dict):
             # Handle componentProps while keeping other field properties
             component_props_override = value.get("componentProps", {})
-            merged_component_props = merge_component_props(component_props_override) if component_props_override else None
+            merged_component_props = (
+                merge_component_props(component_props_override)
+                if component_props_override
+                else None
+            )
 
             # Start field object
             ts_template += f"    {field}: {{\n"
@@ -85,9 +89,14 @@ def generate_full_typescript_file(entity_names, system_overrides):
     Generates the entire TypeScript file as a string, including all entity field overrides
     and the final `ENTITY_FIELD_OVERRIDES` export.
     """
-    entity_overrides_blocks = "\n\n".join(generate_typescript_field_overrides(name, system_overrides.get(name, {})) for name in entity_names)
+    entity_overrides_blocks = "\n\n".join(
+        generate_typescript_field_overrides(name, system_overrides.get(name, {}))
+        for name in entity_names
+    )
 
-    entity_overrides_list = "\n".join(f"    {name}: {name}FieldOverrides," for name in entity_names)
+    entity_overrides_list = "\n".join(
+        f"    {name}: {name}FieldOverrides," for name in entity_names
+    )
 
     entity_overrides_export = f"""
 export const ENTITY_FIELD_OVERRIDES: AllEntityFieldOverrides = {{
@@ -101,7 +110,9 @@ export const ENTITY_FIELD_OVERRIDES: AllEntityFieldOverrides = {{
 # Example Usage
 if __name__ == "__main__":
     SYSTEM_OVERRIDES_FIELDS = {
-        "dataInputComponent": {"options": {"componentProps": {"subComponent": "optionsManager"}}},
+        "dataInputComponent": {
+            "options": {"componentProps": {"subComponent": "optionsManager"}}
+        },
         "aiSettings": {
             "temperature": {
                 "defaultComponent": "SPECIAL",

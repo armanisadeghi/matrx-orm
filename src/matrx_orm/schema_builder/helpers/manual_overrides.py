@@ -34,7 +34,9 @@ SYSTEM_OVERRIDES_ENTITIES = {
 
 recipe_field_overrides = {"tags": {"componentProps": {"subComponent": "tagsManager"}}}
 
-data_input_component_field_overrides = {"options": {"componentProps": {"subComponent": "optionsManager"}}}
+data_input_component_field_overrides = {
+    "options": {"componentProps": {"subComponent": "optionsManager"}}
+}
 
 broker_field_overrides = {
     "name": """{

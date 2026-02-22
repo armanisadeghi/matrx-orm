@@ -607,8 +607,46 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         return run_sync(cls.get_or_none(use_cache=use_cache, **kwargs))
 
     @classmethod
-    def filter(cls, **kwargs: Any) -> QueryBuilder:
-        return QueryBuilder(cls).filter(**kwargs)
+    def filter(cls, *args: Any, **kwargs: Any) -> QueryBuilder:
+        """Return a QueryBuilder with the given filters applied.
+
+        Accepts Q objects as positional args and/or keyword filters::
+
+            User.filter(Q(status="active") | Q(role="admin"))
+            User.filter(status="active", role="admin")
+            User.filter(Q(is_active=True), tenant_id=tid)
+        """
+        return QueryBuilder(cls).filter(*args, **kwargs)
+
+    @classmethod
+    async def raw(cls, sql: str, *params: Any) -> list[Model]:
+        """Execute raw SQL and hydrate results as model instances.
+
+        Usage::
+
+            users = await User.raw("SELECT * FROM users WHERE age > $1", 18)
+        """
+        from matrx_orm.core.async_db_manager import AsyncDatabaseManager
+        results = await AsyncDatabaseManager.execute_query(cls._database, sql, *params)
+        instances = []
+        for row in results:
+            try:
+                instances.append(cls(**dict(row)))
+            except Exception:
+                instances.append(cls(**{k: v for k, v in dict(row).items() if k in cls._fields}))
+        return instances
+
+    @classmethod
+    async def raw_sql(cls, sql: str, *params: Any) -> list[dict[str, Any]]:
+        """Execute raw SQL and return results as plain dicts (no hydration).
+
+        Usage::
+
+            rows = await User.raw_sql("SELECT count(*) as cnt, role FROM users GROUP BY role")
+        """
+        from matrx_orm.core.async_db_manager import AsyncDatabaseManager
+        results = await AsyncDatabaseManager.execute_query(cls._database, sql, *params)
+        return [dict(row) for row in results]
 
     @classmethod
     def filter_sync(cls, **kwargs: Any) -> list[Model]:

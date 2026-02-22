@@ -56,9 +56,15 @@ def generate_schema_structure(schema_manager, table_name):
             schema_structure["manyToMany"].append(
                 {
                     "relatedTable": mm["related_table"],  # The related table
-                    "junctionTable": mm["junction_table"],  # The junction table that joins the two tables
-                    "localColumn": mm["local_column"],  # Column in the junction table for the current table
-                    "relatedColumn": mm["related_column"],  # Column in the junction table for the related table
+                    "junctionTable": mm[
+                        "junction_table"
+                    ],  # The junction table that joins the two tables
+                    "localColumn": mm[
+                        "local_column"
+                    ],  # Column in the junction table for the current table
+                    "relatedColumn": mm[
+                        "related_column"
+                    ],  # Column in the junction table for the related table
                 }
             )
 
@@ -72,7 +78,9 @@ def generate_schema_structure(schema_manager, table_name):
     elif schema_structure["inverseForeignKeys"]:
         schema_structure["defaultFetchStrategy"] = "ifk"
     else:
-        schema_structure["defaultFetchStrategy"] = "simple"  # No relationships, basic fetch
+        schema_structure["defaultFetchStrategy"] = (
+            "simple"  # No relationships, basic fetch
+        )
 
     return schema_structure
 
@@ -101,7 +109,9 @@ def example_usage(schema_manager):
         color="cyan",
     )
 
-    example_view = schema_manager.get_view("view_registered_function_all_rels").to_dict()
+    example_view = schema_manager.get_view(
+        "view_registered_function_all_rels"
+    ).to_dict()
     vcprint(
         example_view,
         title="Full Registered Function View",

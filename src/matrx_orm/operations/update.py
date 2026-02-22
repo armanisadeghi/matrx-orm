@@ -119,7 +119,11 @@ async def decrement(model_cls: type[Model], filters: dict[str, Any], **kwargs: A
 
 
 async def update_instance(instance: Model, fields: Iterable[str] | None = None) -> Model:
+    from matrx_orm.core.signals import pre_save, post_save
+
     model_cls = instance.__class__
+    await pre_save.send(model_cls, instance=instance)
+
     pk_list = model_cls._meta.primary_keys
     if not pk_list:
         raise ValueError(f"Cannot update {model_cls.__name__} with no primary key.")
@@ -166,4 +170,5 @@ async def update_instance(instance: Model, fields: Iterable[str] | None = None) 
         for key, value in result["updated_rows"][0].items():
             setattr(instance, key, value)
 
+    await post_save.send(model_cls, instance=instance, created=False)
     return instance

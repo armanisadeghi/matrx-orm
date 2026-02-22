@@ -2,7 +2,13 @@ import os
 from matrx_utils.fancy_prints.fancy_prints import plt
 
 
-def generate_base_manager_class(models_module_path:str , model_pascal: str, model_name: str, model_name_plural: str, model_name_snake: str) -> str:
+def generate_base_manager_class(
+    models_module_path: str,
+    model_pascal: str,
+    model_name: str,
+    model_name_plural: str,
+    model_name_snake: str,
+) -> str:
     """Generate the minimal core manager class without optional method sets."""
     return f"""
 from dataclasses import dataclass
@@ -205,7 +211,9 @@ def generate_or_not_methods(model_name: str, model_name_plural: str) -> str:
 """
 
 
-def generate_core_relation_methods(model_name: str, model_name_plural: str, relations: list[str]) -> str:
+def generate_core_relation_methods(
+    model_name: str, model_name_plural: str, relations: list[str]
+) -> str:
     """Generate core relation methods without active filtering."""
     return "".join(
         [
@@ -221,7 +229,9 @@ def generate_core_relation_methods(model_name: str, model_name_plural: str, rela
     )
 
 
-def generate_active_relation_methods(model_name: str, model_name_plural: str, relations: list[str]) -> str:
+def generate_active_relation_methods(
+    model_name: str, model_name_plural: str, relations: list[str]
+) -> str:
     """Generate relation methods that include active filtering."""
     return "".join(
         [
@@ -240,7 +250,9 @@ def generate_active_relation_methods(model_name: str, model_name_plural: str, re
     )
 
 
-def generate_to_dict_relation_methods(model_name: str, model_name_plural: str, relations: list[str]) -> str:
+def generate_to_dict_relation_methods(
+    model_name: str, model_name_plural: str, relations: list[str]
+) -> str:
     """Generate to_dict methods specific to each relation."""
     return "".join(
         [
@@ -256,7 +268,9 @@ def generate_to_dict_relation_methods(model_name: str, model_name_plural: str, r
     )
 
 
-def generate_m2m_relation_methods(model_name: str, model_name_plural: str, m2m_relations: list[str]) -> str:
+def generate_m2m_relation_methods(
+    model_name: str, model_name_plural: str, m2m_relations: list[str]
+) -> str:
     """Generate named convenience methods for each M2M relationship."""
     return "".join(
         [
@@ -281,7 +295,9 @@ def generate_m2m_relation_methods(model_name: str, model_name_plural: str, m2m_r
     )
 
 
-def generate_filter_field_methods(model_name: str, model_name_plural: str, filter_fields: list[str]) -> str:
+def generate_filter_field_methods(
+    model_name: str, model_name_plural: str, filter_fields: list[str]
+) -> str:
     """Generate filter-specific methods for each field in filter_fields."""
     return "".join(
         [
@@ -351,24 +367,38 @@ def generate_manager_class(
     m2m_relations: list[str] | None = None,
 ) -> str:
     """Combine all parts into the full class with fine-grained configuration and singleton manager."""
-    base = generate_base_manager_class(models_module_path, model_pascal, model_name, model_name_plural, model_name_snake)
+    base = generate_base_manager_class(
+        models_module_path,
+        model_pascal,
+        model_name,
+        model_name_plural,
+        model_name_snake,
+    )
     parts = [base]
 
     # Core relation methods
     if relations and include_core_relations:
-        parts.append(generate_core_relation_methods(model_name, model_name_plural, relations))
+        parts.append(
+            generate_core_relation_methods(model_name, model_name_plural, relations)
+        )
 
     # Active relation methods
     if relations and include_active_relations:
-        parts.append(generate_active_relation_methods(model_name, model_name_plural, relations))
+        parts.append(
+            generate_active_relation_methods(model_name, model_name_plural, relations)
+        )
 
     # M2M relation methods
     if m2m_relations:
-        parts.append(generate_m2m_relation_methods(model_name, model_name_plural, m2m_relations))
+        parts.append(
+            generate_m2m_relation_methods(model_name, model_name_plural, m2m_relations)
+        )
 
     # Filter field methods
     if filter_fields and include_filter_fields:
-        parts.append(generate_filter_field_methods(model_name, model_name_plural, filter_fields))
+        parts.append(
+            generate_filter_field_methods(model_name, model_name_plural, filter_fields)
+        )
 
     # Active methods
     if include_active_methods:
@@ -385,7 +415,9 @@ def generate_manager_class(
 
     # To-dict relation methods
     if relations and include_to_dict_relations:
-        parts.append(generate_to_dict_relation_methods(model_name, model_name_plural, relations))
+        parts.append(
+            generate_to_dict_relation_methods(model_name, model_name_plural, relations)
+        )
 
     # Always included utility methods
     parts.append(generate_utility_methods(model_name, model_name_plural))
@@ -411,7 +443,9 @@ def save_manager_class(
     include_to_dict_methods: bool = True,
     include_to_dict_relations: bool = False,
 ) -> tuple[str, str]:
-    file_path = os.path.join("database", "orm", "extended", "managers", f"{model_name}_base.py")
+    file_path = os.path.join(
+        "database", "orm", "extended", "managers", f"{model_name}_base.py"
+    )
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
     model_class_str = generate_manager_class(
@@ -444,7 +478,12 @@ if __name__ == "__main__":
         "model_name": "ai_model",
         "model_name_plural": "ai_models",
         "model_name_snake": "ai_model",
-        "relations": ["ai_provider", "ai_model_endpoint", "ai_settings", "recipe_model"],
+        "relations": [
+            "ai_provider",
+            "ai_model_endpoint",
+            "ai_settings",
+            "recipe_model",
+        ],
         "filter_fields": [
             "name",
             "common_name",

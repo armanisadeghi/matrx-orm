@@ -18,8 +18,13 @@ async def create(model_cls: type[Model], **kwargs: Any) -> Model:
 
 
 async def save(instance: Model) -> Model:
+    from matrx_orm.core.signals import pre_create, post_create
+
+    model_cls = instance.__class__
+    await pre_create.send(model_cls, instance=instance)
+
     data: dict[str, Any] = {}
-    for field_name, field in instance.__class__._fields.items():
+    for field_name, field in model_cls._fields.items():
         if isinstance(field, Field):
             value = getattr(instance, field_name)
             if value is None and field.default is not None:
@@ -27,26 +32,24 @@ async def save(instance: Model) -> Model:
             if value is not None:
                 data[field_name] = field.get_db_prep_value(value)
 
-    query = QueryBuilder(instance.__class__)._build_query()
+    query = QueryBuilder(model_cls)._build_query()
     query["data"] = data
 
     executor = QueryExecutor(query)
     result = await executor.insert(query)
 
     for key, value in result.items():
-        field = instance.__class__._fields.get(key)
+        field = model_cls._fields.get(key)
         if field and isinstance(field, Field):
             value = field.to_python(value)
         setattr(instance, key, value)
 
+    await post_create.send(model_cls, instance=instance, created=True)
     return instance
 
 
 async def bulk_create(model_cls: type[Model], objects_data: list[dict[str, Any]]) -> list[Model]:
-    """
-    Enhanced bulk_create that follows the same data processing pipeline as individual operations.
-    Now properly handles the fact that bulk_insert() returns model instances, not raw dicts.
-    """
+    """Bulk insert with field coercion. Returns hydrated model instances."""
     if not objects_data:
         return []
 
@@ -73,14 +76,15 @@ async def bulk_create(model_cls: type[Model], objects_data: list[dict[str, Any]]
     executor = QueryExecutor(query)
     created_instances = await executor.bulk_insert(query)
 
-    for instance in created_instances:
-        await StateManager.cache(model_cls, instance)
+    for inst in created_instances:
+        await StateManager.cache(model_cls, inst)
 
     return created_instances
 
 
-async def get_or_create(model_cls: type[Model], defaults: dict[str, Any] | None = None, **kwargs: Any) -> tuple[Model, bool]:
-    """Fixed to use proper Model methods instead of non-existent model.objects"""
+async def get_or_create(
+    model_cls: type[Model], defaults: dict[str, Any] | None = None, **kwargs: Any
+) -> tuple[Model, bool]:
     defaults = defaults or {}
     try:
         instance = await model_cls.get(**kwargs)
@@ -91,8 +95,9 @@ async def get_or_create(model_cls: type[Model], defaults: dict[str, Any] | None 
         return instance, True
 
 
-async def update_or_create(model_cls: type[Model], defaults: dict[str, Any] | None = None, **kwargs: Any) -> tuple[Model, bool]:
-    """Fixed to use proper Model methods instead of non-existent model.objects"""
+async def update_or_create(
+    model_cls: type[Model], defaults: dict[str, Any] | None = None, **kwargs: Any
+) -> tuple[Model, bool]:
     defaults = defaults or {}
     try:
         instance = await model_cls.get(**kwargs)
@@ -172,15 +177,12 @@ async def bulk_upsert(
     executor = QueryExecutor(query)
     created_instances = await executor.bulk_upsert(query)
 
-    for instance in created_instances:
-        await StateManager.cache(model_cls, instance)
+    for inst in created_instances:
+        await StateManager.cache(model_cls, inst)
 
     return created_instances
 
 
 async def create_instance(model_cls: type[Model], **kwargs: Any) -> Model:
-    """
-    This matches the reference in Model.save() for creating a brand new record.
-    Uses the existing 'create' function to do the heavy lifting.
-    """
+    """Alias used by Model.save() for creating a brand new record."""
     return await create(model_cls, **kwargs)

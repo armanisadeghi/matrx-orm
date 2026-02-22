@@ -32,12 +32,16 @@ class SchemaManager:
             additional_schemas = ["auth"]
 
         if include_tables is not None and exclude_tables is not None:
-            raise ValueError("SchemaManager accepts either 'include_tables' or 'exclude_tables', not both.")
+            raise ValueError(
+                "SchemaManager accepts either 'include_tables' or 'exclude_tables', not both."
+            )
 
         # Ensure utils and Schema are properly imported or defined
         self.utils = schema_builder_utils  # Define or import `utils` properly
         self.database = database
-        self.schema = Schema(name=schema, database_project=database_project, save_direct=save_direct)  # Define or import `Schema`
+        self.schema = Schema(
+            name=schema, database_project=database_project, save_direct=save_direct
+        )  # Define or import `Schema`
         self.additional_schemas = additional_schemas
         self.database_project = database_project
         self.processed_objects = None
@@ -51,8 +55,12 @@ class SchemaManager:
         self.verbose = schema_builder_verbose
         self.debug = schema_builder_debug
         self.info = schema_builder_info
-        self._include_tables: set[str] | None = set(include_tables) if include_tables is not None else None
-        self._exclude_tables: set[str] | None = set(exclude_tables) if exclude_tables is not None else None
+        self._include_tables: set[str] | None = (
+            set(include_tables) if include_tables is not None else None
+        )
+        self._exclude_tables: set[str] | None = (
+            set(exclude_tables) if exclude_tables is not None else None
+        )
 
         # Propagate filter to the Schema so generate_models() can apply it at
         # write-time without touching any loading or relationship logic.
@@ -214,7 +222,9 @@ class SchemaManager:
             if table:
                 # Process foreign keys
                 if table_data["foreign_keys"] and table_data["foreign_keys"] != "None":
-                    for target_table_name, fk_data in table_data["foreign_keys"].items():
+                    for target_table_name, fk_data in table_data[
+                        "foreign_keys"
+                    ].items():
                         target_table_instance = self.schema.get_table(target_table_name)
                         relationship = Relationship(
                             fk_data["constraint_name"],
@@ -227,8 +237,13 @@ class SchemaManager:
                         table.add_foreign_key(target_table_name, relationship)
 
                 # Process referenced_by
-                if table_data["referenced_by"] and table_data["referenced_by"] != "None":
-                    for source_table_name, ref_data in table_data["referenced_by"].items():
+                if (
+                    table_data["referenced_by"]
+                    and table_data["referenced_by"] != "None"
+                ):
+                    for source_table_name, ref_data in table_data[
+                        "referenced_by"
+                    ].items():
                         source_table_instance = self.schema.get_table(source_table_name)
                         relationship = Relationship(
                             ref_data["constraint_name"],
@@ -256,7 +271,11 @@ class SchemaManager:
                 for related_table_name in related_tables:
                     related_table = self.schema.get_table(related_table_name)
                     if related_table:
-                        other_table = self.schema.get_table(related_tables[1] if related_tables[0] == related_table_name else related_tables[0])
+                        other_table = self.schema.get_table(
+                            related_tables[1]
+                            if related_tables[0] == related_table_name
+                            else related_tables[0]
+                        )
                         if other_table:
                             related_table.add_many_to_many(table, other_table)
                             table.add_many_to_many(table, other_table)
@@ -264,11 +283,21 @@ class SchemaManager:
     def analyze_relationships(self):
         """Analyzes relationships in the schema."""
         analysis = {
-            "tables_with_foreign_keys": sum(1 for table in self.schema.tables.values() if table.foreign_keys),
-            "tables_referenced_by_others": sum(1 for table in self.schema.tables.values() if table.referenced_by),
-            "many_to_many_relationships": sum(len(table.many_to_many) for table in self.schema.tables.values()) // 2,
+            "tables_with_foreign_keys": sum(
+                1 for table in self.schema.tables.values() if table.foreign_keys
+            ),
+            "tables_referenced_by_others": sum(
+                1 for table in self.schema.tables.values() if table.referenced_by
+            ),
+            "many_to_many_relationships": sum(
+                len(table.many_to_many) for table in self.schema.tables.values()
+            )
+            // 2,
             "most_referenced_tables": sorted(
-                [(table.name, len(table.referenced_by)) for table in self.schema.tables.values()],
+                [
+                    (table.name, len(table.referenced_by))
+                    for table in self.schema.tables.values()
+                ],
                 key=lambda x: x[1],
                 reverse=True,
             )[:5],
@@ -327,7 +356,9 @@ class SchemaManager:
             # Fetch strategy analysis
             strategy = table.schema_structure.get("defaultFetchStrategy", "simple")
             if strategy == "simple":
-                table_fetch_strategy["simple"] = table_fetch_strategy.get("simple", 0) + 1
+                table_fetch_strategy["simple"] = (
+                    table_fetch_strategy.get("simple", 0) + 1
+                )
             else:
                 if strategy not in table_fetch_strategy:
                     table_fetch_strategy[strategy] = []
@@ -366,19 +397,27 @@ class SchemaManager:
                 unique_column_types.add(col_type)
 
                 if column.default_component:
-                    default_component_count[column.default_component] = default_component_count.get(column.default_component, 0) + 1
+                    default_component_count[column.default_component] = (
+                        default_component_count.get(column.default_component, 0) + 1
+                    )
 
                 if "typescript" in column.calc_validation_functions:
                     validation_function = column.calc_validation_functions["typescript"]
-                    calc_validation_functions_count[validation_function] = calc_validation_functions_count.get(validation_function, 0) + 1
+                    calc_validation_functions_count[validation_function] = (
+                        calc_validation_functions_count.get(validation_function, 0) + 1
+                    )
 
                 if "typescript" in column.calc_exclusion_rules:
                     exclusion_rule = column.calc_exclusion_rules["typescript"]
-                    calc_exclusion_rules_count[exclusion_rule] = calc_exclusion_rules_count.get(exclusion_rule, 0) + 1
+                    calc_exclusion_rules_count[exclusion_rule] = (
+                        calc_exclusion_rules_count.get(exclusion_rule, 0) + 1
+                    )
 
                 if "sub_component" in column.component_props:
                     sub_component = column.component_props["sub_component"]
-                    sub_component_props_count[sub_component] = sub_component_props_count.get(sub_component, 0) + 1
+                    sub_component_props_count[sub_component] = (
+                        sub_component_props_count.get(sub_component, 0) + 1
+                    )
 
         # General analysis summary
         analysis = {
@@ -388,12 +427,24 @@ class SchemaManager:
             "tables_with_primary_key": primary_key_count,
             "tables_without_primary_key": len(no_primary_key_tables),
             "no_primary_key_tables": no_primary_key_tables,
-            "total_columns": sum(len(table.columns) for table in self.schema.tables.values()),
-            "unique_column_types": list(unique_column_types - set(self.all_enum_base_types)),  # Exclude enums
-            "most_common_column_types": dict(sorted(column_type_count.items(), key=lambda item: item[1], reverse=True)[:10]),
+            "total_columns": sum(
+                len(table.columns) for table in self.schema.tables.values()
+            ),
+            "unique_column_types": list(
+                unique_column_types - set(self.all_enum_base_types)
+            ),  # Exclude enums
+            "most_common_column_types": dict(
+                sorted(
+                    column_type_count.items(), key=lambda item: item[1], reverse=True
+                )[:10]
+            ),
             "all_enum_base_types": list(self.all_enum_base_types),
-            "tables_by_size": sorted(self.schema.tables.values(), key=lambda t: t.size_bytes, reverse=True)[:5],
-            "views_by_size": sorted(self.schema.views.values(), key=lambda v: v.size_bytes, reverse=True)[:5],
+            "tables_by_size": sorted(
+                self.schema.tables.values(), key=lambda t: t.size_bytes, reverse=True
+            )[:5],
+            "views_by_size": sorted(
+                self.schema.views.values(), key=lambda v: v.size_bytes, reverse=True
+            )[:5],
             "fetch_strategies": table_fetch_strategy,
             "tables_with_foreign_keys": tables_with_fk,
             "tables_with_inverse_foreign_keys": tables_with_ifk,
@@ -402,11 +453,15 @@ class SchemaManager:
             "calc_validation_functions_count": calc_validation_functions_count,
             "calc_exclusion_rules_count": calc_exclusion_rules_count,
             "sub_component_props_count": sub_component_props_count,
-            "estimated_row_counts": dict(sorted(estimated_row_counts.items(), key=lambda x: x[1], reverse=True)),
+            "estimated_row_counts": dict(
+                sorted(estimated_row_counts.items(), key=lambda x: x[1], reverse=True)
+            ),
             "foreign_key_relationships_total": foreign_key_relationships_total,
             "referenced_by_relationships_total": referenced_by_relationships_total,
             "many_to_many_relationships_total": many_to_many_relationships_total,
-            "database_table_names": [table.name for table in self.schema.tables.values()],
+            "database_table_names": [
+                table.name for table in self.schema.tables.values()
+            ],
             "database_view_names": [view.name for view in self.schema.views.values()],
             "allEntities": [table.name_camel for table in self.schema.tables.values()],
         }
@@ -414,24 +469,40 @@ class SchemaManager:
         return analysis
 
     def get_table_instance(self, table_name):
-        return self.schema.tables[table_name] if table_name in self.schema.tables else None
+        return (
+            self.schema.tables[table_name] if table_name in self.schema.tables else None
+        )
 
     def get_view_instance(self, view_name):
         return self.schema.views[view_name] if view_name in self.schema.views else None
 
     def get_column_instance(self, table_name, column_name):
-        return self.schema.tables[table_name].columns[column_name] if table_name in self.schema.tables and column_name in self.schema.tables[table_name].columns else None
+        return (
+            self.schema.tables[table_name].columns[column_name]
+            if table_name in self.schema.tables
+            and column_name in self.schema.tables[table_name].columns
+            else None
+        )
 
     def get_table_frontend_name(self, table_name):
-        return self.get_table_instance(table_name).name_camel if table_name in self.schema.tables else table_name
+        return (
+            self.get_table_instance(table_name).name_camel
+            if table_name in self.schema.tables
+            else table_name
+        )
 
     def get_view_frontend_name(self, view_name):
-        return self.get_view_instance(view_name).name_camel if view_name in self.schema.views else view_name
+        return (
+            self.get_view_instance(view_name).name_camel
+            if view_name in self.schema.views
+            else view_name
+        )
 
     def get_column_frontend_name(self, table_name, column_name):
         return (
             self.get_column_instance(table_name, column_name).name_camel
-            if table_name in self.schema.tables and column_name in self.schema.tables[table_name].columns
+            if table_name in self.schema.tables
+            and column_name in self.schema.tables[table_name].columns
             else self.utils.to_camel_case(column_name)
         )
 
@@ -444,8 +515,12 @@ class SchemaManager:
                 "foreign_table": key,
                 "foreign_entity": self.get_table_frontend_name(key),
                 "column": fk_data["column"],
-                "fieldName": self.get_column_frontend_name(main_table_name, fk_data["column"]),
-                "foreign_field": self.get_column_frontend_name(key, fk_data["foreign_column"]),
+                "fieldName": self.get_column_frontend_name(
+                    main_table_name, fk_data["column"]
+                ),
+                "foreign_field": self.get_column_frontend_name(
+                    key, fk_data["foreign_column"]
+                ),
                 "foreign_column": fk_data["foreign_column"],
                 "relationship_type": fk_data["relationship_type"],
                 "constraint_name": fk_data["constraint_name"],
@@ -470,7 +545,9 @@ class SchemaManager:
                 "foreign_entity": self.get_table_frontend_name(key),
                 "field": self.get_column_frontend_name(key, ref_data["column"]),
                 "column": ref_data["column"],
-                "foreign_field": self.get_column_frontend_name(table_name, ref_data["foreign_column"]),
+                "foreign_field": self.get_column_frontend_name(
+                    table_name, ref_data["foreign_column"]
+                ),
                 "foreign_column": ref_data["foreign_column"],
                 "constraint_name": ref_data["constraint_name"],
             }
@@ -483,8 +560,12 @@ class SchemaManager:
             database_table = info_object["table_name"]
             entity_name = self.get_table_frontend_name(database_table)
 
-            transformed_foreign_keys = self.transform_foreign_keys(database_table, info_object)
-            transformed_referenced_by = self.transform_referenced_by(database_table, info_object)
+            transformed_foreign_keys = self.transform_foreign_keys(
+                database_table, info_object
+            )
+            transformed_referenced_by = self.transform_referenced_by(
+                database_table, info_object
+            )
 
             updated_relationship = {
                 "entityName": entity_name,
@@ -505,7 +586,9 @@ class SchemaManager:
 
     def get_full_relationship_analysis(self):
         frontend_relationships = self.get_frontend_full_relationships()
-        relationship_details = {rel["table_name"]: rel for rel in frontend_relationships}
+        relationship_details = {
+            rel["table_name"]: rel for rel in frontend_relationships
+        }
 
         self.full_relationship_analysis = {}
 
@@ -513,19 +596,41 @@ class SchemaManager:
             frontend_name = self.get_table_frontend_name(table_name)
 
             transformed_analysis = {
-                "selfReferential": [self.get_table_frontend_name(name) for name in analysis["self-referential"]],
-                "manyToMany": [self.get_table_frontend_name(name) for name in analysis["many-to-many"]],
-                "oneToOne": [self.get_table_frontend_name(name) for name in analysis["one-to-one"]],
-                "manyToOne": [self.get_table_frontend_name(name) for name in analysis["many-to-one"]],
-                "oneToMany": [self.get_table_frontend_name(name) for name in analysis["one-to-many"]],
-                "undefined": [self.get_table_frontend_name(name) for name in analysis["undefined"]],
-                "inverseReferences": [self.get_table_frontend_name(name) for name in analysis["inverse_references"]],
+                "selfReferential": [
+                    self.get_table_frontend_name(name)
+                    for name in analysis["self-referential"]
+                ],
+                "manyToMany": [
+                    self.get_table_frontend_name(name)
+                    for name in analysis["many-to-many"]
+                ],
+                "oneToOne": [
+                    self.get_table_frontend_name(name)
+                    for name in analysis["one-to-one"]
+                ],
+                "manyToOne": [
+                    self.get_table_frontend_name(name)
+                    for name in analysis["many-to-one"]
+                ],
+                "oneToMany": [
+                    self.get_table_frontend_name(name)
+                    for name in analysis["one-to-many"]
+                ],
+                "undefined": [
+                    self.get_table_frontend_name(name) for name in analysis["undefined"]
+                ],
+                "inverseReferences": [
+                    self.get_table_frontend_name(name)
+                    for name in analysis["inverse_references"]
+                ],
                 "relationshipDetails": relationship_details.get(table_name, {}),
             }
 
             self.full_relationship_analysis[frontend_name] = transformed_analysis
 
-        self.schema.save_frontend_full_relationships_json(self.full_relationship_analysis)
+        self.schema.save_frontend_full_relationships_json(
+            self.full_relationship_analysis
+        )
 
         ts_types_string = get_relationship_data_model_types()
 
@@ -568,19 +673,33 @@ class SchemaManager:
                 updated_table["connectedTables"].append(
                     {
                         "schema": connected_table["schema"],
-                        "entity": connected_instance.name_camel if connected_instance else connected_table["table"],
-                        "connectingColumn": self.schema.tables[table_key].columns[connected_table["connecting_column"]].name_camel
-                        if table_instance and connected_table["connecting_column"] in table_instance.columns
+                        "entity": connected_instance.name_camel
+                        if connected_instance
+                        else connected_table["table"],
+                        "connectingColumn": self.schema.tables[table_key]
+                        .columns[connected_table["connecting_column"]]
+                        .name_camel
+                        if table_instance
+                        and connected_table["connecting_column"]
+                        in table_instance.columns
                         else connected_table["connecting_column"],
-                        "referencedColumn": connected_instance.columns[connected_table["referenced_column"]].name_camel
-                        if connected_instance and connected_table["referenced_column"] in connected_instance.columns
+                        "referencedColumn": connected_instance.columns[
+                            connected_table["referenced_column"]
+                        ].name_camel
+                        if connected_instance
+                        and connected_table["referenced_column"]
+                        in connected_instance.columns
                         else connected_table["referenced_column"],
                     }
                 )
 
             for field in table_value["additional_fields"]:
-                field_instance = table_instance.columns.get(field) if table_instance else None
-                updated_table["additionalFields"].append(field_instance.name_camel if field_instance else field)
+                field_instance = (
+                    table_instance.columns.get(field) if table_instance else None
+                )
+                updated_table["additionalFields"].append(
+                    field_instance.name_camel if field_instance else field
+                )
 
             frontend_junction_analysis[entity_name] = updated_table
 
@@ -644,9 +763,15 @@ def generate_schema_structure(schema_manager, table_name):
             schema_structure["manyToMany"].append(
                 {
                     "relatedTable": mm["related_table"],  # The related table
-                    "junctionTable": mm["junction_table"],  # The junction table that joins the two tables
-                    "localColumn": mm["local_column"],  # Column in the junction table for the current table
-                    "relatedColumn": mm["related_column"],  # Column in the junction table for the related table
+                    "junctionTable": mm[
+                        "junction_table"
+                    ],  # The junction table that joins the two tables
+                    "localColumn": mm[
+                        "local_column"
+                    ],  # Column in the junction table for the current table
+                    "relatedColumn": mm[
+                        "related_column"
+                    ],  # Column in the junction table for the related table
                 }
             )
 
@@ -660,7 +785,9 @@ def generate_schema_structure(schema_manager, table_name):
     elif schema_structure["inverseForeignKeys"]:
         schema_structure["defaultFetchStrategy"] = "ifk"
     else:
-        schema_structure["defaultFetchStrategy"] = "simple"  # No relationships, basic fetch
+        schema_structure["defaultFetchStrategy"] = (
+            "simple"  # No relationships, basic fetch
+        )
 
     return schema_structure
 
@@ -689,7 +816,9 @@ def example_usage(schema_manager):
         color="cyan",
     )
 
-    example_view = schema_manager.get_view("view_registered_function_all_rels").to_dict()
+    example_view = schema_manager.get_view(
+        "view_registered_function_all_rels"
+    ).to_dict()
     vcprint(
         example_view,
         title="Full Registered Function View",

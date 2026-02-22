@@ -967,10 +967,208 @@ The tag **must** match the `version` field in `pyproject.toml` exactly (e.g. tag
 
 ---
 
+## Advanced Querying (v1.7.0+)
+
+### Q Objects — Boolean Query Composition
+
+```python
+from matrx_orm import Q
+
+# OR composition
+await User.filter(Q(status="active") | Q(role="admin")).all()
+
+# AND composition (implicit when combined with kwargs)
+await User.filter(Q(is_active=True), tenant_id=tid).all()
+
+# NOT
+await User.filter(~Q(banned=True)).all()
+
+# Deeply nested
+await User.filter((Q(role="admin") | Q(role="staff")) & ~Q(suspended=True)).all()
+```
+
+### Aggregate Expressions
+
+```python
+from matrx_orm import Sum, Avg, Min, Max, Count
+
+# Scalar aggregation
+result = await Order.filter(status="paid").aggregate(
+    total=Sum("amount"),
+    avg_amount=Avg("amount"),
+    order_count=Count("id"),
+)
+# {"total": 15420.50, "avg_amount": 308.41, "order_count": 50}
+
+# GROUP BY
+rows = await Order.filter(status="paid").group_by("customer_id").annotate(
+    total=Sum("amount")
+).values("customer_id", "total")
+```
+
+### Database Functions
+
+```python
+from matrx_orm import Lower, Upper, Now, Coalesce, Cast, Extract, Length
+
+# In annotations
+await User.filter(is_active=True).annotate(
+    name_lower=Lower("username")
+).values("id", "name_lower")
+
+# In update SET clause
+await Order.update_where({"shipped_at__isnull": True}, shipped_at=Now())
+
+# COALESCE null handling
+await Product.filter(is_active=True).annotate(
+    display_name=Coalesce("nickname", "name")
+).values("id", "display_name")
+```
+
+### DISTINCT
+
+```python
+# Plain DISTINCT
+await User.filter(is_active=True).distinct().values("email")
+
+# DISTINCT ON (PostgreSQL)
+await User.filter(is_active=True).distinct("tenant_id").order_by("tenant_id", "-created_at").all()
+```
+
+### SELECT FOR UPDATE (row locking)
+
+```python
+from matrx_orm import transaction
+
+async with transaction():
+    user = await User.filter(id=uid).select_for_update().first()
+    await user.update(balance=user.balance - 100)
+
+# With SKIP LOCKED (queue processing pattern)
+async with transaction():
+    job = await Job.filter(status="pending").select_for_update(skip_locked=True).first()
+```
+
+### JSONB Operators
+
+```python
+# Key existence
+await Config.filter(data__json_has_key="email").all()
+
+# JSON contains (value is a subset)
+await Config.filter(data__json_contains={"role": "admin"}).all()
+
+# Has any of these keys
+await Config.filter(data__json_has_any=["email", "phone"]).all()
+
+# Has all of these keys
+await Config.filter(data__json_has_all=["name", "email"]).all()
+
+# Value is contained by
+await Config.filter(data__json_contained_by={"role": "admin", "active": True}).all()
+
+# Nested path extraction
+await Config.filter(data__json_path=("settings", "theme")).all()
+```
+
+### Transactions
+
+```python
+from matrx_orm import transaction
+
+# Top-level transaction
+async with transaction():
+    user = await User.create(name="alice")
+    await Profile.create(user_id=user.id, bio="hello")
+    # commits on exit, rolls back on exception
+
+# Nested transaction → savepoint
+async with transaction():
+    await Order.create(customer_id=cid, total=99.00)
+    async with transaction():          # SAVEPOINT
+        await AuditLog.create(action="order_created")
+        # inner block rollback doesn't affect outer
+```
+
+### Raw SQL
+
+```python
+# Hydrated model instances
+users = await User.raw("SELECT * FROM users WHERE age > $1 ORDER BY name", 18)
+# returns list[User]
+
+# Raw dicts (no hydration)
+rows = await User.raw_sql(
+    "SELECT count(*) as cnt, role FROM users GROUP BY role"
+)
+# returns list[dict]
+```
+
+### select_related — JOIN-based Eager Loading
+
+```python
+# Single JOIN query — no N+1 problem
+posts = await Post.filter(is_published=True).select_related("author").all()
+for post in posts:
+    author = post.get_related("author")   # already loaded
+    print(author.username)
+
+# BaseManager equivalent (auto-detects FK, uses JOIN)
+item, author = await manager.get_item_with_related(post_id, "author")
+
+# Load all items with FK already joined
+posts = await manager.get_items_with_related("author")
+```
+
+### Subquery Expressions
+
+```python
+from matrx_orm import Subquery, Exists, OuterRef
+
+# EXISTS filter
+active_orders = Order.filter(user_id=OuterRef("id"), status="active")
+users_with_orders = await User.filter(Exists(active_orders)).all()
+
+# Scalar subquery annotation
+latest_order = (
+    Order.filter(user_id=OuterRef("id"))
+    .order_by("-created_at")
+    .limit(1)
+    .select("total")
+)
+users = await User.filter(is_active=True).annotate(
+    last_total=Subquery(latest_order)
+).values("id", "last_total")
+```
+
+### Lifecycle Signals
+
+```python
+from matrx_orm.core.signals import post_save, pre_delete
+
+# Decorator style
+@post_save.connect
+async def audit_on_save(sender, instance, created: bool, **kwargs):
+    if sender.__name__ == "User":
+        await AuditLog.create(action="created" if created else "updated", entity_id=instance.id)
+
+@pre_delete.connect
+async def guard_delete(sender, instance, **kwargs):
+    if getattr(instance, "protected", False):
+        raise ValueError(f"Cannot delete protected {sender.__name__} {instance.id}")
+
+# Manual connect / disconnect
+post_save.connect(my_async_handler)
+post_save.disconnect(my_async_handler)
+```
+
+---
+
 ## Version History
 
 | Version | Highlights |
 |---|---|
+| **v1.7.0** | `Q()` objects for OR/AND/NOT composition; aggregate expressions (`Sum`, `Avg`, `Min`, `Max`, `Count`); database functions (`Coalesce`, `Lower`, `Upper`, `Now`, `Cast`, `Extract`, …); `DISTINCT` / `DISTINCT ON`; `SELECT FOR UPDATE`; JSONB query operators; ORM-level `transaction()` context manager with savepoints; `Model.raw()` / `Model.raw_sql()`; `select_related()` JOIN eager loading; subquery expressions (`Subquery`, `Exists`, `OuterRef`); lifecycle signals (`pre_save`, `post_save`, `pre_create`, `post_create`, `pre_delete`, `post_delete`) |
 | **v1.6.4** | fix: complete field type coercion audit - get_db_prep_value and to_python for all field types |
 | **v1.6.3** | fix: coerce datetime/date/time strings to native types before asyncpg binding |
 | **v1.6.2** | fix: schema builder default value parsing overhaul in columns.py |

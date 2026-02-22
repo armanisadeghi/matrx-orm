@@ -131,7 +131,9 @@ class Column:
 
         if self.enum_labels:
             self.has_enum_labels = True
-            vcprint(f"Enum Labels: {self.enum_labels}", verbose=self.verbose, color="yellow")
+            vcprint(
+                f"Enum Labels: {self.enum_labels}", verbose=self.verbose, color="yellow"
+            )
 
     # Potential Additions: https://claude.ai/chat/e26ff11e-0cd5-46a5-b281-cfa359ed1fcd
 
@@ -178,13 +180,17 @@ class Column:
     def generate_basic_info(self):
         self.table_python_model_name = self.parent_table_instance.python_model_name
         self.table_ts_entity_name = self.parent_table_instance.ts_entity_name
-        self.table_react_component_name = self.parent_table_instance.react_component_name
+        self.table_react_component_name = (
+            self.parent_table_instance.react_component_name
+        )
         self.set_python_enum_entry()
 
     def initialize_code_generation(self):
         self.initialization_attempts += 1
         if self.is_debug:
-            print(f"---------------- Initializing Column Attempt {self.table_name} {self.name}: {self.initialization_attempts} ----------------")
+            print(
+                f"---------------- Initializing Column Attempt {self.table_name} {self.name}: {self.initialization_attempts} ----------------"
+            )
 
         if self.initialized:
             return
@@ -194,7 +200,9 @@ class Column:
         self.get_is_primary_key()
 
         self.clean_default = self.parse_default_value()
-        self.typescript_type = self.utils.to_typescript_type_enums_to_string(self.base_type, self.has_enum_labels)
+        self.typescript_type = self.utils.to_typescript_type_enums_to_string(
+            self.base_type, self.has_enum_labels
+        )
         self.matrx_schema_type = self.utils.to_matrx_schema_type(self.base_type)
         self.calc_default_value = self.get_default_value()
         self.calc_validation_functions = self.get_validation_functions()
@@ -229,7 +237,14 @@ class Column:
 
         unique_names = set(name_variations)
         self.unique_name_lookups = {name: self.name_camel for name in unique_names}
-        self.column_lookup_string = ",\n".join([f'"{key}": "{value}"' if " " in key or "-" in key else f'{key}: "{value}"' for key, value in self.unique_name_lookups.items()])
+        self.column_lookup_string = ",\n".join(
+            [
+                f'"{key}": "{value}"'
+                if " " in key or "-" in key
+                else f'{key}: "{value}"'
+                for key, value in self.unique_name_lookups.items()
+            ]
+        )
 
     def update_prop(self, prop, value, priority=0):
         if prop not in self.component_props_priorities:
@@ -268,7 +283,9 @@ class Column:
 
             select_options = []
             for label in self.enum_labels:
-                select_options.append({"label": self.utils.to_title_case(label), "value": label})
+                select_options.append(
+                    {"label": self.utils.to_title_case(label), "value": label}
+                )
 
             self.update_component(component="SELECT", priority=10)
 
@@ -299,7 +316,9 @@ class Column:
             py_enum_entries = []
             for label in self.enum_labels:
                 # Convert label to a valid Python identifier
-                valid_label = re.sub(r"\W+", "_", label)  # Replace non-alphanumeric chars with _
+                valid_label = re.sub(
+                    r"\W+", "_", label
+                )  # Replace non-alphanumeric chars with _
                 valid_label = valid_label.upper()
 
                 # Prevent leading numbers
@@ -315,7 +334,9 @@ class Column:
 
             py_enum_entries_string = "\n    ".join(py_enum_entries)
 
-            self.py_enum_entry = f"class {type_name}(str, Enum):\n    {py_enum_entries_string}"
+            self.py_enum_entry = (
+                f"class {type_name}(str, Enum):\n    {py_enum_entries_string}"
+            )
         else:
             self.py_enum_entry = None
 
@@ -326,11 +347,23 @@ class Column:
             self.description_frontend = self.comment
             self.description_backend = self.comment
         else:
-            requirement_statement = "This is a required field." if not self.nullable else "This is an optional field."
-            data_type_statement = f"Your entry must be an {self.matrx_schema_type} data type."
+            requirement_statement = (
+                "This is a required field."
+                if not self.nullable
+                else "This is an optional field."
+            )
+            data_type_statement = (
+                f"Your entry must be an {self.matrx_schema_type} data type."
+            )
 
-            array_statement = "You can enter one or more entries." if self.is_array else ""
-            max_length_statement = f"Maximum Length: {self.character_maximum_length}" if self.character_maximum_length else ""
+            array_statement = (
+                "You can enter one or more entries." if self.is_array else ""
+            )
+            max_length_statement = (
+                f"Maximum Length: {self.character_maximum_length}"
+                if self.character_maximum_length
+                else ""
+            )
             unique_statement = "This must be a unique value." if self.is_unique else ""
 
             frontend_relation_statement = ""
@@ -339,10 +372,14 @@ class Column:
             if self.foreign_key_reference:
                 related_entity = self.foreign_key_reference["entity"]
                 related_table = self.foreign_key_reference["table"]
-                frontend_relation_statement = f"This field is a reference to a {related_entity}."
+                frontend_relation_statement = (
+                    f"This field is a reference to a {related_entity}."
+                )
                 backend_relation_statement = f"This field is a foreign key reference to the {related_table} table."
 
-                if self.name == "user_id":  # This is to avoid errors because "users" is not an entity at this time.
+                if (
+                    self.name == "user_id"
+                ):  # This is to avoid errors because "users" is not an entity at this time.
                     self.update_component(component="UUID_FIELD", priority=10)
                 else:
                     self.update_component(component="FK_SELECT", priority=10)
@@ -366,8 +403,12 @@ class Column:
                 backend_relation_statement,
             ]
 
-            self.description_frontend = " ".join(part for part in frontend_description_parts if part)
-            self.description_backend = " ".join(part for part in backend_description_parts if part)
+            self.description_frontend = " ".join(
+                part for part in frontend_description_parts if part
+            )
+            self.description_backend = " ".join(
+                part for part in backend_description_parts if part
+            )
 
         self.description = {
             "frontend": self.description_frontend,
@@ -527,7 +568,19 @@ class Column:
             self.update_prop(prop="rows", value=3, priority=1)
 
         # Handle PostgreSQL-specific types (full-text search, geometry, etc.)
-        elif self.full_type in ["tsvector", "tsquery", "geometry", "geography", "box", "circle", "line", "lseg", "path", "point", "polygon"]:
+        elif self.full_type in [
+            "tsvector",
+            "tsquery",
+            "geometry",
+            "geography",
+            "box",
+            "circle",
+            "line",
+            "lseg",
+            "path",
+            "point",
+            "polygon",
+        ]:
             self.update_component(component="INPUT", priority=1)
             self.update_prop(prop="subComponent", value="special", priority=1)
             self.update_prop(prop="readOnly", value=True, priority=5)
@@ -562,9 +615,13 @@ class Column:
 
     def to_typescript_type_entry(self):
         if self.nullable:
-            self.ts_type_entry = f"    {self.name_camel}?: {self.type_reference['typescript']};"
+            self.ts_type_entry = (
+                f"    {self.name_camel}?: {self.type_reference['typescript']};"
+            )
         else:
-            self.ts_type_entry = f"    {self.name_camel}: {self.type_reference['typescript']};"
+            self.ts_type_entry = (
+                f"    {self.name_camel}: {self.type_reference['typescript']};"
+            )
 
         return self.ts_type_entry
 
@@ -578,21 +635,21 @@ class Column:
             isRequired: {str(not self.nullable).lower()},
             maxLength: {self.calc_max_length},
             isArray: {str(self.is_array).lower()},
-            defaultValue: "{self.clean_default['typescript']}" as const,
+            defaultValue: "{self.clean_default["typescript"]}" as const,
             isPrimaryKey: {str(self.is_primary_key).lower()},
             isDisplayField: {str(self.is_display_field).lower()},
-            defaultGeneratorFunction: "{str(self.calc_default_generator_functions['typescript'])}",
+            defaultGeneratorFunction: "{str(self.calc_default_generator_functions["typescript"])}",
             validationFunctions: [],
             exclusionRules: [],
             defaultComponent: '{self.default_component}' as const,
             componentProps: {json.dumps(self.component_props, indent=4)},
             structure: 'single' as const,
             isNative: true,
-            typeReference: {{}} as TypeBrand<{self.type_reference['typescript']}>,
+            typeReference: {{}} as TypeBrand<{self.type_reference["typescript"]}>,
             {self.ts_enum_entry},
             entityName: '{self.table_name_camel}',
             databaseTable: '{self.table_name}',
-            foreignKeyReference: {json.dumps(self.foreign_key_reference) if self.foreign_key_reference else 'null'},
+            foreignKeyReference: {json.dumps(self.foreign_key_reference) if self.foreign_key_reference else "null"},
             description: '{self.description_frontend}',
         }},"""
         return self.ts_full_schema_entry
@@ -608,24 +665,24 @@ class Column:
             uniqueFieldId: '{self.database_project}:{self.table_name_camel}:{self.name_camel}',
 
             dataType: '{self.matrx_schema_type}' as const,
-            isRequired: {self.calc_is_required['typescript']},
+            isRequired: {self.calc_is_required["typescript"]},
             maxLength: {self.calc_max_length},
-            isArray: {self.calc_is_array['typescript']},
-            defaultValue: "{self.clean_default['typescript']}" as const,
-            isPrimaryKey: {self.calc_is_primary_key['typescript']},
+            isArray: {self.calc_is_array["typescript"]},
+            defaultValue: "{self.clean_default["typescript"]}" as const,
+            isPrimaryKey: {self.calc_is_primary_key["typescript"]},
             isDisplayField: {str(self.is_display_field).lower()},
-            defaultGeneratorFunction: "{str(self.calc_default_generator_functions['typescript'])}",
-            validationFunctions: {self.calc_validation_functions['typescript']},
-            exclusionRules: {self.calc_exclusion_rules['typescript']},
+            defaultGeneratorFunction: "{str(self.calc_default_generator_functions["typescript"])}",
+            validationFunctions: {self.calc_validation_functions["typescript"]},
+            exclusionRules: {self.calc_exclusion_rules["typescript"]},
             defaultComponent: '{self.default_component}' as const,
             componentProps: {json.dumps(self.component_props, indent=4)},
             structure: 'single' as const,
             isNative: true,
-            typeReference: {{}} as TypeBrand<{self.type_reference['typescript']}>,
+            typeReference: {{}} as TypeBrand<{self.type_reference["typescript"]}>,
             {self.ts_enum_entry},
             entityName: '{self.table_name_camel}',
             databaseTable: '{self.table_name}',
-            foreignKeyReference: {json.dumps(self.foreign_key_reference) if self.foreign_key_reference else 'null'},
+            foreignKeyReference: {json.dumps(self.foreign_key_reference) if self.foreign_key_reference else "null"},
             description: '{self.description_frontend}',
         }},"""
 
@@ -682,7 +739,19 @@ class Column:
             return self.clean_default
 
         # Handle PostgreSQL-specific types that don't need default values
-        if self.full_type in ["tsvector", "tsquery", "geometry", "geography", "box", "circle", "line", "lseg", "path", "point", "polygon"]:
+        if self.full_type in [
+            "tsvector",
+            "tsquery",
+            "geometry",
+            "geography",
+            "box",
+            "circle",
+            "line",
+            "lseg",
+            "path",
+            "point",
+            "polygon",
+        ]:
             self.clean_default = {
                 "python": "",
                 "database": "null",
@@ -796,11 +865,15 @@ class Column:
                 "generator": "formatTime()",
             },
             "::time with time zone": lambda value: {
-                "blank": value.split("'")[1].strip(),  # Extract time with timezone value
+                "blank": value.split("'")[
+                    1
+                ].strip(),  # Extract time with timezone value
                 "generator": "formatTime()",
             },
             "::uuid": lambda uuid_value: {
-                "blank": uuid_value.split("'")[1].strip() if "'" in uuid_value else uuid_value.strip(),
+                "blank": uuid_value.split("'")[1].strip()
+                if "'" in uuid_value
+                else uuid_value.strip(),
                 "generator": "",
             },
             "::jsonb": lambda value: {
@@ -848,7 +921,9 @@ class Column:
 
             # Handle empty strings with explicit type casting
             if value == "''::text" or value == "''::character varying":
-                return outcomes.get(value, {"default": {"blank": "", "generator": ""}})["default"]
+                return outcomes.get(value, {"default": {"blank": "", "generator": ""}})[
+                    "default"
+                ]
 
             # Handle plain empty strings (no type casting)
             if value == "''" or value == "":
@@ -876,7 +951,12 @@ class Column:
                     "time without time zone": "time",
                 }
                 _short_key = _type_key_map.get(self.base_type, self.base_type)
-                return outcomes[value].get(context, callable_outcomes.get(_short_key, callable_outcomes["default"])(value))
+                return outcomes[value].get(
+                    context,
+                    callable_outcomes.get(_short_key, callable_outcomes["default"])(
+                        value
+                    ),
+                )
 
             # Handle specific cases with static entries
             elif value == "null":
@@ -906,17 +986,23 @@ class Column:
 
             # Handle simple numeric defaults (no quotes, no casting)
             # This includes integers, decimals, negative numbers, scientific notation
-            elif value.isdigit() or (value.startswith("-") and value[1:].replace(".", "", 1).isdigit()):
+            elif value.isdigit() or (
+                value.startswith("-") and value[1:].replace(".", "", 1).isdigit()
+            ):
                 return {"blank": value, "generator": ""}
-            
+
             # Handle positive decimal literals (e.g., 100.00, 0.0000, 3.14)
-            elif "." in value and value.replace(".", "", 1).replace("-", "", 1).isdigit():
+            elif (
+                "." in value and value.replace(".", "", 1).replace("-", "", 1).isdigit()
+            ):
                 return {"blank": value, "generator": ""}
 
             # Handle nextval (PostgreSQL sequence values)
             elif value.startswith("nextval("):
                 sequence_name = value.split("'")[1]  # Extract the sequence name
-                return callable_outcomes.get("nextval", callable_outcomes["default"])(sequence_name)
+                return callable_outcomes.get("nextval", callable_outcomes["default"])(
+                    sequence_name
+                )
 
             # Explicit handling for PostgreSQL types
             if value.endswith("::smallint"):
@@ -969,7 +1055,9 @@ class Column:
                 return callable_outcomes["::time with time zone"](value)
 
             if value.endswith("::uuid"):
-                uuid_value = value.split("::")[0].strip("'")  # Extract UUID without validation
+                uuid_value = value.split("::")[0].strip(
+                    "'"
+                )  # Extract UUID without validation
                 return callable_outcomes["::uuid"](uuid_value)
 
             if value.endswith("::jsonb"):
@@ -1030,10 +1118,10 @@ class Column:
             return self.clean_default
 
         # Parse each context once and reuse the result for both dicts.
-        _py  = clean_value(self.default, "python")
-        _db  = clean_value(self.default, "database")
-        _js  = clean_value(self.default, "json")
-        _ts  = clean_value(self.default, "typescript")
+        _py = clean_value(self.default, "python")
+        _db = clean_value(self.default, "database")
+        _js = clean_value(self.default, "json")
+        _ts = clean_value(self.default, "typescript")
 
         # Keep the raw Python value so to_python_model_field can inspect its type.
         # All other contexts are stringified for template rendering.
@@ -1061,7 +1149,10 @@ class Column:
 
     def get_type_reference(self):
         if self.enum_labels:
-            ts_type_reference = " | ".join([f'"{label}"' for label in self.enum_labels]) + " | undefined"
+            ts_type_reference = (
+                " | ".join([f'"{label}"' for label in self.enum_labels])
+                + " | undefined"
+            )
             json_type_reference = self.enum_labels
         else:
             ts_type_reference = self.typescript_type
@@ -1164,7 +1255,11 @@ class Column:
         return self.calc_exclusion_rules
 
     def get_max_field_length(self):
-        self.calc_max_length = self.character_maximum_length if self.character_maximum_length is not None else "null"
+        self.calc_max_length = (
+            self.character_maximum_length
+            if self.character_maximum_length is not None
+            else "null"
+        )
         return self.calc_max_length
 
     def to_python_model_field(self):
@@ -1192,7 +1287,9 @@ class Column:
                         # Last resort: try to parse in case it's a stringified literal
                         try:
                             parsed_default = ast.literal_eval(python_default)
-                            if isinstance(parsed_default, (bool, int, float, dict, list)):
+                            if isinstance(
+                                parsed_default, (bool, int, float, dict, list)
+                            ):
                                 field_options.append(f"default={parsed_default}")
                             else:
                                 field_options.append(f"default='{python_default}'")
@@ -1207,7 +1304,9 @@ class Column:
         options_str = ", ".join(field_options)
 
         if self.foreign_key_reference:
-            related_model = self.utils.to_pascal_case(self.foreign_key_reference["table"])
+            related_model = self.utils.to_pascal_case(
+                self.foreign_key_reference["table"]
+            )
             if related_model == self.utils.to_pascal_case(self.table_name):
                 field_def = f"{self.name} = ForeignKey(to_model='{related_model}', to_column='{self.foreign_key_reference['column']}', {options_str})"
             else:
@@ -1216,7 +1315,9 @@ class Column:
             field_def = f"{self.name} = ObjectField({options_str})"
         elif self.has_enum_labels:
             enum_class = self.utils.to_pascal_case(self.base_type)
-            field_def = f"{self.name} = EnumField(enum_class={enum_class}, {options_str})"
+            field_def = (
+                f"{self.name} = EnumField(enum_class={enum_class}, {options_str})"
+            )
         else:
             field_def = f"{self.name} = {self.python_field_type}({options_str})"
         return field_def

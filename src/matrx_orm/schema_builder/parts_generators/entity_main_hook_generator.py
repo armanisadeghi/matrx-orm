@@ -1,7 +1,6 @@
 import os
 
 
-
 main_hook_imports = """
 import {
     BrokerValueData,
@@ -214,7 +213,6 @@ import {{ FetchMode }} from "@/lib/redux/entity/actions";
 import {{ useEntityWithFetch }} from "@/lib/redux/entity/hooks/useAllData";"""
 
     return complete_imports
-
 
 
 def generate_complete_main_hooks_file(entity_names):

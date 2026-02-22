@@ -160,7 +160,44 @@ class AsyncDatabaseManager:
 
     @classmethod
     async def execute_query(cls, config_name, query, *args, timeout=10.0):
-        """Execute a query and return results with error handling."""
+        """Execute a query and return results with error handling.
+
+        When a transaction is active for the current task (set via the
+        ``transaction()`` context manager), the transaction's connection is
+        reused so that all queries participate in the same atomic block.
+        """
+        # Reuse the active transaction connection when available
+        try:
+            from matrx_orm.core.transaction import get_active_connection
+            tx_conn = get_active_connection()
+        except ImportError:
+            tx_conn = None
+
+        if tx_conn is not None:
+            # Execute on the transaction connection directly (no pool acquire)
+            try:
+                results = await tx_conn.fetch(query, *args)
+                return results
+            except asyncpg.exceptions.PostgresSyntaxError as e:
+                raise QueryError(
+                    model=None,
+                    message=f"Invalid SQL syntax: {str(e)}",
+                    details={"query": query, "args": args, "config_name": config_name},
+                )
+            except asyncpg.exceptions.UniqueViolationError as e:
+                raise IntegrityError(model=None, constraint="unknown", original_error=e)
+            except asyncpg.exceptions.DataError as e:
+                raise ParameterError(model=None, query=query, args=args, reason=str(e))
+            except Exception as e:
+                raise UnknownDatabaseError(
+                    model=None,
+                    operation="execute_query",
+                    query=query,
+                    args=args,
+                    traceback="",
+                    original_error=e,
+                )
+
         async with handle_orm_operation(
             operation_name="execute_query",
             model=None,

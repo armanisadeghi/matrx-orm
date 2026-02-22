@@ -32,7 +32,9 @@ def check_git_status(save_direct):
         return True
 
     vcprint("\n[MATRX GIT CHECKER] Checking git repository status...", color="yellow")
-    vcprint(f"[MATRX GIT CHECKER] ADMIN_PYTHON_ROOT: {ADMIN_PYTHON_ROOT}", color="green")
+    vcprint(
+        f"[MATRX GIT CHECKER] ADMIN_PYTHON_ROOT: {ADMIN_PYTHON_ROOT}", color="green"
+    )
     vcprint(f"[MATRX GIT CHECKER] ADMIN_TS_ROOT: {ADMIN_TS_ROOT}", color="green")
     print()
 
@@ -115,4 +117,6 @@ if __name__ == "__main__":
 
     if save_direct:
         check_git_status(save_direct)
-        input("WARNING: This will overwrite the existing schema files. Press Enter to continue...")
+        input(
+            "WARNING: This will overwrite the existing schema files. Press Enter to continue..."
+        )

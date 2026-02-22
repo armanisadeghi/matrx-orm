@@ -52,6 +52,8 @@ async def purge(model_cls: type[Model], **kwargs: Any) -> int:
 
 
 async def delete_instance(instance: Model) -> None:
+    from matrx_orm.core.signals import pre_delete, post_delete
+
     model_cls = instance.__class__
     pk_list = model_cls._meta.primary_keys
     if not pk_list:
@@ -61,4 +63,6 @@ async def delete_instance(instance: Model) -> None:
     if pk_value is None:
         raise ValueError(f"Cannot delete {model_cls.__name__}, {pk_name} is None")
 
+    await pre_delete.send(model_cls, instance=instance)
     await delete(model_cls, **{pk_name: pk_value})
+    await post_delete.send(model_cls, instance=instance)

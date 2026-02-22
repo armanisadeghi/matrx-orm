@@ -25,8 +25,16 @@ class Relationship:
         self.source_table = source_table  # Inverse foreign key source table
         self.frontend_column = self.utils.to_camel_case(self.column)
         self.frontend_foreign_column = self.utils.to_camel_case(self.foreign_column)
-        self.frontend_target_table = self.utils.to_camel_case(target_table.name) if target_table is not None else None
-        self.frontend_source_table = self.utils.to_camel_case(source_table.name) if source_table is not None else None
+        self.frontend_target_table = (
+            self.utils.to_camel_case(target_table.name)
+            if target_table is not None
+            else None
+        )
+        self.frontend_source_table = (
+            self.utils.to_camel_case(source_table.name)
+            if source_table is not None
+            else None
+        )
 
         self.verbose = schema_builder_verbose
         self.debug = schema_builder_debug
