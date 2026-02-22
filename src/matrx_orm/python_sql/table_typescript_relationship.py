@@ -4,9 +4,11 @@ from matrx_orm.python_sql.table_detailed_relationships import (
     analyze_relationships,
 )
 
-verbose = False
-debug = False
-info = True
+from matrx_orm.schema_builder.common import DEBUG_CONFIG
+
+verbose = DEBUG_CONFIG["verbose"]
+debug = DEBUG_CONFIG["debug"]
+info = DEBUG_CONFIG["info"]
 
 
 def transform_relationships_for_typescript(relationships_data, junction_analysis):

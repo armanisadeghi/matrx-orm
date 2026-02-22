@@ -1,6 +1,7 @@
 from .core.config import (
     DatabaseProjectConfig,
     register_database,
+    register_database_from_env,
     get_database_config,
     get_connection_string,
     get_manager_config,
@@ -131,6 +132,7 @@ from .migrations import (
 __all__ = [
     "DatabaseProjectConfig",
     "register_database",
+    "register_database_from_env",
     "get_database_config",
     "get_connection_string",
     "get_manager_config",

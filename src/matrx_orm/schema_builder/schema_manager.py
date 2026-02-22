@@ -66,6 +66,10 @@ class SchemaManager:
             set(exclude_tables) if exclude_tables is not None else None
         )
 
+        vcprint(self.schema, title=f"SCHEMA MANAGER] with schema", verbose=self.verbose, color="blue")
+        vcprint(self.database_project, title=f"SCHEMA MANAGER] with database project", verbose=self.verbose, color="blue")
+        vcprint(self.additional_schemas, title=f"SCHEMA MANAGER] with additional schemas", verbose=self.verbose, color="blue")
+
         # Propagate filter to the Schema so generate_models() can apply it at
         # write-time without touching any loading or relationship logic.
         self.schema._include_tables = self._include_tables

@@ -1,9 +1,9 @@
 from matrx_orm.client.postgres_connection import execute_sql_query
+from matrx_orm.schema_builder.common import DEBUG_CONFIG
 
-
-verbose = False
-debug = False
-info = True
+verbose = DEBUG_CONFIG["verbose"]
+debug = DEBUG_CONFIG["debug"]
+info = DEBUG_CONFIG["info"]
 
 
 def get_table_relationships(schema, database_project):

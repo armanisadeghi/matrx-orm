@@ -1,10 +1,11 @@
 from matrx_orm.client.postgres_connection import execute_sql_query
 from collections import defaultdict
 from matrx_orm.python_sql.table_typescript_relationship import get_ts_object
+from matrx_orm.schema_builder.common import DEBUG_CONFIG
 
-verbose = False
-debug = False
-info = True
+verbose = DEBUG_CONFIG["verbose"]
+debug = DEBUG_CONFIG["debug"]
+info = DEBUG_CONFIG["info"]
 
 
 def get_full_db_objects(schema, database_project):

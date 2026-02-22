@@ -1,0 +1,57 @@
+# =============================================================================
+# matrx-orm configuration
+# =============================================================================
+#
+# This file drives reverse-migration schema generation.
+# Run:  python generate.py
+#
+# Output directories for generated files.
+# Use absolute paths or paths relative to this config file.
+output:
+  python_root: generated/python
+  typescript_root: generated/typescript
+  # save_direct: false  — set to true to write directly to the roots above.
+  #                       When true, matrx-orm will refuse to run if either
+  #                       root has uncommitted git changes (safety guard).
+  save_direct: false
+
+# =============================================================================
+# Databases
+# =============================================================================
+# Add as many databases as you need. Each entry needs a unique name.
+# The env_prefix tells matrx-orm which environment variables hold the
+# connection details.  For a prefix of "PRIMARY_DB" it reads:
+#   PRIMARY_DB_HOST, PRIMARY_DB_PORT, PRIMARY_DB_NAME,
+#   PRIMARY_DB_USER, PRIMARY_DB_PASSWORD
+#   PRIMARY_DB_PROTOCOL  (optional, defaults to "postgresql")
+#
+databases:
+  - name: primary
+    env_prefix: PRIMARY_DB
+    additional_schemas:
+      - auth
+
+  - name: secondary
+    env_prefix: SECONDARY_DB
+
+# =============================================================================
+# Schema generation
+# =============================================================================
+# Each entry below triggers one reverse-migration run.
+# database must match a name defined in the databases section above.
+#
+generate:
+  - database: primary
+    schema: public
+
+  # Uncomment to also generate from the secondary database:
+  # - database: secondary
+  #   schema: public
+
+# =============================================================================
+# Debug
+# =============================================================================
+debug:
+  info: false
+  verbose: false
+  debug: false

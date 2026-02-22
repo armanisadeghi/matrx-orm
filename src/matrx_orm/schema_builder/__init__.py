@@ -16,6 +16,9 @@ from matrx_orm.schema_builder.helpers import (
 from matrx_orm.schema_builder.schema_manager import (
     SchemaManager,
 )
+from matrx_orm.schema_builder.runner import (
+    run_schema_generation,
+)
 
 
 __all__ = [
@@ -24,6 +27,7 @@ __all__ = [
     "DEBUG_CONFIG",
     "schema_builder_verbose",
     "SchemaManager",
+    "run_schema_generation",
     "check_git_status",
     "get_schema_structure",
     "generate_dto_and_manager",

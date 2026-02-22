@@ -2,18 +2,24 @@ import os
 import sys
 from git import Repo, GitCommandError, InvalidGitRepositoryError
 from matrx_utils import vcprint
-from matrx_orm.schema_builder.common import ADMIN_PYTHON_ROOT, ADMIN_TS_ROOT
 
 
-def check_git_status(save_direct):
+def check_git_status(save_direct: bool, python_root: str = "", ts_root: str = "") -> bool:
     """
-    Check if ADMIN_PYTHON_ROOT and ADMIN_TS_ROOT are git repositories
-    and verify if there are any uncommitted changes.
-    Returns True if it's safe to proceed (no changes), False otherwise.
+    Check if python_root and ts_root are git repositories with no uncommitted
+    changes before allowing a save_direct write that could overwrite live files.
+
+    Falls back to ADMIN_PYTHON_ROOT / ADMIN_TS_ROOT env vars when the caller
+    doesn't supply explicit paths (backward-compat).
+
+    Returns True if safe to proceed, exits with code 1 if not.
     """
+    python_root = python_root or os.getenv("ADMIN_PYTHON_ROOT", "")
+    ts_root = ts_root or os.getenv("ADMIN_TS_ROOT", "")
+
     roots_to_check = [
-        ("Admin Python Root", ADMIN_PYTHON_ROOT),
-        ("Admin TypeScript Root", ADMIN_TS_ROOT),
+        ("Python root", python_root),
+        ("TypeScript root", ts_root),
     ]
     has_issues = False
 
@@ -25,10 +31,8 @@ def check_git_status(save_direct):
         return True
 
     vcprint("\n[MATRX GIT CHECKER] Checking git repository status...", color="yellow")
-    vcprint(
-        f"[MATRX GIT CHECKER] ADMIN_PYTHON_ROOT: {ADMIN_PYTHON_ROOT}", color="green"
-    )
-    vcprint(f"[MATRX GIT CHECKER] ADMIN_TS_ROOT: {ADMIN_TS_ROOT}", color="green")
+    vcprint(f"[MATRX GIT CHECKER] Python root:     {python_root}", color="green")
+    vcprint(f"[MATRX GIT CHECKER] TypeScript root: {ts_root}", color="green")
     print()
 
     for root_name, root_path in roots_to_check:

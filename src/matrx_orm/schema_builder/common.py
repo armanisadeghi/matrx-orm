@@ -13,14 +13,14 @@ ADMIN_TS_ROOT = os.getenv("ADMIN_TS_ROOT", "")
 
 dt_utils = DataTransformer()
 
-schema_builder_save_direct = True
-
-
+# Central debug configuration for the entire schema builder.
+# Values can be overridden at runtime by run_schema_generation() from the yaml
+# debug section, or by setting env vars MATRX_DEBUG, MATRX_VERBOSE, MATRX_INFO.
 DEBUG_CONFIG = {
     "tables": [],
     "columns": [],
     "base_type": [],
-    "info": True,
-    "debug": False,
-    "verbose": False,
+    "info": os.getenv("MATRX_INFO", "").lower() in ("1", "true"),
+    "debug": os.getenv("MATRX_DEBUG", "").lower() in ("1", "true"),
+    "verbose": os.getenv("MATRX_VERBOSE", "").lower() in ("1", "true"),
 }

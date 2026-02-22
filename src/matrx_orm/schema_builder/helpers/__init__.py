@@ -15,11 +15,8 @@ from matrx_orm.schema_builder.helpers.entity_generators import (
     generate_typescript_entity,
 )
 
-from matrx_orm.schema_builder.helpers.git_checker import (
-    ADMIN_PYTHON_ROOT,
-    ADMIN_TS_ROOT,
-    check_git_status,
-)
+from matrx_orm.schema_builder.common import ADMIN_PYTHON_ROOT, ADMIN_TS_ROOT
+from matrx_orm.schema_builder.helpers.git_checker import check_git_status
 from matrx_orm.schema_builder.helpers.base_generators import (
     generate_active_methods,
     generate_active_relation_methods,

@@ -161,6 +161,88 @@ def register_database(config: DatabaseProjectConfig) -> None:
     registry.register(config)
 
 
+def register_database_from_env(
+    name: str,
+    env_prefix: str,
+    alias: str = "",
+    additional_schemas: list = None,
+    entity_overrides: Dict = None,
+    field_overrides: Dict = None,
+    manager_config_overrides: Dict = None,
+) -> bool:
+    """
+    Read database connection details from environment variables, validate them,
+    and register the database. Prints colored diagnostics for missing or defaulted vars.
+
+    Required env vars (using env_prefix, e.g. "PRIMARY_DB"):
+        {env_prefix}_HOST, {env_prefix}_PORT, {env_prefix}_NAME,
+        {env_prefix}_USER, {env_prefix}_PASSWORD
+
+    Optional env vars:
+        {env_prefix}_PROTOCOL  — defaults to "postgresql"
+
+    Returns True if registration succeeded, False otherwise.
+    """
+    _REQUIRED = ["HOST", "PORT", "NAME", "USER", "PASSWORD"]
+    _OPTIONAL = {"PROTOCOL": "postgresql"}
+
+    vcprint(f"[matrx-orm] Registering database '{name}'...", color="cyan")
+
+    missing: list[str] = []
+    resolved: dict[str, str] = {}
+
+    for key in _REQUIRED:
+        env_var = f"{env_prefix}_{key}"
+        val = os.environ.get(env_var, "").strip()
+        if val:
+            resolved[key] = val
+        else:
+            missing.append(env_var)
+
+    for key, default in _OPTIONAL.items():
+        env_var = f"{env_prefix}_{key}"
+        val = os.environ.get(env_var, "").strip()
+        if val:
+            resolved[key] = val
+        else:
+            resolved[key] = default
+            vcprint(
+                f"  '{env_var}' not set — using default: '{default}'",
+                color="yellow",
+            )
+
+    if missing:
+        vcprint(
+            f"  Database '{name}' NOT registered — missing required env vars:",
+            color="red",
+        )
+        for var in missing:
+            vcprint(f"    • {var}", color="red")
+        return False
+
+    try:
+        config = DatabaseProjectConfig(
+            name=name,
+            alias=alias or name,
+            host=resolved["HOST"],
+            port=resolved["PORT"],
+            protocol=resolved["PROTOCOL"],
+            database_name=resolved["NAME"],
+            user=resolved["USER"],
+            password=resolved["PASSWORD"],
+            additional_schemas=additional_schemas or [],
+            entity_overrides=entity_overrides or {},
+            field_overrides=field_overrides or {},
+            manager_config_overrides=manager_config_overrides or {},
+        )
+        registry.register(config)
+        vcprint(f"  Database '{name}' registered successfully.", color="green")
+        return True
+    except DatabaseConfigError as e:
+        vcprint(f"  Database '{name}' registration failed: {e}", color="red")
+        return False
+
+
 def get_connection_string(config_name: str) -> str:
     config = get_database_config(config_name)
     connection_string = f"{config['protocol']}://{config['user']}:{redact_string(config['password'])}@{config['host']}:{config['port']}/{config['database_name']}"
