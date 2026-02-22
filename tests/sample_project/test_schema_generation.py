@@ -45,7 +45,10 @@ pytestmark = pytest.mark.schema
 @pytest.fixture(scope="session", autouse=True)
 def register_sample_databases():
     """Register primary and secondary databases for the test session."""
-    from tests.sample_project.database_registry import setup_databases
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent))
+    from database_registry import setup_databases
     setup_databases()
 
 

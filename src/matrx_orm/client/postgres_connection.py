@@ -21,6 +21,7 @@ def init_connection_details(config_name):
 
         db_host = config.get("host")
         db_port = config.get("port")
+        db_protocol = config.get("protocol", "postgresql")
         db_name = config.get("database_name")
         db_user = config.get("user")
         db_password = config.get("password")
@@ -29,9 +30,9 @@ def init_connection_details(config_name):
             raise ValueError(
                 f"Incomplete database configuration for '{config_name}'. " "Please check your environment variables or settings.")
 
-        connection_string = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+        connection_string = f"{db_protocol}://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
 
-        vcprint(f"\n[Matrx ORM] Connection String:\n{connection_string}\n", color="green")
+        vcprint(f"\n[Matrx ORM] Connection String:\n{connection_string}\n", color="yellow")
 
         connection_pools[config_name] = ConnectionPool(
             connection_string,

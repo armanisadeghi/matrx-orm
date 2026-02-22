@@ -184,7 +184,7 @@ def get_db_objects(schema, database_project):
         tuple: (processed_objects, full_relationships, full_junction_analysis, all_enum_base_types)
                where all_enum_base_types is a set of base types that have enum labels
     """
-    if info:
+    if debug:
         print("get_db_objects called with", database_project)
 
     # Retrieve the raw database objects

@@ -17,6 +17,7 @@ class DatabaseProjectConfig:
     user: str
     password: str
 
+    protocol: str = "postgresql"
     alias: str = ""
     manager_config_overrides: Dict = field(default_factory=dict)
 
@@ -69,6 +70,7 @@ class DatabaseRegistry:
         if not all(required_fields):
             missing = []
             if not config.host: missing.append("host")
+            if not config.protocol: missing.append("protocol")
             if not config.alias: missing.append("alias")
             if not config.port: missing.append("port")
             if not config.database_name: missing.append("database_name")
@@ -87,6 +89,7 @@ class DatabaseRegistry:
         return {
             "host": config.host,
             "port": config.port,
+            "protocol": config.protocol,
             "database_name": config.database_name,
             "user": config.user,
             "password": config.password,
@@ -111,6 +114,7 @@ class DatabaseRegistry:
             all_configs[config_name] = {
                 "host": config.host,
                 "port": config.port,
+                "protocol": config.protocol,
                 "database_name": config.database_name,
                 "user": config.user,
                 "password": config.password,
@@ -159,7 +163,7 @@ def register_database(config: DatabaseProjectConfig) -> None:
 
 def get_connection_string(config_name: str) -> str:
     config = get_database_config(config_name)
-    connection_string = f"postgresql://{config['user']}:{redact_string(config['password'])}@{config['host']}:{config['port']}/{config['database_name']}"
+    connection_string = f"{config['protocol']}://{config['user']}:{redact_string(config['password'])}@{config['host']}:{config['port']}/{config['database_name']}"
     return connection_string
 
 
