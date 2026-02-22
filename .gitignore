@@ -202,5 +202,11 @@ cython_debug/
 src/matrx_orm/schema_builder/database/**
 src/matrx_orm/schema_builder/database
 
+# Sample project — generated output (safe to delete and regenerate at any time)
+tests/sample_project/generated/**
+!tests/sample_project/generated/.gitkeep
+
+# Sample project credentials (copy .env.example → .env and fill in passwords)
+tests/sample_project/.env
 
 .history/
