@@ -104,7 +104,7 @@ def execute_transaction_query(query, params=None, database_project="this_will_ca
 
 
 def execute_batch_query(query: str, batch_params: List[Dict[str, Any]], batch_size: int = 50,
-                        database_project="supabase_automation_matrix"):
+                        database_project: str = ""):
     """
     Executes a SQL query with batched parameters.
     """

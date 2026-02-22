@@ -444,7 +444,7 @@ if __name__ == "__main__":
     from matrx_utils import vcprint
 
     schema = "public"
-    database_project = "supabase_automation_matrix"
+    database_project = "your_database_project"  # replace with your registered project name
     additional_schemas = ["auth"]
 
     relationships = get_table_relationships(schema=schema, database_project=database_project)

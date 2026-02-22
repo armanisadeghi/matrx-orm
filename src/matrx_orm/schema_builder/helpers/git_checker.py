@@ -111,7 +111,7 @@ if __name__ == "__main__":
     clear_terminal()
 
     schema = "public"
-    database_project = "supabase_automation_matrix"
+    database_project = "your_database_project"  # replace with your registered project name
     additional_schemas = ["auth"]
     save_direct = False
 

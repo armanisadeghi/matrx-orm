@@ -345,7 +345,7 @@ if __name__ == "__main__":
     from matrx_utils import vcprint
 
     schema = "public"
-    database_project = "supabase_automation_matrix"
+    database_project = "your_database_project"  # replace with your registered project name
     # results = get_db_objects(schema=schema, database_project=database_project)
 
     # vcprint(data=results, title='Database Objects', pretty=True, verbose=True, color='blue')

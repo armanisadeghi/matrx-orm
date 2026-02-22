@@ -1,6 +1,3 @@
-from matrx_orm.schema_builder.helpers.manual_overrides import SYSTEM_OVERRIDES_ENTITIES
-
-
 def generate_imports():
     #     return """import { EntityKeys } from '@/types';
     # import { EntityOverrides } from './overrideTypes';
@@ -51,6 +48,10 @@ export const ENTITY_OVERRIDES: Record<EntityKeys, EntityOverrides<EntityKeys>> =
 
 
 if __name__ == "__main__":
+    # Example: pass your app-specific entity_overrides from DatabaseProjectConfig here
+    example_overrides = {
+        "recipe": {"defaultFetchStrategy": '"fkAndIfk"'},
+    }
     entity_names = ["projects", "recipe", "wc_impairment_definition"]
-    ts_code = generate_multiple_entities(entity_names, SYSTEM_OVERRIDES_ENTITIES)
+    ts_code = generate_multiple_entities(entity_names, example_overrides)
     print(ts_code)

@@ -293,9 +293,9 @@ async def main():
     db = AsyncDatabaseManager()
     try:
         results = await db.execute_query(
-            "supabase_automation_matrix",
-            "SELECT * FROM data_broker WHERE id = $1",
-            "0fc49b4c-fc8b-467e-9dda-f43dedf74a9d",
+            "your_database_project",  # replace with your registered project name
+            "SELECT * FROM your_table WHERE id = $1",
+            "your-record-uuid",
         )
         print(results)
     except DatabaseError as e:
@@ -308,9 +308,9 @@ async def cause_error():
     db = AsyncDatabaseManager()
     try:
         results = await db.execute_query(
-            "supabase_automation_matrix",
-            "SELECT * FROM data_broker WHERE id = $1",
-            "aaaa0fc49b4c-fc8b-467e-9dda-f43dedf74a9d",
+            "your_database_project",  # replace with your registered project name
+            "SELECT * FROM your_table WHERE id = $1",
+            "invalid-uuid",
         )
         print(results)
     except DatabaseError as e:

@@ -107,8 +107,8 @@ def transform_relationships_for_typescript(relationships_data, junction_analysis
 
 def get_ts_object(
     schema="public",
-    database_project="supabase_automation_matrix",
-    additional_schemas=["auth"],
+    database_project=None,
+    additional_schemas=None,
 ):
     relationships = get_table_relationships(schema=schema, database_project=database_project)
     junction_analysis, all_relationships = analyze_junction_tables(
@@ -129,7 +129,7 @@ def get_ts_object(
 if __name__ == "__main__":
     # Example usage
     schema = "public"
-    database_project = "supabase_automation_matrix"
+    database_project = "your_database_project"  # replace with your registered project name
     additional_schemas = ["auth"]
 
     # Get the relationships data

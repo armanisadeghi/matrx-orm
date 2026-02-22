@@ -20,6 +20,14 @@ class DatabaseProjectConfig:
     alias: str = ""
     manager_config_overrides: Dict = field(default_factory=dict)
 
+    # Schema builder overrides — app-specific TypeScript entity/field configurations.
+    # entity_overrides: maps camelCase entity name → dict of entity-level override props
+    #   e.g. {"recipe": {"defaultFetchStrategy": '"fkAndIfk"'}}
+    # field_overrides: maps camelCase entity name → dict of field-level override props
+    #   e.g. {"broker": {"name": "{isDisplayField: false, ...}"}}
+    entity_overrides: Dict = field(default_factory=dict)
+    field_overrides: Dict = field(default_factory=dict)
+
 
 class DatabaseRegistry:
     _instance = None
@@ -158,6 +166,20 @@ def get_all_database_projects_redacted() -> list[dict]:
 
 def get_database_alias(db_project):
     return registry.get_database_alias(db_project)
+
+
+def get_schema_builder_overrides(db_project: str) -> Dict:
+    """Return the schema-builder override dicts registered for *db_project*.
+
+    Returns a dict with keys ``entity_overrides`` and ``field_overrides``.
+    Both default to empty dicts when not supplied by the caller.
+    """
+    config = registry.get_config_dataclass(db_project)
+    return {
+        "entity_overrides": config.entity_overrides,
+        "field_overrides": config.field_overrides,
+    }
+
 
 def get_code_config(db_project):
     python_root, ts_root = settings.ADMIN_PYTHON_ROOT, settings.ADMIN_TS_ROOT

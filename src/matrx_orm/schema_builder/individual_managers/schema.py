@@ -8,10 +8,6 @@ from matrx_orm.schema_builder.individual_managers.common import (
     schema_builder_utils,
 )
 from matrx_utils.file_handling.specific_handlers.code_handler import CodeHandler
-from matrx_orm.schema_builder.helpers.manual_overrides import (
-    SYSTEM_OVERRIDES_ENTITIES,
-    SYSTEM_OVERRIDES_FIELDS,
-)
 from matrx_orm.schema_builder.parts_generators.entity_field_override_generator import (
     generate_full_typescript_file,
 )
@@ -21,7 +17,7 @@ from matrx_orm.schema_builder.parts_generators.entity_main_hook_generator import
 from matrx_orm.schema_builder.parts_generators.entity_override_generator import (
     generate_multiple_entities,
 )
-from matrx_orm import get_code_config
+from matrx_orm import get_code_config, get_schema_builder_overrides
 
 import re
 
@@ -40,7 +36,7 @@ class Schema:
     def __init__(
         self,
         name="public",
-        database_project="supabase_automation_matrix",
+        database_project=None,
         save_direct=False,
     ):
         self.utils = schema_builder_utils
@@ -662,8 +658,9 @@ class Schema:
         for table in self.tables.values():
             entity_names.append(table.name_camel)
 
+        schema_builder_overrides = get_schema_builder_overrides(self.database_project)
         overrides_code = generate_multiple_entities(
-            entity_names, SYSTEM_OVERRIDES_ENTITIES
+            entity_names, schema_builder_overrides["entity_overrides"]
         )
 
         self.code_handler.generate_and_save_code_from_object(
@@ -687,8 +684,9 @@ class Schema:
         for table in self.tables.values():
             entity_names.append(table.name_camel)
 
+        schema_builder_overrides = get_schema_builder_overrides(self.database_project)
         overrides_code = generate_full_typescript_file(
-            entity_names, SYSTEM_OVERRIDES_FIELDS
+            entity_names, schema_builder_overrides["field_overrides"]
         )
 
         self.code_handler.generate_and_save_code_from_object(

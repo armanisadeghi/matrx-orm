@@ -22,7 +22,7 @@ class SchemaManager:
         self,
         database="postgres",
         schema="public",
-        database_project="supabase_automation_matrix",
+        database_project=None,
         additional_schemas=None,
         save_direct=False,
         include_tables=None,
@@ -866,8 +866,7 @@ if __name__ == "__main__":
     clear_terminal()
 
     schema = "public"
-    database_project = "supabase_automation_matrix"
-    # database_project = "supabase_matrix_django"
+    database_project = "your_database_project"  # replace with your registered project name
     additional_schemas = ["auth"]
 
     schema_manager = SchemaManager(

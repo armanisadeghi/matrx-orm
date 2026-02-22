@@ -766,6 +766,54 @@ See [MIGRATIONS.md](MIGRATIONS.md) for full documentation.
 
 If you already have a database, use the schema builder to generate typed Python models and managers:
 
+### Schema builder TypeScript overrides
+
+When the schema builder generates TypeScript output (entity overrides, field overrides, entity hooks), it reads app-specific configuration from the `entity_overrides` and `field_overrides` fields on `DatabaseProjectConfig`. These fields are empty by default — no app-specific values ever live inside the ORM package.
+
+Pass your overrides at registration time:
+
+```python
+from matrx_orm import register_database, DatabaseProjectConfig
+
+register_database(DatabaseProjectConfig(
+    name="my_project",
+    host="...", port="5432", database_name="postgres",
+    user="postgres", password="secret",
+    alias="main",
+    # Entity-level TypeScript overrides (camelCase entity name → override props)
+    entity_overrides={
+        "recipe": {"defaultFetchStrategy": '"fkAndIfk"'},
+        "broker": {
+            "displayFieldMetadata": '{ fieldName: "displayName", databaseFieldName: "display_name" }'
+        },
+    },
+    # Field-level TypeScript overrides (camelCase entity name → field name → override props)
+    field_overrides={
+        "recipe": {
+            "tags": {"componentProps": {"subComponent": "tagsManager"}}
+        },
+        "broker": {
+            "displayName": "{ isDisplayField: true }",
+        },
+        "aiSettings": {
+            "temperature": {
+                "defaultComponent": "SPECIAL",
+                "componentProps": {"subComponent": "SLIDER", "min": 0, "max": 2, "step": 0.01},
+            }
+        },
+    },
+))
+```
+
+You can also retrieve the registered overrides programmatically:
+
+```python
+from matrx_orm import get_schema_builder_overrides
+
+overrides = get_schema_builder_overrides("my_project")
+# {"entity_overrides": {...}, "field_overrides": {...}}
+```
+
 ```python
 from matrx_orm.schema_builder.generator import run_generate_models
 
@@ -1370,6 +1418,7 @@ Rules:
 
 | Version | Highlights |
 |---|---|
+| **v1.9.0** | Schema builder externalization: app-specific entity/field overrides removed from the ORM package and moved to `DatabaseProjectConfig` (`entity_overrides`, `field_overrides`); new `get_schema_builder_overrides()` accessor; `sql_executor/queries.py` reduced to generic TypedDicts + empty registry with a `register_query()` helper; all hardcoded project-name defaults removed from public APIs |
 | **v1.8.0** | Window functions (`ROW_NUMBER`, `RANK`, `DENSE_RANK`, `LAG`, `LEAD`, `NTILE`, `CUME_DIST`, `PERCENT_RANK`, …) with `Window(expr, partition_by=…, order_by=…)`; CTEs (`CTE`, `with_cte()`, recursive support); `only()` / `defer()` column selection; `Paginator` with `page(n)`, `has_next`, `total_pages`, async iteration; `VersionField` for optimistic locking (raises `OptimisticLockError` on stale writes); abstract base models (`class Meta: abstract = True` with full field inheritance) |
 | **v1.7.0** | `Q()` objects for OR/AND/NOT composition; aggregate expressions (`Sum`, `Avg`, `Min`, `Max`, `Count`); database functions (`Coalesce`, `Lower`, `Upper`, `Now`, `Cast`, `Extract`, …); `DISTINCT` / `DISTINCT ON`; `SELECT FOR UPDATE`; JSONB query operators; ORM-level `transaction()` context manager with savepoints; `Model.raw()` / `Model.raw_sql()`; `select_related()` JOIN eager loading; subquery expressions (`Subquery`, `Exists`, `OuterRef`); lifecycle signals (`pre_save`, `post_save`, `pre_create`, `post_create`, `pre_delete`, `post_delete`) |
 | **v1.6.4** | fix: complete field type coercion audit - get_db_prep_value and to_python for all field types |
