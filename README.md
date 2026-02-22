@@ -260,6 +260,48 @@ count = await User.filter(id=user_id).delete()
 deleted = await User.bulk_delete(users)
 ```
 
+### Upsert (INSERT … ON CONFLICT DO UPDATE)
+
+```python
+# Single upsert — inserts or updates on conflict
+user = await User.upsert(
+    data={"id": str(uuid4()), "email": "alice@example.com", "username": "alice"},
+    conflict_fields=["email"],           # unique constraint columns
+    update_fields=["username"],           # columns to SET on conflict (optional — defaults to all non-conflict)
+)
+
+# Bulk upsert — same semantics, multiple rows
+users = await User.bulk_upsert(
+    objects_data=[
+        {"email": "bob@example.com",   "username": "bob_v2"},
+        {"email": "carol@example.com", "username": "carol_v2"},
+    ],
+    conflict_fields=["email"],
+)
+```
+
+### Count, Exists, Update-Where, Delete-Where
+
+```python
+# Lightweight count — no model hydration
+total  = await User.count()
+active = await User.count(is_active=True)
+
+# Existence check
+if await User.exists(email="alice@example.com"):
+    ...
+
+# Bulk update by filter — no fetch required
+result = await User.update_where(
+    {"status": "draft", "created_at__lt": cutoff},
+    status="archived",
+)
+# result == {"rows_affected": 42, "updated_rows": [...]}
+
+# Bulk delete by filter — no fetch required
+deleted = await User.delete_where(status="expired")
+```
+
 ---
 
 ## Querying
@@ -929,6 +971,7 @@ The tag **must** match the `version` field in `pyproject.toml` exactly (e.g. tag
 
 | Version | Highlights |
 |---|---|
+| **v1.6.0** | `upsert()` / `bulk_upsert()` (INSERT … ON CONFLICT DO UPDATE), `count()`, `exists()`, `update_where()`, `delete_where()` on Model and BaseManager; sync wrappers for all new methods |
 | **v1.5.3** | `SchemaManager` now accepts `include_tables` and `exclude_tables` to generate models/managers for a specific subset of tables |
 | **v1.5.2** | Fix migration dependency name bug — generated files now reference the full preceding migration stem (e.g. `"0001_baseline"`) instead of just the zero-padded number (`"0001"`) |
 | **v1.5.1** | Scoped migrations: `TableFilter` with include-only and exclude modes; cross-scope FK warnings; `--include-tables` / `--exclude-tables` CLI flags |

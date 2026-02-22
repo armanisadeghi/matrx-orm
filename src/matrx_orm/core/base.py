@@ -430,6 +430,125 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         return await bulk_delete(cls, objects)
 
     @classmethod
+    async def upsert(
+        cls,
+        data: dict[str, Any],
+        conflict_fields: list[str],
+        update_fields: list[str] | None = None,
+    ) -> Model:
+        """INSERT ... ON CONFLICT (conflict_fields) DO UPDATE SET ... RETURNING *
+
+        Args:
+            data: Field values for the row.
+            conflict_fields: Column names that form the unique/exclusion constraint
+                             (e.g. ["email"] or ["tenant_id", "slug"]).
+            update_fields: Columns to update on conflict. Defaults to every column
+                           not in conflict_fields.
+        """
+        from matrx_orm.operations.create import upsert
+
+        return await upsert(cls, data, conflict_fields, update_fields)
+
+    @classmethod
+    async def bulk_upsert(
+        cls,
+        objects_data: list[dict[str, Any]],
+        conflict_fields: list[str],
+        update_fields: list[str] | None = None,
+    ) -> list[Model]:
+        """Bulk INSERT ... ON CONFLICT DO UPDATE for multiple rows.
+
+        Args:
+            objects_data: List of dicts, one per row.
+            conflict_fields: Column names that form the unique/exclusion constraint.
+            update_fields: Columns to update on conflict. Defaults to every column
+                           not in conflict_fields.
+        """
+        from matrx_orm.operations.create import bulk_upsert
+
+        return await bulk_upsert(cls, objects_data, conflict_fields, update_fields)
+
+    @classmethod
+    async def count(cls, **kwargs: Any) -> int:
+        """Lightweight row count without full model hydration.
+
+        Usage:
+            total = await MyModel.count()
+            active = await MyModel.count(status="active")
+        """
+        return await QueryBuilder(cls).filter(**kwargs).count()
+
+    @classmethod
+    def count_sync(cls, **kwargs: Any) -> int:
+        """Synchronous wrapper for count()."""
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError(
+                "Model.count_sync() called in an async context. Use await Model.count() instead."
+            )
+        except RuntimeError as e:
+            if "no running event loop" not in str(e):
+                raise
+        return run_sync(cls.count(**kwargs))
+
+    @classmethod
+    async def exists(cls, **kwargs: Any) -> bool:
+        """Check whether at least one row matching the filters exists.
+
+        Usage:
+            if await MyModel.exists(email="a@b.com"):
+                ...
+        """
+        return await QueryBuilder(cls).filter(**kwargs).exists()
+
+    @classmethod
+    def exists_sync(cls, **kwargs: Any) -> bool:
+        """Synchronous wrapper for exists()."""
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError(
+                "Model.exists_sync() called in an async context. Use await Model.exists() instead."
+            )
+        except RuntimeError as e:
+            if "no running event loop" not in str(e):
+                raise
+        return run_sync(cls.exists(**kwargs))
+
+    @classmethod
+    async def update_where(cls, filters: dict[str, Any], **updates: Any) -> dict[str, Any]:
+        """Bulk-update rows matching filters without fetching them first.
+
+        Args:
+            filters: Lookup kwargs (same syntax as filter()).
+            **updates: Field=value pairs to SET.
+
+        Returns:
+            {"rows_affected": int, "updated_rows": list[dict]}
+
+        Usage:
+            result = await MyModel.update_where(
+                {"status": "draft", "created_at__lt": cutoff},
+                status="archived",
+            )
+        """
+        return await QueryBuilder(cls).filter(**filters).update(**updates)
+
+    @classmethod
+    async def delete_where(cls, **filters: Any) -> int:
+        """Delete rows matching filters without fetching them first.
+
+        Args:
+            **filters: Lookup kwargs (same syntax as filter()).
+
+        Returns:
+            Number of rows deleted.
+
+        Usage:
+            deleted = await MyModel.delete_where(status="expired")
+        """
+        return await QueryBuilder(cls).filter(**filters).delete()
+
+    @classmethod
     async def get(cls, use_cache: bool = True, **kwargs: Any) -> Model:
         try:
             if use_cache:

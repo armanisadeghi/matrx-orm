@@ -255,6 +255,109 @@ class QueryExecutor:
                 },
             )
 
+    async def upsert(self, query: dict[str, Any]) -> dict[str, Any]:
+        """INSERT ... ON CONFLICT (conflict_fields) DO UPDATE SET ... RETURNING *"""
+        table = query["table"]
+        data = query.get("data", {})
+        conflict_fields: list[str] = query.get("conflict_fields", [])
+        update_fields: list[str] | None = query.get("update_fields")
+
+        if not data:
+            raise ValidationError(message="No data provided for upsert")
+        if not conflict_fields:
+            raise ValidationError(message="No conflict fields provided for upsert")
+
+        columns = list(data.keys())
+        values = list(data.values())
+        placeholders = [f"${i + 1}" for i in range(len(values))]
+
+        fields_to_update = update_fields or [c for c in columns if c not in conflict_fields]
+        if not fields_to_update:
+            raise ValidationError(message="No fields to update on conflict — all columns are conflict keys")
+
+        set_clause = ", ".join(f"{f} = EXCLUDED.{f}" for f in fields_to_update)
+
+        sql = (
+            f"INSERT INTO {table} ({', '.join(columns)}) "
+            f"VALUES ({', '.join(placeholders)}) "
+            f"ON CONFLICT ({', '.join(conflict_fields)}) DO UPDATE SET {set_clause} "
+            f"RETURNING *"
+        )
+
+        try:
+            rows = await self.db.execute_query(self.database, sql, *values)
+            if not rows:
+                raise ValidationError(message="Upsert succeeded but returned no data")
+            return rows[0]
+        except DatabaseError as e:
+            if "unique constraint" in str(e).lower():
+                raise IntegrityError(model=self.model, constraint="unique", original_error=e)
+            raise DatabaseError(model=self.model, operation="upsert", original_error=e)
+
+    async def bulk_upsert(self, query: dict[str, Any]) -> list[Model]:
+        """Bulk INSERT ... ON CONFLICT DO UPDATE for multiple rows."""
+        table = query["table"]
+        data_list: list[dict[str, Any]] = query.get("data", [])
+        conflict_fields: list[str] = query.get("conflict_fields", [])
+        update_fields: list[str] | None = query.get("update_fields")
+
+        if not data_list:
+            return []
+        if not conflict_fields:
+            raise ValidationError(message="No conflict fields provided for bulk upsert")
+
+        columns = list(data_list[0].keys())
+        fields_to_update = update_fields or [c for c in columns if c not in conflict_fields]
+        if not fields_to_update:
+            raise ValidationError(message="No fields to update on conflict — all columns are conflict keys")
+
+        all_values: list[Any] = []
+        placeholders_list: list[str] = []
+        param_index = 1
+
+        for i, row_data in enumerate(data_list):
+            if set(row_data.keys()) != set(columns):
+                raise ValidationError(
+                    model=self.model,
+                    reason=f"Row {i} has different columns than first row",
+                    details={
+                        "expected_columns": columns,
+                        "received_columns": list(row_data.keys()),
+                    },
+                )
+            row_placeholders: list[str] = []
+            for col in columns:
+                row_placeholders.append(f"${param_index}")
+                all_values.append(row_data[col])
+                param_index += 1
+            placeholders_list.append(f"({', '.join(row_placeholders)})")
+
+        set_clause = ", ".join(f"{f} = EXCLUDED.{f}" for f in fields_to_update)
+
+        sql = (
+            f"INSERT INTO {table} ({', '.join(columns)}) "
+            f"VALUES {', '.join(placeholders_list)} "
+            f"ON CONFLICT ({', '.join(conflict_fields)}) DO UPDATE SET {set_clause} "
+            f"RETURNING *"
+        )
+
+        try:
+            results = await self.db.execute_query(self.database, sql, *all_values)
+            return [self.model(**row) for row in results]
+        except DatabaseError as e:
+            if "unique constraint" in str(e).lower():
+                raise IntegrityError(model=self.model, constraint="unique", original_error=e)
+            raise DatabaseError(model=self.model, operation="bulk_upsert", original_error=e)
+        except Exception as e:
+            raise QueryError(
+                model=self.model,
+                details={
+                    "operation": "bulk_upsert",
+                    "row_count": len(data_list),
+                    "error": str(e),
+                },
+            )
+
     async def update(self, **kwargs: Any) -> dict[str, Any]:
         """Updates rows in the database."""
         try:

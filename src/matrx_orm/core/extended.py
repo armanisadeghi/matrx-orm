@@ -703,6 +703,73 @@ class BaseManager(Generic[ModelT]):
             item = await self._create_item(**{**kwargs, **defaults})
         return await self._initialize_item_runtime(item)
 
+    async def upsert_item(
+        self,
+        data: dict[str, Any],
+        conflict_fields: list[str],
+        update_fields: list[str] | None = None,
+    ) -> ModelT:
+        """Insert or update a single row via ON CONFLICT DO UPDATE.
+
+        Args:
+            data: Field values for the row.
+            conflict_fields: Column names forming the unique constraint.
+            update_fields: Columns to SET on conflict (default: all non-conflict columns).
+        """
+        item = await self.model.upsert(data, conflict_fields, update_fields)
+        return await self._initialize_item_runtime(item)  # type: ignore[return-value]
+
+    async def upsert_items(
+        self,
+        items_data: list[dict[str, Any]],
+        conflict_fields: list[str],
+        update_fields: list[str] | None = None,
+    ) -> list[ModelT]:
+        """Bulk upsert multiple rows via ON CONFLICT DO UPDATE.
+
+        Args:
+            items_data: List of dicts, one per row.
+            conflict_fields: Column names forming the unique constraint.
+            update_fields: Columns to SET on conflict (default: all non-conflict columns).
+        """
+        if not items_data:
+            return []
+        created = await self.model.bulk_upsert(items_data, conflict_fields, update_fields)
+        return [await self._initialize_item_runtime(item) for item in created if item]  # type: ignore[misc]
+
+    async def count(self, **filters: Any) -> int:
+        """Lightweight row count without full model hydration.
+
+        Args:
+            **filters: Lookup kwargs (same syntax as filter()).
+        """
+        return await self.model.count(**filters)
+
+    async def update_where(
+        self, filters: dict[str, Any], **updates: Any
+    ) -> dict[str, Any]:
+        """Bulk-update rows matching filters without fetching them first.
+
+        Args:
+            filters: Lookup kwargs (same syntax as filter()).
+            **updates: Field=value pairs to SET.
+
+        Returns:
+            {"rows_affected": int, "updated_rows": list[dict]}
+        """
+        return await self.model.update_where(filters, **updates)
+
+    async def delete_where(self, **filters: Any) -> int:
+        """Delete rows matching filters without fetching them first.
+
+        Args:
+            **filters: Lookup kwargs (same syntax as filter()).
+
+        Returns:
+            Number of rows deleted.
+        """
+        return await self.model.delete_where(**filters)
+
     def _item_to_dict(self, item: ModelT | None) -> dict[str, Any] | None:
         """Convert an item to a dict using DTO if available."""
         if not item:
@@ -1530,3 +1597,58 @@ class BaseManager(Generic[ModelT]):
             if "no running event loop" not in str(e):
                 raise
         return run_sync(self.get_items_dict(**kwargs))
+
+    def upsert_item_sync(
+        self,
+        data: dict[str, Any],
+        conflict_fields: list[str],
+        update_fields: list[str] | None = None,
+    ) -> ModelT:
+        """Synchronous wrapper for upsert_item()."""
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError(
+                "upsert_item_sync() called in async context. Use await upsert_item() instead."
+            )
+        except RuntimeError as e:
+            if "no running event loop" not in str(e):
+                raise
+        return run_sync(self.upsert_item(data, conflict_fields, update_fields))
+
+    def count_sync(self, **filters: Any) -> int:
+        """Synchronous wrapper for count()."""
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError(
+                "count_sync() called in async context. Use await count() instead."
+            )
+        except RuntimeError as e:
+            if "no running event loop" not in str(e):
+                raise
+        return run_sync(self.count(**filters))
+
+    def update_where_sync(
+        self, filters: dict[str, Any], **updates: Any
+    ) -> dict[str, Any]:
+        """Synchronous wrapper for update_where()."""
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError(
+                "update_where_sync() called in async context. Use await update_where() instead."
+            )
+        except RuntimeError as e:
+            if "no running event loop" not in str(e):
+                raise
+        return run_sync(self.update_where(filters, **updates))
+
+    def delete_where_sync(self, **filters: Any) -> int:
+        """Synchronous wrapper for delete_where()."""
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError(
+                "delete_where_sync() called in async context. Use await delete_where() instead."
+            )
+        except RuntimeError as e:
+            if "no running event loop" not in str(e):
+                raise
+        return run_sync(self.delete_where(**filters))
