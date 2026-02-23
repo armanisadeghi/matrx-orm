@@ -423,6 +423,11 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
     _extra_data: dict[str, Any]
     _dynamic_data: dict[str, Any]
 
+    # Pyright cannot see fields set by the metaclass at class-creation time.
+    # Annotating `id` here covers the near-universal primary key pattern used
+    # by generated DTOs and managers.  All other fields remain dynamically typed.
+    id: Any
+
     def __init__(self, **kwargs: Any) -> None:
         for field_name, field in self._fields.items():
             value = kwargs.get(field_name, field.get_default())
@@ -840,7 +845,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         return "_".join(str(getattr(self, pk)) for pk in self._meta.primary_keys)
 
     @property
-    def table_name(self) -> str:
+    def table_name(self) -> Any:  # Any allows subclass fields named table_name to satisfy pyright
         return self._meta.table_name
 
     @classmethod

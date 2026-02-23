@@ -4,7 +4,7 @@ from git import Repo, GitCommandError, InvalidGitRepositoryError
 from matrx_utils import vcprint
 
 
-def check_git_status(save_direct: bool, python_root: str = "", ts_root: str = "") -> bool:
+def check_git_status(save_direct: bool, python_root: str = "", ts_root: str = "", ignore_path_prefixes: list[str] | None = None) -> bool:
     """
     Check if python_root and ts_root are git repositories with no uncommitted
     changes before allowing a save_direct write that could overwrite live files.
@@ -56,17 +56,30 @@ def check_git_status(save_direct: bool, python_root: str = "", ts_root: str = ""
 
             # Check if there are uncommitted changes
             if repo.is_dirty(untracked_files=True):
-                modified_lines = [
-                    line.strip()
+                raw_lines = [
+                    line
                     for line in repo.git.status("--porcelain").split("\n")
                     if line.strip()
                 ]
-                changed_files = [line[3:].strip() for line in modified_lines]
+                # porcelain format: "XY filename" — always 2 status chars + space
+                # slice from index 3 on the raw (unstripped) line to get the filename
+                changed_files = [line[3:].strip() for line in raw_lines]
+                modified_lines = [line.strip() for line in raw_lines]
 
-                # Allow the sole change to be matrx_orm.yaml (config sync artifact)
-                if len(changed_files) == 1 and os.path.basename(changed_files[0]) == "matrx_orm.yaml":
+                # These files are auto-managed and safe to ignore during generation.
+                _IGNORABLE_NAMES = {"matrx_orm.yaml", "uv.lock", "poetry.lock", "package-lock.json", "yarn.lock"}
+                _ignore_prefixes = [p.lstrip("/") for p in (ignore_path_prefixes or [])]
+
+                def _is_ignorable(filepath: str) -> bool:
+                    if os.path.basename(filepath) in _IGNORABLE_NAMES:
+                        return True
+                    return any(filepath.startswith(prefix) for prefix in _ignore_prefixes)
+
+                non_ignorable = [f for f in changed_files if not _is_ignorable(f)]
+
+                if not non_ignorable:
                     vcprint(
-                        f"- Only 'matrx_orm.yaml' has changes — treating as clean ✓",
+                        f"- Only auto-managed files changed ({', '.join(os.path.basename(f) for f in changed_files)}) — treating as clean ✓",
                         color="green",
                     )
                 else:

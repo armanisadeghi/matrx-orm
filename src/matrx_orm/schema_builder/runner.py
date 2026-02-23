@@ -149,7 +149,26 @@ def run_schema_generation(config_path: str | Path = "matrx_orm.yaml") -> None:
     # -------------------------------------------------------------------------
     # Git safety check — must run before any generation when save_direct=True
     # -------------------------------------------------------------------------
-    check_git_status(output_config.save_direct, python_root=python_root, ts_root=ts_root)
+    # Collect output subdirectory prefixes (relative to the repo root) so the
+    # checker can ignore previously-generated files that show as "dirty".
+    _ignore_prefixes: list[str] = []
+    if python_root and output_config.save_direct:
+        try:
+            from git import Repo, InvalidGitRepositoryError
+            _repo = Repo(python_root, search_parent_directories=True)
+            _repo_root = _repo.working_tree_dir or python_root
+            for _db in cfg.get("databases", []):
+                _alias = _db.get("alias", "")
+                if _alias:
+                    _abs = os.path.join(python_root, _alias)
+                    try:
+                        _rel = os.path.relpath(_abs, _repo_root)
+                        _ignore_prefixes.append(_rel)
+                    except ValueError:
+                        pass
+        except Exception:
+            pass
+    check_git_status(output_config.save_direct, python_root=python_root, ts_root=ts_root, ignore_path_prefixes=_ignore_prefixes)
 
     # -------------------------------------------------------------------------
     # Register databases
