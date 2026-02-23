@@ -21,6 +21,7 @@ class SchemaManager:
         save_direct=False,
         include_tables=None,
         exclude_tables=None,
+        manager_flags: dict | None = None,
     ):
         if additional_schemas is None:
             # Read from the registered database config if a project name is provided;
@@ -53,6 +54,7 @@ class SchemaManager:
             name=schema,
             database_project=database_project,
             output_config=output_config,
+            manager_flags=manager_flags,
         )
         self.additional_schemas = additional_schemas
         self.database_project = database_project

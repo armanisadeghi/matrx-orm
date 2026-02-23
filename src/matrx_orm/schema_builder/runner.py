@@ -56,12 +56,25 @@ def run_schema_generation(config_path: str | Path = "matrx_orm.yaml") -> None:
 
     vcprint(config_path, f"[MATRX ORM] Loading config", color="cyan")
 
-    # Load .env from the same directory as the config file
-    env_file = config_path.parent / ".env"
-    if env_file.exists():
+    # Load .env — search from the config file's directory upward, stopping at
+    # the filesystem root.  This mirrors how git, Node, and most tooling work:
+    # the .env lives at the project root, not necessarily next to generate.py.
+    env_file = None
+    search = config_path.parent
+    while True:
+        candidate = search / ".env"
+        if candidate.exists():
+            env_file = candidate
+            break
+        parent = search.parent
+        if parent == search:
+            break
+        search = parent
+
+    if env_file:
         load_dotenv(env_file)
     else:
-        load_dotenv()  # fallback to default search
+        load_dotenv()  # last-resort: let python-dotenv search from cwd
 
     cfg = _load_yaml(config_path)
 
@@ -75,20 +88,48 @@ def run_schema_generation(config_path: str | Path = "matrx_orm.yaml") -> None:
 
     # -------------------------------------------------------------------------
     # Output config — resolves paths, type flags, and save_direct
+    #
+    # Priority (highest wins):
+    #   1. .env  MATRX_PYTHON_ROOT / MATRX_TS_ROOT / MATRX_SAVE_DIRECT
+    #   2. matrx_orm.yaml  output.python_root / output.typescript_root / output.save_direct
+    #
+    # This lets developers keep machine-specific absolute paths (e.g. paths
+    # outside the project, or different per server) in their local .env without
+    # touching the yaml that gets committed to git.
     # -------------------------------------------------------------------------
     output_cfg = cfg.get("output", {})
     base = config_path.parent
 
-    python_root = ""
-    ts_root = ""
-
-    if "python_root" in output_cfg:
+    # Resolve python_root: .env wins over yaml
+    env_python_root = os.environ.get("MATRX_PYTHON_ROOT", "").strip()
+    if env_python_root:
+        python_root = env_python_root
+    elif "python_root" in output_cfg:
         python_root = str((base / output_cfg["python_root"]).resolve())
+    else:
+        python_root = ""
+
+    if python_root:
         os.environ["ADMIN_PYTHON_ROOT"] = python_root
 
-    if "typescript_root" in output_cfg:
+    # Resolve typescript_root: .env wins over yaml
+    env_ts_root = os.environ.get("MATRX_TS_ROOT", "").strip()
+    if env_ts_root:
+        ts_root = env_ts_root
+    elif "typescript_root" in output_cfg:
         ts_root = str((base / output_cfg["typescript_root"]).resolve())
+    else:
+        ts_root = ""
+
+    if ts_root:
         os.environ["ADMIN_TS_ROOT"] = ts_root
+
+    # Resolve save_direct: .env wins over yaml (yaml default is False)
+    env_save_direct = os.environ.get("MATRX_SAVE_DIRECT", "").strip().lower()
+    if env_save_direct in ("1", "true"):
+        output_cfg = {**output_cfg, "save_direct": True}
+    elif env_save_direct in ("0", "false"):
+        output_cfg = {**output_cfg, "save_direct": False}
 
     output_config = OutputConfig.from_dict(output_cfg)
 
@@ -115,7 +156,12 @@ def run_schema_generation(config_path: str | Path = "matrx_orm.yaml") -> None:
         register_database_from_env(
             name=name,
             env_prefix=prefix,
+            alias=db.get("alias", ""),
             additional_schemas=db.get("additional_schemas", []),
+            entity_overrides=db.get("entity_overrides") or {},
+            field_overrides=db.get("field_overrides") or {},
+            manager_config_overrides=db.get("manager_config_overrides") or {},
+            env_var_overrides=db.get("env_var_overrides") or {},
         )
 
     # -------------------------------------------------------------------------
@@ -130,6 +176,14 @@ def run_schema_generation(config_path: str | Path = "matrx_orm.yaml") -> None:
         db_name = entry.get("database")
         schema = entry.get("schema", "public")
 
+        # Table filters — mutually exclusive
+        include_tables = entry.get("include_tables") or None
+        exclude_tables = entry.get("exclude_tables") or None
+
+        # manager_flags: yaml-level defaults for all tables in this generation run.
+        # Per-table manager_config_overrides (from the databases section) stack on top.
+        manager_flags = entry.get("manager_flags") or None
+
         vcprint(f"[MATRX ORM] Generating schema... \n\n- Database: '{db_name}'\n- Schema: '{schema}'", verbose=DEBUG_CONFIG["verbose"], color="cyan")
 
         try:
@@ -137,6 +191,9 @@ def run_schema_generation(config_path: str | Path = "matrx_orm.yaml") -> None:
                 schema=schema,
                 database_project=db_name,
                 output_config=output_config,
+                include_tables=include_tables,
+                exclude_tables=exclude_tables,
+                manager_flags=manager_flags,
             )
             manager.initialize()
             manager.schema.generate_schema_files()

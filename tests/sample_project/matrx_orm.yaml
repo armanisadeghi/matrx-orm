@@ -5,15 +5,37 @@
 # This file drives reverse-migration schema generation.
 # Run:  python generate.py
 #
-# Output directories for generated files.
+# =============================================================================
+# Output
+# =============================================================================
+#
+# python_root and typescript_root set where generated files land.
 # Use absolute paths or paths relative to this config file.
+#
+# These can also be overridden per-environment using .env variables:
+#   MATRX_PYTHON_ROOT=/absolute/path/to/python/output
+#   MATRX_TS_ROOT=/absolute/path/to/typescript/output
+#
+# .env wins over yaml — use it to keep machine-specific paths out of git.
+#
 output:
   python_root: generated/python
   typescript_root: generated/typescript
 
-  # save_direct: write directly to the roots above instead of the temp dir.
-  # When true, matrx-orm will refuse to run if either root has uncommitted
-  # git changes (safety guard).
+  # save_direct: controls whether generated files overwrite your live source
+  # files or are written to a temporary staging directory instead.
+  #
+  #   false (default) — safe mode. Files go to a temp dir so you can review
+  #                     them before committing. Nothing in your project is
+  #                     touched.
+  #
+  #   true            — live mode. Files are written directly to python_root
+  #                     and typescript_root. matrx-orm will refuse to run if
+  #                     either root has uncommitted git changes (safety guard
+  #                     so you never lose hand-written work).
+  #
+  # Can also be set via .env:  MATRX_SAVE_DIRECT=true
+  #
   save_direct: true
 
   # Set any of these to false to skip generating that file type entirely.
@@ -48,20 +70,53 @@ databases:
 # Each entry below triggers one reverse-migration run.
 # database must match a name defined in the databases section above.
 #
+# Table filtering (mutually exclusive — use one or neither):
+#   include_tables: [table_a, table_b]   — only generate these tables
+#   exclude_tables: [table_x, table_y]   — generate everything except these
+#
+# manager_flags controls which methods are included in each generated manager
+# class. These map directly to the code-generation layer — changing them
+# affects what methods every developer gets in their generated managers.
+#
+# Defaults shown below exactly match the built-in system defaults.
+# Only override what you need to change.
+#
 generate:
   - database: primary
     schema: public
-
+    # include_tables:
+    #   - my_table
+    #   - other_table
+    # exclude_tables:
+    #   - internal_table
+    manager_flags:
+      include_core_relations: true      # FK/IFK fetch methods (load_by_*, fetch_fk, fetch_ifk)
+      include_filter_fields: true       # filter_by_* methods for indexed/common lookup fields
+      include_active_relations: false   # active-record style relation traversal
+      include_active_methods: false     # active-record create/update/delete on instance
+      include_or_not_methods: false     # load_or_create, update_or_create helpers
+      include_to_dict_methods: false    # to_dict() / to_json() serializers
+      include_to_dict_relations: false  # include related objects in to_dict() output
 
   # Uncomment to also generate from the secondary database:
-  - database: secondary
-    schema: public
+  # - database: secondary
+  #   schema: public
+  #   manager_flags:
+  #     include_core_relations: true
+  #     include_filter_fields: true
+  #     include_active_relations: false
+  #     include_active_methods: false
+  #     include_or_not_methods: false
+  #     include_to_dict_methods: false
+  #     include_to_dict_relations: false
 
 # =============================================================================
 # Debug
 # =============================================================================
+# Controls console output during generation.
+# Can also be set per-run via env vars: MATRX_INFO, MATRX_DEBUG, MATRX_VERBOSE
+#
 debug:
   info: true
-  debug: true
-  verbose: true
-  
+  debug: false
+  verbose: false

@@ -20,12 +20,24 @@ def format_ts_object(ts_object_str):
     return re.sub(r'"(\w+)"\s*:', r"\1:", ts_object_str)
 
 
+_MANAGER_FLAG_DEFAULTS: dict = {
+    "include_core_relations": True,
+    "include_filter_fields": True,
+    "include_active_relations": False,
+    "include_active_methods": False,
+    "include_or_not_methods": False,
+    "include_to_dict_methods": False,
+    "include_to_dict_relations": False,
+}
+
+
 class Schema:
     def __init__(
         self,
         name="public",
         database_project=None,
         output_config: OutputConfig = None,
+        manager_flags: dict | None = None,
     ):
         if output_config is None:
             output_config = OutputConfig()
@@ -44,6 +56,8 @@ class Schema:
         self.initialized = False
         self._include_tables: set[str] | None = None
         self._exclude_tables: set[str] | None = None
+        # Global manager flags — yaml-level defaults, per-table overrides stack on top
+        self.manager_flags: dict = {**_MANAGER_FLAG_DEFAULTS, **(manager_flags or {})}
 
         vcprint(
             self.to_dict(),
@@ -796,7 +810,7 @@ class Schema:
 
         for table_name in sorted_tables:
             table = self.tables[table_name]
-            py_manager_entry = table.to_python_manager_string()
+            py_manager_entry = table.to_python_manager_string(self.manager_flags)
             py_manager_structure.append(py_manager_entry)
 
             py_auto_config_entry = table.base_class_auto_config
@@ -835,7 +849,6 @@ class Schema:
         sorted_field_types = sorted(all_field_types)
         field_imports = ", ".join(sorted_field_types)
         dynamic_import_lines = [
-            "import database_registry",
             f"from matrx_orm import {field_imports}, model_registry, BaseDTO, BaseManager",
         ]
         if has_enums:

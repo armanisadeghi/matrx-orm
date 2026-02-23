@@ -169,22 +169,26 @@ def register_database_from_env(
     entity_overrides: Dict = None,
     field_overrides: Dict = None,
     manager_config_overrides: Dict = None,
+    env_var_overrides: Dict = None,
 ) -> bool:
     """
     Read database connection details from environment variables, validate them,
     and register the database. Prints colored diagnostics for missing or defaulted vars.
 
-    Required env vars (using env_prefix, e.g. "PRIMARY_DB"):
+    Default env var names (using env_prefix, e.g. "PRIMARY_DB"):
         {env_prefix}_HOST, {env_prefix}_PORT, {env_prefix}_NAME,
         {env_prefix}_USER, {env_prefix}_PASSWORD
+        {env_prefix}_PROTOCOL  (optional, defaults to "postgresql")
 
-    Optional env vars:
-        {env_prefix}_PROTOCOL  — defaults to "postgresql"
+    env_var_overrides lets you remap any key to a different env var name.
+    Example: {"NAME": "SUPABASE_MATRIX_DATABASE_NAME"} reads that env var
+    instead of constructing {env_prefix}_NAME.
 
     Returns True if registration succeeded, False otherwise.
     """
     _REQUIRED = ["HOST", "PORT", "NAME", "USER", "PASSWORD"]
     _OPTIONAL = {"PROTOCOL": "postgresql"}
+    _overrides = env_var_overrides or {}
 
     vcprint(name, f"\n[MATRX ORM] Registering database", color="cyan")
 
@@ -192,7 +196,7 @@ def register_database_from_env(
     resolved: dict[str, str] = {}
 
     for key in _REQUIRED:
-        env_var = f"{env_prefix}_{key}"
+        env_var = _overrides.get(key, f"{env_prefix}_{key}")
         val = os.environ.get(env_var, "").strip()
         if val:
             resolved[key] = val
@@ -200,7 +204,7 @@ def register_database_from_env(
             missing.append(env_var)
 
     for key, default in _OPTIONAL.items():
-        env_var = f"{env_prefix}_{key}"
+        env_var = _overrides.get(key, f"{env_prefix}_{key}")
         val = os.environ.get(env_var, "").strip()
         if val:
             resolved[key] = val
@@ -287,7 +291,6 @@ def get_code_config(db_project):
         # Note: import_lines are dynamically replaced by generate_models() in schema.py
         # based on the actual field types used. This is a fallback default only.
         "import_lines": [
-            "import database_registry",
             "from matrx_orm import Model, model_registry, BaseDTO, BaseManager",
             "from enum import Enum",
             "from dataclasses import dataclass"

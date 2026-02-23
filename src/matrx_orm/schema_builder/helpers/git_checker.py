@@ -56,17 +56,25 @@ def check_git_status(save_direct: bool, python_root: str = "", ts_root: str = ""
 
             # Check if there are uncommitted changes
             if repo.is_dirty(untracked_files=True):
-                vcprint("- Uncommitted changes detected! Details:\n", color="red")
+                modified_lines = [
+                    line.strip()
+                    for line in repo.git.status("--porcelain").split("\n")
+                    if line.strip()
+                ]
+                changed_files = [line[3:].strip() for line in modified_lines]
 
-                # Show modified files
-                modified = repo.git.status("--porcelain").split("\n")
-                if any(line.strip() for line in modified):
+                # Allow the sole change to be matrx_orm.yaml (config sync artifact)
+                if len(changed_files) == 1 and os.path.basename(changed_files[0]) == "matrx_orm.yaml":
+                    vcprint(
+                        f"- Only 'matrx_orm.yaml' has changes — treating as clean ✓",
+                        color="green",
+                    )
+                else:
+                    vcprint("- Uncommitted changes detected! Details:\n", color="red")
                     vcprint("  Modified files:", color="red")
-                    for line in modified:
-                        if line.strip():
-                            vcprint(f"    {line.strip()}", color="red")
-
-                has_issues = True
+                    for line in modified_lines:
+                        vcprint(f"    {line}", color="red")
+                    has_issues = True
             else:
                 vcprint("- No uncommitted changes found ✓", color="green")
 

@@ -1138,7 +1138,7 @@ class Table:
 
         return py_structure
 
-    def to_python_manager_string(self):
+    def to_python_manager_string(self, global_manager_flags: dict | None = None):
         MANAGER_CONFIG_OVERRIDES = get_manager_config(self.database_project)
 
         relations = self.get_all_relations_list()
@@ -1150,6 +1150,12 @@ class Table:
         m2m_relations = list(m2m_config.keys()) if m2m_config else None
 
         alias = get_database_alias(self.database_project)
+
+        # Start with system defaults, apply yaml-level global flags, then per-table overrides.
+        # This gives three layers of control:
+        #   1. System defaults (hardcoded here — safe baseline)
+        #   2. global_manager_flags from matrx_orm.yaml generate[].manager_flags
+        #   3. manager_config_overrides from databases[].manager_config_overrides (per-table)
         base_config = {
             "models_module_path": f"database.{alias}.models",
             "model_pascal": self.python_model_name,
@@ -1168,7 +1174,11 @@ class Table:
             "m2m_relations": m2m_relations,
         }
 
-        # Apply overrides if they exist
+        # Layer 2: yaml generate[].manager_flags (all-table defaults for this run)
+        if global_manager_flags:
+            base_config.update(global_manager_flags)
+
+        # Layer 3: per-table manager_config_overrides from the database registration
         if self.name in MANAGER_CONFIG_OVERRIDES:
             model_overrides = MANAGER_CONFIG_OVERRIDES[self.name]
             base_config.update(model_overrides)
