@@ -295,11 +295,7 @@ def get_code_config(db_project):
             "from enum import Enum",
             "from dataclasses import dataclass"
         ],
-        "additional_top_lines": [
-            "verbose = False",
-            "debug = False",
-            "info = True",
-        ],
+        "additional_top_lines": [],
         "additional_bottom_lines": [],
     }
 

@@ -45,7 +45,7 @@ def check_git_status(save_direct: bool, python_root: str = "", ts_root: str = ""
 
         # Check if path exists
         if not os.path.exists(root_path):
-            vcprint(f"- {root_name} path '{root_path}' does not exist", color="red")
+            vcprint(f"- {root_name} path '{root_path}' does not exist — skipping git check for this root", color="yellow")
             continue
 
         try:

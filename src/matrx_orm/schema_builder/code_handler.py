@@ -23,16 +23,26 @@ class SchemaCodeHandler(CodeHandler):
         super().__init__(save_direct=output_config.save_direct)
         self.output_config = output_config
 
+    def _is_allowed(self, path: str) -> bool:
+        ext = os.path.splitext(path)[-1].lower()
+        if ext == ".py":
+            return self.output_config.python
+        if ext == ".ts":
+            return self.output_config.typescript
+        if ext == ".json":
+            return self.output_config.json
+        return True
+
     def generate_and_save_code_from_object(self, config_obj, main_code, additional_code=None):
         temp_path: str = config_obj.get("temp_path", "")
-        ext = os.path.splitext(temp_path)[-1].lower()
-
-        if ext == ".py" and not self.output_config.python:
+        if not self._is_allowed(temp_path):
             return
-        if ext == ".ts" and not self.output_config.typescript:
-            return
-
         super().generate_and_save_code_from_object(config_obj, main_code, additional_code)
+
+    def save_code_file(self, file_path: str, content: str) -> None:
+        if not self._is_allowed(file_path):
+            return
+        super().save_code_file(file_path, content)
 
     def write_to_json(self, path, data, root="temp", clean=True):
         if not self.output_config.json:

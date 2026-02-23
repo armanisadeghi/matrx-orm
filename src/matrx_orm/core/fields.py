@@ -887,7 +887,7 @@ class IPAddressField(Field):
 class ForeignKey(Field):
     def __init__(
         self,
-        to_model: str,
+        to_model: str | type,
         to_column: str,
         related_name: str = None,
         on_delete: str = "CASCADE",

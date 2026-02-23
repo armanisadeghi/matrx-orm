@@ -22,6 +22,19 @@ from matrx_orm.schema_builder.helpers.git_checker import check_git_status
 from matrx_orm.schema_builder.schema_manager import SchemaManager
 
 
+def _close_pools() -> None:
+    """Close all open psycopg_pool ConnectionPools to suppress thread warnings on exit."""
+    try:
+        from matrx_orm.client.postgres_connection import connection_pools
+        for name, pool in list(connection_pools.items()):
+            try:
+                pool.close()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
 def _load_yaml(path: Path) -> dict[str, Any]:
     try:
         import yaml
@@ -214,4 +227,7 @@ def run_schema_generation(config_path: str | Path = "matrx_orm.yaml") -> None:
                 f"[MATRX ORM] Error generating '{db_name}': {e}",
                 color="red",
             )
+            _close_pools()
             raise
+
+    _close_pools()

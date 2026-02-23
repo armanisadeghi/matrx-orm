@@ -729,12 +729,14 @@ class Schema:
     _database = \"{self.database_project}\"\n"""
         return users_model
 
-    def get_string_model_registry(self):
-        # Generates the model_registry string for all models
-        all_models = [table.name_pascal for table in self.tables.values()]
-        all_models.append("Users")  # Always include the Users model
+    def get_string_model_registry(self, sorted_tables: list[str]) -> str:
+        # Only register the models that are actually defined in this file.
+        # When include_tables / exclude_tables is active, sorted_tables is the
+        # filtered subset — registering the full schema would produce NameErrors
+        # for every class that wasn't generated.
+        all_models = [self.tables[t].name_pascal for t in sorted_tables]
+        all_models.append("Users")  # Users stub is always generated
 
-        # Join the models into a string with appropriate formatting
         model_registry_string = (
             "\nmodel_registry.register_all(\n[\n        "
             + ",\n        ".join(all_models)
@@ -832,7 +834,7 @@ class Schema:
             )
             py_all_manager_import_names_str += f"from .{table.name} import {table.python_model_name}DTO, {table.python_model_name}Base\n"
 
-        py_structure.append(self.get_string_model_registry())
+        py_structure.append(self.get_string_model_registry(sorted_tables))
 
         main_code = "\n".join(py_structure)
         additional_code = "\n".join(py_manager_structure)
