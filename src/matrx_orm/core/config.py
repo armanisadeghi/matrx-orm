@@ -280,14 +280,13 @@ def get_schema_builder_overrides(db_project: str) -> Dict:
 def get_code_config(db_project):
     python_root, ts_root = settings.ADMIN_PYTHON_ROOT, settings.ADMIN_TS_ROOT
 
-    usable_name = get_database_alias(db_project)
-    ADMIN_PYTHON_ROOT = os.path.join(python_root, "database", usable_name)
+    ADMIN_PYTHON_ROOT = os.path.join(python_root, "db")
     ADMIN_TS_ROOT = ts_root
 
     CODE_BASICS_PYTHON_MODELS = {
         "temp_path": "models.py",
         "root": ADMIN_PYTHON_ROOT,
-        "file_location": f"# File: database/{usable_name}/models.py",
+        "file_location": "# File: db/models.py",
         # Note: import_lines are dynamically replaced by generate_models() in schema.py
         # based on the actual field types used. This is a fallback default only.
         "import_lines": [
@@ -414,7 +413,7 @@ def get_code_config(db_project):
     CODE_BASICS_PYTHON_BASE_MANAGER = {
         "temp_path": "",
         "root": os.path.join(ADMIN_PYTHON_ROOT, "managers"),
-        "file_location": f"# File: database/{usable_name}/managers/",
+        "file_location": "# File: db/managers/",
         "import_lines": [
             "from matrx_utils import vcprint",
         ],
@@ -425,7 +424,7 @@ def get_code_config(db_project):
     CODE_BASICS_PYTHON_BASE_ALL_MANAGERS = {
         "temp_path": "__init__.py",
         "root": os.path.join(ADMIN_PYTHON_ROOT, "managers"),
-        "file_location": f"# File: database/{usable_name}/managers/__init__.py",
+        "file_location": "# File: db/managers/__init__.py",
         "import_lines": [
         ],
         "additional_top_lines": [],
@@ -435,7 +434,7 @@ def get_code_config(db_project):
     CODE_BASICS_PYTHON_AUTO_CONFIG = {
         "temp_path": "auto_config.py",
         "root": os.path.join(ADMIN_PYTHON_ROOT, "helpers"),
-        "file_location": f"# File: database/{db_project}/helpers/auto_config.py",
+        "file_location": "# File: db/helpers/auto_config.py",
         "import_lines": [],
         "additional_top_lines": [],
         "additional_bottom_lines": [],

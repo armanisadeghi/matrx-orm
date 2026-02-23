@@ -1157,7 +1157,7 @@ class Table:
         #   2. global_manager_flags from matrx_orm.yaml generate[].manager_flags
         #   3. manager_config_overrides from databases[].manager_config_overrides (per-table)
         base_config = {
-            "models_module_path": f"database.{alias}.models",
+            "models_module_path": "db.models",
             "model_pascal": self.python_model_name,
             "model_name": self.name,
             "model_name_plural": self.name_plural,

@@ -100,44 +100,47 @@ def run_schema_generation(config_path: str | Path = "matrx_orm.yaml") -> None:
     DEBUG_CONFIG["verbose"] = bool(debug_cfg.get("verbose", False))
 
     # -------------------------------------------------------------------------
-    # Output config — resolves paths, type flags, and save_direct
+    # Output config — all paths come from .env only, never from the yaml.
     #
-    # Priority (highest wins):
-    #   1. .env  MATRX_PYTHON_ROOT / MATRX_TS_ROOT / MATRX_SAVE_DIRECT
-    #   2. matrx_orm.yaml  output.python_root / output.typescript_root / output.save_direct
+    # Required env var:
+    #   MATRX_PYTHON_ROOT   absolute path to the Python project root
     #
-    # This lets developers keep machine-specific absolute paths (e.g. paths
-    # outside the project, or different per server) in their local .env without
-    # touching the yaml that gets committed to git.
+    # Optional env vars:
+    #   MATRX_TS_ROOT       absolute path to the Next.js project root
+    #                       (only needed when output.typescript: true)
+    #   MATRX_SAVE_DIRECT   true/false override for save_direct
     # -------------------------------------------------------------------------
     output_cfg = cfg.get("output", {})
-    base = config_path.parent
 
-    # Resolve python_root: .env wins over yaml
-    env_python_root = os.environ.get("MATRX_PYTHON_ROOT", "").strip()
-    if env_python_root:
-        python_root = env_python_root
-    elif "python_root" in output_cfg:
-        python_root = str((base / output_cfg["python_root"]).resolve())
-    else:
-        python_root = ""
+    python_root = os.environ.get("MATRX_PYTHON_ROOT", "").strip()
+    ts_root = os.environ.get("MATRX_TS_ROOT", "").strip()
 
-    if python_root:
-        os.environ["ADMIN_PYTHON_ROOT"] = python_root
+    typescript_enabled = output_cfg.get("typescript", False)
 
-    # Resolve typescript_root: .env wins over yaml
-    env_ts_root = os.environ.get("MATRX_TS_ROOT", "").strip()
-    if env_ts_root:
-        ts_root = env_ts_root
-    elif "typescript_root" in output_cfg:
-        ts_root = str((base / output_cfg["typescript_root"]).resolve())
-    else:
-        ts_root = ""
+    if not python_root:
+        vcprint(
+            "\n[MATRX ORM] ERROR: MATRX_PYTHON_ROOT is not set.\n"
+            "  Add it to your .env file:\n"
+            "    MATRX_PYTHON_ROOT=/absolute/path/to/your/python/project\n",
+            color="red",
+        )
+        sys.exit(1)
 
+    if typescript_enabled and not ts_root:
+        vcprint(
+            "\n[MATRX ORM] ERROR: MATRX_TS_ROOT is not set but output.typescript is true.\n"
+            "  Add it to your .env file:\n"
+            "    MATRX_TS_ROOT=/absolute/path/to/your/nextjs/project\n"
+            "  Or set  typescript: false  in matrx_orm.yaml if this is a Python-only project.\n",
+            color="red",
+        )
+        sys.exit(1)
+
+    os.environ["ADMIN_PYTHON_ROOT"] = python_root
     if ts_root:
         os.environ["ADMIN_TS_ROOT"] = ts_root
 
-    # Resolve save_direct: .env wins over yaml (yaml default is False)
+    # save_direct: .env wins over yaml
     env_save_direct = os.environ.get("MATRX_SAVE_DIRECT", "").strip().lower()
     if env_save_direct in ("1", "true"):
         output_cfg = {**output_cfg, "save_direct": True}
@@ -157,15 +160,12 @@ def run_schema_generation(config_path: str | Path = "matrx_orm.yaml") -> None:
             from git import Repo, InvalidGitRepositoryError
             _repo = Repo(python_root, search_parent_directories=True)
             _repo_root = _repo.working_tree_dir or python_root
-            for _db in cfg.get("databases", []):
-                _alias = _db.get("alias", "")
-                if _alias:
-                    _abs = os.path.join(python_root, _alias)
-                    try:
-                        _rel = os.path.relpath(_abs, _repo_root)
-                        _ignore_prefixes.append(_rel)
-                    except ValueError:
-                        pass
+            _abs = os.path.join(python_root, "db")
+            try:
+                _rel = os.path.relpath(_abs, _repo_root)
+                _ignore_prefixes.append(_rel)
+            except ValueError:
+                pass
         except Exception:
             pass
     check_git_status(output_config.save_direct, python_root=python_root, ts_root=ts_root, ignore_path_prefixes=_ignore_prefixes)
