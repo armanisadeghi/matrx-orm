@@ -1176,6 +1176,10 @@ class Table:
             "include_to_dict_methods": False,
             "include_to_dict_relations": False,
             "m2m_relations": m2m_relations,
+            # view_prefetch — relation names to auto-fetch on every load.
+            # Defaults to empty: no automatic prefetching unless explicitly opted in
+            # via matrx_orm.yaml manager_flags.view_prefetch or per-table overrides.
+            "view_prefetch": [],
         }
 
         # Layer 2: yaml generate[].manager_flags (all-table defaults for this run)

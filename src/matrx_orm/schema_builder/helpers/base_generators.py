@@ -9,6 +9,7 @@ def generate_base_manager_class(
     model_name_plural: str,
     model_name_snake: str,
     relations: list[str] | None = None,
+    view_prefetch: list[str] | None = None,
 ) -> str:
     """Generate the minimal core manager class with both ModelView and legacy DTO.
 
@@ -19,8 +20,15 @@ def generate_base_manager_class(
       duplication projection pattern.
     - The manager uses ``view_class`` by default. To revert to the legacy DTO
       path set ``view_class = None`` and pass ``dto_class={Model}DTO`` to super().
+
+    Args:
+        view_prefetch: Explicit list of relation names to auto-prefetch on every
+            load. Defaults to [] (no automatic prefetching). Set specific relation
+            names in matrx_orm.yaml manager_flags.view_prefetch to opt in.
     """
-    prefetch_list = repr(relations or [])
+    # Default to empty — prefetching everything automatically is expensive.
+    # Users opt in per-table via matrx_orm.yaml manager_flags.view_prefetch.
+    prefetch_list = repr(view_prefetch if view_prefetch is not None else [])
     return f"""
 from dataclasses import dataclass
 from typing import Any
@@ -526,6 +534,7 @@ def generate_manager_class(
     include_to_dict_methods: bool = False,
     include_to_dict_relations: bool = False,
     m2m_relations: list[str] | None = None,
+    view_prefetch: list[str] | None = None,
 ) -> str:
     """Combine all parts into the full class with fine-grained configuration and singleton manager."""
     base = generate_base_manager_class(
@@ -535,6 +544,7 @@ def generate_manager_class(
         model_name_plural,
         model_name_snake,
         relations=relations or [],
+        view_prefetch=view_prefetch,
     )
     parts = [base]
 

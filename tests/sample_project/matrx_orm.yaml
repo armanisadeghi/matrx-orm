@@ -92,6 +92,26 @@ generate:
       include_or_not_methods: false     # load_or_create, update_or_create helpers
       include_to_dict_methods: false    # to_dict() / to_json() serializers
       include_to_dict_relations: false  # include related objects in to_dict() output
+      #
+      # view_prefetch — relation names to automatically fetch on EVERY model load.
+      #
+      # Default: [] (empty — no automatic prefetching).
+      #
+      # Prefetching is opt-in because fetching all relations on every load is
+      # expensive and almost never what you want globally. Add only the relations
+      # that are truly needed on every access for a given table.
+      #
+      # Accepted values: any FK, IFK, or M2M field name defined on the model.
+      #
+      # Example — prefetch two relations for every Tools instance:
+      #   view_prefetch:
+      #     - tool_test_samples
+      #     - tool_ui_components
+      #
+      # Per-table overrides: set view_prefetch in manager_config_overrides on
+      # your DatabaseProjectConfig to target a single table without affecting others.
+      #
+      view_prefetch: []
 
   # Uncomment to also generate from the secondary database:
   # - database: secondary
