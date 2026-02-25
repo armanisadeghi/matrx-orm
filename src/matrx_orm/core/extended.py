@@ -241,11 +241,20 @@ class BaseManager(Generic[ModelT]):
         """Hook for subclasses to add runtime data to DTO"""
         pass
 
+    async def _initialize_runtime_data(self, item: ModelT) -> None:
+        """Hook for subclasses to normalize or enrich model fields after load.
+
+        Override this in generated or custom manager bases to coerce JSONB/Array
+        fields to their expected Python types once, on every load path.
+        """
+        pass
+
     async def _initialize_item_runtime(self, item: ModelT | None) -> ModelT | None:
         if not item:
             return None
         if not hasattr(item, "runtime"):
             item.runtime = RuntimeContainer()
+        await self._initialize_runtime_data(item)
         if self.dto_class:
             dto = await self.dto_class.from_model(item)
             await self._initialize_dto_runtime(dto, item)

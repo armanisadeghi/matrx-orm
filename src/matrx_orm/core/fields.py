@@ -5,11 +5,25 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 from enum import Enum as PythonEnum
 from ipaddress import IPv4Address, IPv6Address, ip_network
-from typing import List, Type, Union
+from typing import TYPE_CHECKING, Any, Generic, List, Type, TypeVar, Union, overload
+
+# TypeVar with default (PEP 696, Python 3.13+) keeps bare JSONBField/JSONField
+# backward-compatible: unparameterised use still returns dict|list|None.
+_JT = TypeVar("_JT", default=dict[str, Any] | list[Any])
 from uuid import UUID
+
+if TYPE_CHECKING:
+    pass  # overload imports already available via typing
 
 
 class Field:
+    if TYPE_CHECKING:
+        @overload
+        def __get__(self, obj: None, objtype: type = ...) -> "Field": ...
+        @overload
+        def __get__(self, obj: object, objtype: type = ...) -> Any: ...
+        def __get__(self, obj: object | None, objtype: type = ...) -> Any: ...
+
     CORE_ATTRS = {
         "db_type",
         "is_native",
@@ -147,6 +161,13 @@ class Field:
 
 
 class UUIDField(Field):
+    if TYPE_CHECKING:
+        @overload
+        def __get__(self, obj: None, objtype: type = ...) -> "UUIDField": ...
+        @overload
+        def __get__(self, obj: object, objtype: type = ...) -> str | None: ...
+        def __get__(self, obj: object | None, objtype: type = ...) -> str | "UUIDField" | None: ...
+
     def __init__(self, **kwargs):
         super().__init__("text", **kwargs)
 
@@ -191,6 +212,13 @@ class UUIDFieldREAL(Field):
 
 
 class CharField(Field):
+    if TYPE_CHECKING:
+        @overload
+        def __get__(self, obj: None, objtype: type = ...) -> "CharField": ...
+        @overload
+        def __get__(self, obj: object, objtype: type = ...) -> str | None: ...
+        def __get__(self, obj: object | None, objtype: type = ...) -> str | "CharField" | None: ...
+
     def __init__(self, max_length: int = 255, **kwargs):
         super().__init__(f"VARCHAR({max_length})", **kwargs)
         self.max_length = max_length
@@ -211,6 +239,13 @@ class CharField(Field):
 
 
 class TextField(Field):
+    if TYPE_CHECKING:
+        @overload
+        def __get__(self, obj: None, objtype: type = ...) -> "TextField": ...
+        @overload
+        def __get__(self, obj: object, objtype: type = ...) -> str | None: ...
+        def __get__(self, obj: object | None, objtype: type = ...) -> str | "TextField" | None: ...
+
     def __init__(self, **kwargs):
         super().__init__("TEXT", **kwargs)
 
@@ -226,6 +261,13 @@ class TextField(Field):
 
 
 class IntegerField(Field):
+    if TYPE_CHECKING:
+        @overload
+        def __get__(self, obj: None, objtype: type = ...) -> "IntegerField": ...
+        @overload
+        def __get__(self, obj: object, objtype: type = ...) -> int | None: ...
+        def __get__(self, obj: object | None, objtype: type = ...) -> int | "IntegerField" | None: ...
+
     def __init__(self, **kwargs):
         super().__init__("INTEGER", **kwargs)
 
@@ -255,6 +297,13 @@ class IntegerField(Field):
 
 
 class FloatField(Field):
+    if TYPE_CHECKING:
+        @overload
+        def __get__(self, obj: None, objtype: type = ...) -> "FloatField": ...
+        @overload
+        def __get__(self, obj: object, objtype: type = ...) -> float | None: ...
+        def __get__(self, obj: object | None, objtype: type = ...) -> float | "FloatField" | None: ...
+
     def __init__(self, **kwargs):
         super().__init__("FLOAT", **kwargs)
 
@@ -273,6 +322,13 @@ class FloatField(Field):
 
 
 class BooleanField(Field):
+    if TYPE_CHECKING:
+        @overload
+        def __get__(self, obj: None, objtype: type = ...) -> "BooleanField": ...
+        @overload
+        def __get__(self, obj: object, objtype: type = ...) -> bool | None: ...
+        def __get__(self, obj: object | None, objtype: type = ...) -> bool | "BooleanField" | None: ...
+
     def __init__(self, **kwargs):
         super().__init__("BOOLEAN", **kwargs)
 
@@ -326,6 +382,13 @@ class BooleanField(Field):
 
 
 class DateTimeField(Field):
+    if TYPE_CHECKING:
+        @overload
+        def __get__(self, obj: None, objtype: type = ...) -> "DateTimeField": ...
+        @overload
+        def __get__(self, obj: object, objtype: type = ...) -> datetime | None: ...
+        def __get__(self, obj: object | None, objtype: type = ...) -> datetime | "DateTimeField" | None: ...
+
     def __init__(self, auto_now: bool = False, auto_now_add: bool = False, **kwargs):
         super().__init__("TIMESTAMP", **kwargs)
         self.auto_now = auto_now
@@ -345,6 +408,13 @@ class DateTimeField(Field):
 
 
 class TimeField(Field):
+    if TYPE_CHECKING:
+        @overload
+        def __get__(self, obj: None, objtype: type = ...) -> "TimeField": ...
+        @overload
+        def __get__(self, obj: object, objtype: type = ...) -> time | None: ...
+        def __get__(self, obj: object | None, objtype: type = ...) -> time | "TimeField" | None: ...
+
     def __init__(self, **kwargs):
         super().__init__("TIME", **kwargs)
 
@@ -362,6 +432,13 @@ class TimeField(Field):
 
 
 class DateField(Field):
+    if TYPE_CHECKING:
+        @overload
+        def __get__(self, obj: None, objtype: type = ...) -> "DateField": ...
+        @overload
+        def __get__(self, obj: object, objtype: type = ...) -> date | None: ...
+        def __get__(self, obj: object | None, objtype: type = ...) -> date | "DateField" | None: ...
+
     def __init__(self, **kwargs):
         super().__init__("DATE", **kwargs)
 
@@ -378,7 +455,15 @@ class DateField(Field):
         return value
 
 
-class JSONField(Field):
+class JSONField(Field, Generic[_JT]):
+    if TYPE_CHECKING:
+        @overload
+        def __get__(self, obj: None, objtype: type = ...) -> "JSONField[_JT]": ...
+        @overload
+        def __get__(self, obj: object, objtype: type = ...) -> _JT | None: ...
+        def __get__(self, obj: object | None, objtype: type = ...) -> _JT | None | "JSONField[_JT]": ...
+        def __set__(self, obj: object, value: _JT | None) -> None: ...
+
     def __init__(self, **kwargs):
         super().__init__("JSONB", **kwargs)
 
@@ -394,6 +479,13 @@ class JSONField(Field):
 
 
 class ArrayField(Field):
+    if TYPE_CHECKING:
+        @overload
+        def __get__(self, obj: None, objtype: type = ...) -> "ArrayField": ...
+        @overload
+        def __get__(self, obj: object, objtype: type = ...) -> list[Any] | None: ...
+        def __get__(self, obj: object | None, objtype: type = ...) -> list[Any] | "ArrayField" | None: ...
+
     def __init__(self, item_type: Field, **kwargs):
         super().__init__(f"{item_type.db_type}[]", **kwargs)
         self.item_type = item_type
@@ -544,6 +636,13 @@ class EmailField(CharField):
 
 
 class DecimalField(Field):
+    if TYPE_CHECKING:
+        @overload
+        def __get__(self, obj: None, objtype: type = ...) -> "DecimalField": ...
+        @overload
+        def __get__(self, obj: object, objtype: type = ...) -> Decimal | None: ...
+        def __get__(self, obj: object | None, objtype: type = ...) -> Decimal | "DecimalField" | None: ...
+
     def __init__(self, max_digits: int = None, decimal_places: int = 2, **kwargs):
         column_type = "NUMERIC"
         if max_digits is not None:
@@ -582,6 +681,13 @@ class DecimalField(Field):
 
 
 class BigIntegerField(Field):
+    if TYPE_CHECKING:
+        @overload
+        def __get__(self, obj: None, objtype: type = ...) -> "BigIntegerField": ...
+        @overload
+        def __get__(self, obj: object, objtype: type = ...) -> int | None: ...
+        def __get__(self, obj: object | None, objtype: type = ...) -> int | "BigIntegerField" | None: ...
+
     def __init__(self, **kwargs):
         super().__init__("BIGINT", **kwargs)
 
@@ -608,6 +714,13 @@ class BigIntegerField(Field):
 
 
 class SmallIntegerField(Field):
+    if TYPE_CHECKING:
+        @overload
+        def __get__(self, obj: None, objtype: type = ...) -> "SmallIntegerField": ...
+        @overload
+        def __get__(self, obj: object, objtype: type = ...) -> int | None: ...
+        def __get__(self, obj: object | None, objtype: type = ...) -> int | "SmallIntegerField" | None: ...
+
     def __init__(self, **kwargs):
         super().__init__("SMALLINT", **kwargs)
 
@@ -634,6 +747,13 @@ class SmallIntegerField(Field):
 
 
 class BinaryField(Field):
+    if TYPE_CHECKING:
+        @overload
+        def __get__(self, obj: None, objtype: type = ...) -> "BinaryField": ...
+        @overload
+        def __get__(self, obj: object, objtype: type = ...) -> bytes | None: ...
+        def __get__(self, obj: object | None, objtype: type = ...) -> bytes | "BinaryField" | None: ...
+
     def __init__(self, **kwargs):
         super().__init__("BYTEA", **kwargs)
 
@@ -671,6 +791,13 @@ class MoneyField(DecimalField):
 
 
 class HStoreField(Field):
+    if TYPE_CHECKING:
+        @overload
+        def __get__(self, obj: None, objtype: type = ...) -> "HStoreField": ...
+        @overload
+        def __get__(self, obj: object, objtype: type = ...) -> dict[str, str | None] | None: ...
+        def __get__(self, obj: object | None, objtype: type = ...) -> dict[str, str | None] | "HStoreField" | None: ...
+
     def __init__(self, **kwargs):
         super().__init__("HSTORE", **kwargs)
 
@@ -695,7 +822,15 @@ class HStoreField(Field):
             raise ValueError("Value must be a dictionary")
 
 
-class JSONBField(Field):
+class JSONBField(Field, Generic[_JT]):
+    if TYPE_CHECKING:
+        @overload
+        def __get__(self, obj: None, objtype: type = ...) -> "JSONBField[_JT]": ...
+        @overload
+        def __get__(self, obj: object, objtype: type = ...) -> _JT | None: ...
+        def __get__(self, obj: object | None, objtype: type = ...) -> _JT | None | "JSONBField[_JT]": ...
+        def __set__(self, obj: object, value: _JT | None) -> None: ...
+
     def __init__(self, **kwargs):
         super().__init__("JSONB", **kwargs)
 
@@ -723,6 +858,13 @@ class FileField(CharField):
 
 
 class TimeDeltaField(Field):
+    if TYPE_CHECKING:
+        @overload
+        def __get__(self, obj: None, objtype: type = ...) -> "TimeDeltaField": ...
+        @overload
+        def __get__(self, obj: object, objtype: type = ...) -> timedelta | None: ...
+        def __get__(self, obj: object | None, objtype: type = ...) -> timedelta | "TimeDeltaField" | None: ...
+
     def __init__(self, **kwargs):
         super().__init__("INTERVAL", **kwargs)
 
