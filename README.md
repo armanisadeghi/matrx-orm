@@ -1590,7 +1590,7 @@ except OptimisticLockError as e:
     order_b.total = Decimal("75.00")
     await order_b.save()               # OK now
 ```
-
+ 
 ### Abstract Base Models
 
 Mark a model `abstract = True` so it contributes shared fields to subclasses without creating its own table:
