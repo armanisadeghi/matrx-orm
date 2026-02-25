@@ -67,7 +67,11 @@ echo ""
 # ── Update pyproject.toml and amend the commit ─────────────────────────────
 
 info "Updating $PYPROJECT to version $NEW_VERSION..."
-sed -i '' "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" "$PYPROJECT"
+if [[ "$(uname)" == "Darwin" ]]; then
+    sed -i '' "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" "$PYPROJECT"
+else
+    sed -i "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" "$PYPROJECT"
+fi
 ok "Version updated in $PYPROJECT"
 
 info "Amending last commit to include version bump..."

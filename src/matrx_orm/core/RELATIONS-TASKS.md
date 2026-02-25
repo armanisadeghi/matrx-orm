@@ -1,52 +1,97 @@
-# Relations TODOs
+# TASK: Relations Performance & Architecture Improvements
 
-The following are some improvements that need to be made to the handling of relations. These notes need to be closely reviewed to ensure this inforation is fresh and still valid.
+> **Location:** `src/matrx_orm/core/relations.py`
+> **Priority:** `medium`
+> **Impact:** `non-breaking`
+> **Status:** `ready`
+> **Created:** 2025-02-25
+> **Updated:** 2025-02-25
 
-RULES:
-- If you work on any part of this, you must update this document to make sure it remains fresh.
-- If you are told to review this, ensure you create a direct and concise task lis in the document for better tracking.
-- As parts of this are completed, remove the details of the taks and replace them with a concise note about the changes to reduce the bulk of information.
-- When all of this is confirmed to be done, the document must be deleted, with the approval of the manager
+## Summary
 
+A collection of performance and architecture improvements to the relations system. These
+address N+1 query patterns, cache inefficiencies, and missing API surface for batch
+loading. All items are additive or internal — existing public APIs should remain unchanged.
 
-## Harder Improvements to Consider Later
+## Context
 
-These are more architectural and would require new API surface or deeper changes:
+The current relation system works correctly but has known performance gaps when used at
+scale. Fetching related objects for a collection of instances still results in N+1 queries
+(parallelized, but still N separate DB round-trips). There is no batch prefetch, no
+request-scoped deduplication, and `select_related()` only covers FK joins — not IFKs
+or M2Ms.
 
-### 1. Bulk Prefetch for Collections — the real N+1 fix
+These improvements range from straightforward (bulk prefetch) to architectural (DataLoader
+pattern). They are ordered roughly by impact-to-effort ratio.
 
-When you fetch a list of instances and then call `fetch_fk()` in a loop, you still get N+1 queries even with the concurrency improvements (they just fire in parallel rather than serially). The proper fix is a class-level batch loader:
+## Task List
+
+- [ ] **Bulk prefetch for collections** — Implement `prefetch_related(instances, *relations)` that collects unique FK values across all instances and issues a single `WHERE id = ANY($1)` query. Reduces N+1 to exactly 2 queries regardless of collection size.
+- [ ] **Joined IFK loading** — IFKs currently issue `WHERE parent_id = $1` per relation. Batch version: `WHERE parent_id = ANY($1)`, then group results by `parent_id` in Python and distribute to parent instances.
+- [ ] **Extend `select_related()` to IFKs and M2Ms** — Currently only supports FKs via `LEFT JOIN`. IFKs need a lateral join or subquery approach. M2Ms need a `LEFT JOIN` through the junction table with array aggregation for deduplication.
+- [ ] **Relation-level cache keys** — `StateManager` caches model instances by PK, but `fetch_fk()` still hits the DB even if the target was previously fetched. Add relation-level cache keys (e.g., `"Order.customer_id:uuid-123"`) to short-circuit repeated access within a request lifetime.
+- [ ] **DataLoader / request-scoped batching** — For deeply nested fetches (FK -> FK -> M2M), implement a DataLoader-style pattern that groups all pending fetches within the same async tick into a single batched query. Requires a per-request context object. Largest architectural change in this list.
+- [ ] **Composite PK M2M support** — The M2M `fetch_related` currently uses `primary_keys[0]`. If M2M targets have composite PKs, the JOIN condition needs to match all PK columns. Currently a known limitation, not a bug.
+
+## Risks & Considerations
+
+- **Non-breaking by design:** All items either add new methods or change internal query
+  strategies. Existing public APIs (`fetch_fk()`, `fetch_ifk()`, `select_related()`)
+  should keep their signatures and behavior.
+- **DataLoader is the biggest lift:** It requires a context object threaded through the
+  async call stack, similar to what GraphQL servers do. Consider whether this complexity
+  is justified by actual usage patterns before starting it.
+- **`select_related()` for M2Ms** may produce large result sets with duplication before
+  aggregation. Benchmark against the prefetch approach to decide which is actually faster
+  for typical workloads.
+
+## Proposed Solution
+
+### Bulk Prefetch (highest priority)
 
 ```python
 @classmethod
 async def prefetch_related(cls, instances: list[Model], *relation_names: str) -> None:
     """Batch-load named relations across a collection in O(relations) queries."""
+    for name in relation_names:
+        fk_values = [getattr(inst, name) for inst in instances if getattr(inst, name)]
+        unique_values = list(set(fk_values))
+        related_map = await RelatedModel.filter(id__in=unique_values).as_dict("id")
+        for inst in instances:
+            val = getattr(inst, name)
+            if val and val in related_map:
+                inst.set_related(name, related_map[val])
 ```
 
-For FK relations: collect all unique FK values across all instances, issue a single `WHERE id = ANY($1)`, then distribute results back. This reduces N+1 to exactly 2 queries regardless of collection size — the same pattern Django's `prefetch_related()` uses.
+The same collector pattern applies to IFK batching — collect parent IDs, single query
+with `ANY($1)`, group-by-parent in Python.
 
-### 2. DataLoader / Request-Scoped Batching
+### Relation-Level Caching
 
-For deeply nested fetches (FK → FK → M2M), a DataLoader pattern groups all pending fetches within the same async tick into a single batched query. This is how GraphQL servers handle N+1. It would require a per-request context object to accumulate pending loads, which is a bigger architecture addition.
+Add a cache key format to `StateManager`:
 
-### 3. Joined IFK Loading
-
-IFKs (inverse foreign keys) currently issue `WHERE parent_id = $1` per relation. When fetching IFKs for a collection of parents this is still N queries. The batch version would be:
-
-```sql
-SELECT * FROM child WHERE parent_id = ANY($1)
+```
+{ModelName}.{field_name}:{fk_value} → cached related instance
 ```
 
-Then group results by `parent_id` in Python and distribute them to the right parent instance.
+Check this key inside `fetch_fk()` before issuing any query. Invalidate on writes to
+the related model.
 
-### 4. `select_related` Extended to IFKs and M2Ms
+---
 
-Currently `select_related()` on the `QueryBuilder` only supports FKs (one `LEFT JOIN` per FK). Extending it to IFKs would require a lateral join or subquery approach, and M2Ms would need a `LEFT JOIN` through the junction table with deduplication (array aggregation). Complex but eliminates extra queries at the queryset level.
+<!--
+LIFECYCLE RULES (do not remove this block — it governs how this file is maintained):
 
-### 5. Query Result Caching at the Relation Level
+1. CREATION: Copy this template. Fill in the metadata block and Summary. Register the
+   task in TASKS.md. Everything else can be filled incrementally.
 
-Right now `StateManager` caches model instances, but `fetch_fk()` still calls `related_model.get()` which hits the cache only if the FK target was previously fetched by PK. A relation-level cache key (e.g., `"Order.customer_id:uuid-123"`) would short-circuit the DB call entirely on repeated access to the same related object within a request lifetime.
+2. UPDATES: Anyone working on this task MUST update the metadata block (Status, Updated
+   date) and check off completed items. Keep the document an accurate snapshot.
 
-### 6. Composite PK M2M Support
+3. COMPLETION: When every item is checked and confirmed working, set Status to `done`,
+   add a one-line completion note at the top of the Task List, and notify the project
+   lead. The project lead decides whether to archive or delete the file.
 
-The M2M `fetch_related` now uses `primary_keys[0]`, which is correct for the vast majority of models. If you ever have M2M targets with composite PKs, the JOIN condition would need to match all PK columns. Worth noting as a known limitation rather than a current bug.
+4. STALENESS: If you review this and find information that is outdated, fix it immediately
+   or add a warning note at the top: "> **STALE:** [what is outdated and why]"
+-->
