@@ -10,13 +10,28 @@ def generate_base_manager_class(
     model_name_snake: str,
     relations: list[str] | None = None,
 ) -> str:
-    """Generate the minimal core manager class using ModelView."""
+    """Generate the minimal core manager class with both ModelView and legacy DTO.
+
+    Both classes are generated so that:
+    - Existing code that imports ``{Model}DTO`` from this file continues to work
+      without any changes (zero breaking changes).
+    - New code can use ``{Model}View`` / ``view_class`` for the flat, zero-
+      duplication projection pattern.
+    - The manager uses ``view_class`` by default. To revert to the legacy DTO
+      path set ``view_class = None`` and pass ``dto_class={Model}DTO`` to super().
+    """
     prefetch_list = repr(relations or [])
     return f"""
-from matrx_orm import BaseManager, ModelView
+from dataclasses import dataclass
+from matrx_orm import BaseManager, BaseDTO, ModelView
 from {models_module_path} import {model_pascal}
 from typing import Optional, Type, Any
 
+
+# ---------------------------------------------------------------------------
+# ModelView (new) — preferred projection layer.
+# Stores results flat on the model instance; no duplication, no nesting.
+# ---------------------------------------------------------------------------
 
 class {model_pascal}View(ModelView):
     \"\"\"
@@ -46,6 +61,53 @@ class {model_pascal}View(ModelView):
     # they never abort the load.                                          #
     # ------------------------------------------------------------------ #
 
+
+# ---------------------------------------------------------------------------
+# BaseDTO (legacy) — kept for backward compatibility.
+# Existing imports of {model_pascal}DTO from this file continue to work.
+# Migrate business logic to {model_pascal}View when ready.
+# ---------------------------------------------------------------------------
+
+@dataclass
+class {model_pascal}DTO(BaseDTO):
+    id: str
+
+    async def _initialize_dto(self, model):
+        '''Override to populate DTO fields from the model.'''
+        self.id = str(model.id)
+        await self._process_core_data(model)
+        await self._process_metadata(model)
+        await self._initial_validation(model)
+        self.initialized = True
+
+    async def _process_core_data(self, model):
+        '''Process core data from the model item.'''
+        pass
+
+    async def _process_metadata(self, model):
+        '''Process metadata from the model item.'''
+        pass
+
+    async def _initial_validation(self, model):
+        '''Validate fields from the model item.'''
+        pass
+
+    async def _final_validation(self):
+        '''Final validation of the model item.'''
+        return True
+
+    async def get_validated_dict(self):
+        '''Get the validated dictionary.'''
+        validated = await self._final_validation()
+        return self.to_dict()
+
+
+# ---------------------------------------------------------------------------
+# Manager — uses ModelView by default.
+# To revert to the legacy DTO path:
+#   view_class = None
+#   super().__init__({model_pascal}, dto_class={model_pascal}DTO)
+# ---------------------------------------------------------------------------
 
 class {model_pascal}Base(BaseManager[{model_pascal}]):
     view_class = {model_pascal}View
