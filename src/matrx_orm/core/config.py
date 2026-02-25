@@ -455,9 +455,7 @@ def get_code_config(db_project):
         "temp_path": "",
         "root": os.path.join(ADMIN_PYTHON_ROOT, "managers"),
         "file_location": "# File: db/managers/",
-        "import_lines": [
-            "from matrx_utils import vcprint",
-        ],
+        "import_lines": [],
         "additional_top_lines": [],
         "additional_bottom_lines": [],
     }
