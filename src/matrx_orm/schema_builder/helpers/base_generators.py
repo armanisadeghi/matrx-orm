@@ -8,8 +8,110 @@ def generate_base_manager_class(
     model_name: str,
     model_name_plural: str,
     model_name_snake: str,
+    relations: list[str] | None = None,
 ) -> str:
-    """Generate the minimal core manager class without optional method sets."""
+    """Generate the minimal core manager class using ModelView."""
+    prefetch_list = repr(relations or [])
+    return f"""
+from matrx_orm import BaseManager, ModelView
+from {models_module_path} import {model_pascal}
+from typing import Optional, Type, Any
+
+
+class {model_pascal}View(ModelView):
+    \"\"\"
+    Declarative view for {model_pascal}.
+
+    Configure what gets fetched and shaped automatically on every load:
+
+      prefetch    — relation names to fetch concurrently (FK / IFK / M2M)
+      exclude     — model field names to omit from to_dict() output
+      inline_fk   — replace FK id columns with the full related object
+                    e.g. {{"customer_id": "customer"}}
+
+    Add async methods (no leading underscore) for computed fields:
+
+        async def display_name(self, model: {model_pascal}) -> str:
+            return model.name.title()
+    \"\"\"
+
+    prefetch: list = {prefetch_list}
+    exclude: list = []
+    inline_fk: dict = {{}}
+
+    # ------------------------------------------------------------------ #
+    # Computed fields — add async methods below.                          #
+    # Each method receives the model instance and returns a plain value.  #
+    # Errors in computed fields are logged and stored as None —           #
+    # they never abort the load.                                          #
+    # ------------------------------------------------------------------ #
+
+
+class {model_pascal}Base(BaseManager[{model_pascal}]):
+    view_class = {model_pascal}View
+
+    def __init__(self, view_class: Optional[Type[Any]] = None):
+        if view_class is not None:
+            self.view_class = view_class
+        super().__init__({model_pascal})
+
+    def _initialize_manager(self):
+        super()._initialize_manager()
+
+    async def _initialize_runtime_data(self, item: {model_pascal}) -> None:
+        pass
+
+    async def create_{model_name}(self, **data):
+        return await self.create_item(**data)
+
+    async def delete_{model_name}(self, id):
+        return await self.delete_item(id)
+
+    async def get_{model_name}_with_all_related(self, id):
+        return await self.get_item_with_all_related(id)
+
+    async def load_{model_name}_by_id(self, id):
+        return await self.load_by_id(id)
+
+    async def load_{model_name}(self, use_cache=True, **kwargs):
+        return await self.load_item(use_cache, **kwargs)
+
+    async def update_{model_name}(self, id, **updates):
+        return await self.update_item(id, **updates)
+
+    async def load_{model_name_plural}(self, **kwargs):
+        return await self.load_items(**kwargs)
+
+    async def filter_{model_name_plural}(self, **kwargs):
+        return await self.filter_items(**kwargs)
+
+    async def get_or_create(self, defaults=None, **kwargs):
+        return await self.get_or_create(defaults, **kwargs)
+"""
+
+
+def generate_legacy_dto_manager_class(
+    models_module_path: str,
+    model_pascal: str,
+    model_name: str,
+    model_name_plural: str,
+    model_name_snake: str,
+) -> str:
+    """
+    Generate a manager using the legacy BaseDTO pattern.
+    Preserved for backward compatibility — new code should use
+    generate_base_manager_class() with ModelView instead.
+
+    .. deprecated::
+        Use generate_base_manager_class() which scaffolds a ModelView.
+    """
+    import warnings
+    warnings.warn(
+        "generate_legacy_dto_manager_class() is deprecated. "
+        "Use generate_base_manager_class() which scaffolds a ModelView.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return f"""
 from dataclasses import dataclass
 from matrx_orm import BaseManager, BaseDTO
@@ -21,7 +123,6 @@ class {model_pascal}DTO(BaseDTO):
     id: str
 
     async def _initialize_dto(self, model):
-        '''Override the base initialization method.'''
         self.id = str(model.id)
         await self._process_core_data(model)
         await self._process_metadata(model)
@@ -29,29 +130,21 @@ class {model_pascal}DTO(BaseDTO):
         self.initialized = True
 
     async def _process_core_data(self, model):
-        '''Process core data from the model item.'''
         pass
 
     async def _process_metadata(self, model):
-        '''Process metadata from the model item.'''
         pass
 
     async def _initial_validation(self, model):
-        '''Validate fields from the model item.'''
         pass
 
     async def _final_validation(self):
-        '''Final validation of the model item.'''
         return True
 
     async def get_validated_dict(self):
-        '''Get the validated dictionary.'''
         validated = await self._final_validation()
         dict_data = self.to_dict()
-        if not validated:
-            vcprint(dict_data, "[{model_pascal}DTO] Validation Failed", verbose=True, pretty=True, color="red")
         return dict_data
-
 
 
 class {model_pascal}Base(BaseManager[{model_pascal}]):
@@ -373,6 +466,7 @@ def generate_manager_class(
         model_name,
         model_name_plural,
         model_name_snake,
+        relations=relations or [],
     )
     parts = [base]
 

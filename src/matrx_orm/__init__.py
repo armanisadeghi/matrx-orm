@@ -13,6 +13,7 @@ from .core.config import (
 )
 
 from .core.extended import BaseManager, BaseDTO
+from .core.model_view import ModelView
 from .core.base import Model
 from .core.registry import model_registry
 from .core.fields import (
@@ -141,6 +142,7 @@ __all__ = [
     "get_default_code_config",
     "BaseManager",
     "BaseDTO",
+    "ModelView",
     "Model",
     "model_registry",
     "Field",

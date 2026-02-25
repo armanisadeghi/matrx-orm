@@ -20,6 +20,54 @@ verbose = False
 
 
 class BaseDTO:
+    """
+    Legacy data-transfer object layer.
+
+    .. deprecated::
+        BaseDTO is superseded by :class:`matrx_orm.ModelView`.
+        ModelView stores results flat on the model instance (no duplication,
+        no ``result["dto"]`` nesting), supports declarative prefetch / exclude /
+        inline_fk, and runs computed fields concurrently.
+
+        Migration path:
+
+            # Before (DTO)
+            class OrderDTO(BaseDTO):
+                id: str
+                customer_name: str
+                async def _initialize_dto(self, model):
+                    self.id = str(model.id)
+                    customer = await model.fetch_fk("customer_id")
+                    self.customer_name = customer.full_name if customer else ""
+
+            # After (ModelView)
+            class OrderView(ModelView):
+                prefetch = ["customer_id"]
+                inline_fk = {"customer_id": "customer"}
+                async def customer_name(self, model) -> str:
+                    customer = model.get_related("customer_id")
+                    return customer.full_name if customer else ""
+
+        Existing BaseDTO subclasses continue to work without changes.
+        A DeprecationWarning is emitted when a new subclass is *defined*
+        (not when it is used) to guide gradual migration.
+    """
+
+    _base_dto_deprecation_warned: bool = False
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        import warnings
+
+        warnings.warn(
+            f"'{cls.__name__}' inherits from BaseDTO which is deprecated. "
+            "Migrate to ModelView for a flat, zero-duplication projection layer. "
+            "See matrx_orm.ModelView for usage. "
+            "BaseDTO continues to work — this is a soft deprecation notice only.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
     id: str
     _model: Model | None = None
 
@@ -173,6 +221,7 @@ class BaseDTO:
 class BaseManager(Generic[ModelT]):
     model: type[ModelT]
     dto_class: type[BaseDTO] | None
+    view_class: type | None  # type[ModelView] | None — avoids circular import
     fetch_on_init_limit: int
     _FETCH_ON_INIT_WITH_WARNINGS_OFF: str | None
     _active_items: set[Any]
@@ -183,11 +232,18 @@ class BaseManager(Generic[ModelT]):
         self,
         model: type[ModelT],
         dto_class: type[BaseDTO] | None = None,
+        view_class: type | None = None,
         fetch_on_init_limit: int = 0,
         FETCH_ON_INIT_WITH_WARNINGS_OFF: str | None = None,
     ) -> None:
         self.model = model
         self.dto_class = dto_class
+        # view_class can also be declared as a class attribute on subclasses;
+        # the constructor argument takes precedence when provided.
+        if view_class is not None:
+            self.view_class = view_class
+        elif not hasattr(self, "view_class"):
+            self.view_class = None
         self.fetch_on_init_limit = fetch_on_init_limit
         self._FETCH_ON_INIT_WITH_WARNINGS_OFF = FETCH_ON_INIT_WITH_WARNINGS_OFF
         self._active_items: set[Any] = set()
@@ -255,11 +311,26 @@ class BaseManager(Generic[ModelT]):
         if not hasattr(item, "runtime"):
             item.runtime = RuntimeContainer()
         await self._initialize_runtime_data(item)
+
+        # ------------------------------------------------------------------ #
+        # ModelView path (new) — preferred over BaseDTO when both are set.    #
+        # Applies the view in-place: prefetches relations, runs computed       #
+        # fields, stores everything flat on the model instance.               #
+        # ------------------------------------------------------------------ #
+        view_cls = getattr(self, "view_class", None)
+        if view_cls is not None:
+            await view_cls.apply(item)
+            return item
+
+        # ------------------------------------------------------------------ #
+        # Legacy BaseDTO path — preserved for full backward compatibility.    #
+        # ------------------------------------------------------------------ #
         if self.dto_class:
             dto = await self.dto_class.from_model(item)
             await self._initialize_dto_runtime(dto, item)
             item.runtime.dto = dto
             item.dto = dto
+
         return item
 
     async def initialize(self) -> BaseManager[ModelT]:

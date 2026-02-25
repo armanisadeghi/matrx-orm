@@ -84,7 +84,13 @@ The following names are **forbidden** as field names in your models:
 
 #### Runtime Container Attributes
 - `runtime` - Runtime data container
-- `dto` - Data transfer object
+- `dto` - Data transfer object (legacy — superseded by ModelView)
+
+#### ModelView Instance Stores (set by ModelView.apply())
+- `_view_data` - Flat dict of computed field values and inline FK objects
+- `_view_excluded` - Set of model field names suppressed from to_dict() output
+- `_view_inlined_fks` - Maps FK field name → output name for inlined FK objects
+- `_applied_view` - The ModelView class last applied to this instance (or None)
 
 ---
 
@@ -186,4 +192,4 @@ If you encounter a naming conflict not listed here, please:
 
 ---
 
-**Last Updated**: February 10, 2026
+**Last Updated**: February 25, 2026

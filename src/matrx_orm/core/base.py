@@ -347,6 +347,12 @@ class ModelMeta(type):
                 elif field.endswith("_m2m"):
                     self._dynamic_data[field] = []
 
+            # View-layer stores — always present, populated by ModelView.apply()
+            self._view_data: dict[str, Any] = {}
+            self._view_excluded: set[str] = set()
+            self._view_inlined_fks: dict[str, str] = {}
+            self._applied_view: Any = None
+
         def get_related(self: Any, field_name: str) -> Any:
             regular_field = f"_{field_name}_related"
             if regular_field in self._dynamic_fields:
@@ -424,6 +430,16 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
     _extra_data: dict[str, Any]
     _dynamic_data: dict[str, Any]
 
+    # View-layer stores — populated by ModelView.apply(), invisible to writes.
+    # _view_data       : computed field values and inline_fk objects
+    # _view_excluded   : model field names suppressed from to_dict() output
+    # _view_inlined_fks: maps fk_field_name -> output_name for inlined FKs
+    # _applied_view    : the ModelView class that was last applied (or None)
+    _view_data: dict[str, Any]
+    _view_excluded: set[str]
+    _view_inlined_fks: dict[str, str]
+    _applied_view: Any  # type[ModelView] | None — avoids circular import
+
     # Pyright cannot see fields set by the metaclass at class-creation time.
     # Annotating `id` here covers the near-universal primary key pattern used
     # by generated DTOs and managers.  All other fields remain dynamically typed.
@@ -434,6 +450,10 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             value = kwargs.get(field_name, field.get_default())
             setattr(self, field_name, value)
         self._extra_data = {k: v for k, v in kwargs.items() if k not in self._fields}
+        self._view_data = {}
+        self._view_excluded = set()
+        self._view_inlined_fks = {}
+        self._applied_view = None
 
     @classmethod
     def get_database_name(cls) -> str:
@@ -902,29 +922,60 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
 
     def to_dict(self) -> dict[str, Any]:
         data: dict[str, Any] = {}
+
+        # View-excluded fields — suppressed if a ModelView was applied.
+        view_excluded: set[str] = getattr(self, "_view_excluded", set())
+        # FK fields replaced by their inline object — skip the raw ID column.
+        view_inlined: set[str] = set(getattr(self, "_view_inlined_fks", {}).keys())
+
         for field_name, field in self._fields.items():
+            if field_name in view_excluded or field_name in view_inlined:
+                continue
             value = getattr(self, field_name, None)
             if value is not None:
                 data[field_name] = self._serialize_value(value)
 
-        if hasattr(self, "runtime"):
-            data["runtime"] = self.runtime.to_dict()
-        if hasattr(self, "dto"):
-            data["dto"] = self.dto.to_dict()
+        # View-layer data: computed fields and inline FK objects — all flat.
+        view_data: dict[str, Any] = getattr(self, "_view_data", {})
+        for key, value in view_data.items():
+            data[key] = self._serialize_value(value)
+
+        # Legacy runtime container (preserved for backward compatibility).
+        # Only included when no view is applied, to avoid doubling up data.
+        if not getattr(self, "_applied_view", None):
+            if hasattr(self, "runtime"):
+                runtime_dict = self.runtime.to_dict()
+                data.update(runtime_dict)
+            if hasattr(self, "dto") and self.dto is not None:
+                data["dto"] = self.dto.to_dict()
+
         return data
 
     def to_flat_dict(self) -> dict[str, Any]:
         data: dict[str, Any] = {}
+
+        view_excluded: set[str] = getattr(self, "_view_excluded", set())
+        view_inlined: set[str] = set(getattr(self, "_view_inlined_fks", {}).keys())
+
         for field_name, field in self._fields.items():
+            if field_name in view_excluded or field_name in view_inlined:
+                continue
             value = getattr(self, field_name, None)
             if value is not None:
                 data[field_name] = field.to_python(value)
 
-        runtime_data = self.runtime.to_dict() if hasattr(self, "runtime") else {}
+        # Merge view-layer data flat (computed fields + inline FK objects).
+        view_data: dict[str, Any] = getattr(self, "_view_data", {})
+        data.update(view_data)
 
-        dto_data = self.dto.to_dict() if hasattr(self, "dto") else {}
+        # Legacy paths — only when no view is applied.
+        if not getattr(self, "_applied_view", None):
+            if hasattr(self, "runtime"):
+                data.update(self.runtime.to_dict())
+            if hasattr(self, "dto") and self.dto is not None:
+                data.update(self.dto.to_dict() if callable(self.dto.to_dict) else {})
 
-        return {**data, **runtime_data, **dto_data}
+        return data
 
     @classmethod
     def from_db_result(cls, data: dict[str, Any]) -> Model:
