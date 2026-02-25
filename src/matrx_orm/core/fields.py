@@ -5,7 +5,11 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 from enum import Enum as PythonEnum
 from ipaddress import IPv4Address, IPv6Address, ip_network
-from typing import TYPE_CHECKING, Any, List, Type, Union, overload
+from typing import TYPE_CHECKING, Any, Generic, List, Type, TypeVar, Union, overload
+
+# TypeVar with default (PEP 696, Python 3.13+) keeps bare JSONBField/JSONField
+# backward-compatible: unparameterised use still returns dict|list|None.
+_JT = TypeVar("_JT", default=dict[str, Any] | list[Any])
 from uuid import UUID
 
 if TYPE_CHECKING:
@@ -451,13 +455,13 @@ class DateField(Field):
         return value
 
 
-class JSONField(Field):
+class JSONField(Field, Generic[_JT]):
     if TYPE_CHECKING:
         @overload
-        def __get__(self, obj: None, objtype: type = ...) -> "JSONField": ...
+        def __get__(self, obj: None, objtype: type = ...) -> "JSONField[_JT]": ...
         @overload
-        def __get__(self, obj: object, objtype: type = ...) -> dict[str, Any] | list[Any] | None: ...
-        def __get__(self, obj: object | None, objtype: type = ...) -> dict[str, Any] | list[Any] | "JSONField" | None: ...
+        def __get__(self, obj: object, objtype: type = ...) -> _JT | None: ...
+        def __get__(self, obj: object | None, objtype: type = ...) -> _JT | None | "JSONField[_JT]": ...
 
     def __init__(self, **kwargs):
         super().__init__("JSONB", **kwargs)
@@ -817,13 +821,13 @@ class HStoreField(Field):
             raise ValueError("Value must be a dictionary")
 
 
-class JSONBField(Field):
+class JSONBField(Field, Generic[_JT]):
     if TYPE_CHECKING:
         @overload
-        def __get__(self, obj: None, objtype: type = ...) -> "JSONBField": ...
+        def __get__(self, obj: None, objtype: type = ...) -> "JSONBField[_JT]": ...
         @overload
-        def __get__(self, obj: object, objtype: type = ...) -> dict[str, Any] | list[Any] | None: ...
-        def __get__(self, obj: object | None, objtype: type = ...) -> dict[str, Any] | list[Any] | "JSONBField" | None: ...
+        def __get__(self, obj: object, objtype: type = ...) -> _JT | None: ...
+        def __get__(self, obj: object | None, objtype: type = ...) -> _JT | None | "JSONBField[_JT]": ...
 
     def __init__(self, **kwargs):
         super().__init__("JSONB", **kwargs)
