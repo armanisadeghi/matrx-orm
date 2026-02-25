@@ -5,12 +5,12 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 from enum import Enum as PythonEnum
 from ipaddress import IPv4Address, IPv6Address, ip_network
-from typing import TYPE_CHECKING, Any, Generic, List, Type, TypeVar, Union, overload
-
-# TypeVar with default (PEP 696, Python 3.13+) keeps bare JSONBField/JSONField
-# backward-compatible: unparameterised use still returns dict|list|None.
-_JT = TypeVar("_JT", default=dict[str, Any] | list[Any])
+from typing import TYPE_CHECKING, Any, Generic, List, Type, Union, overload
+from typing_extensions import TypeVar
 from uuid import UUID
+
+# TypeVar with default (PEP 696) via typing_extensions for Python < 3.13 compatibility.
+_JT = TypeVar("_JT", default=dict[str, Any] | list[Any])
 
 if TYPE_CHECKING:
     pass  # overload imports already available via typing
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
 class Field:
     if TYPE_CHECKING:
+
         @overload
         def __get__(self, obj: None, objtype: type = ...) -> "Field": ...
         @overload
@@ -50,7 +51,9 @@ class Field:
         self.db_type = db_type
         self.is_native = is_native
         self.null = null
-        self.nullable = False if primary_key else (nullable if nullable is not None else null)
+        self.nullable = (
+            False if primary_key else (nullable if nullable is not None else null)
+        )
         self.unique = unique
         self.primary_key = primary_key
         self.default = default
@@ -116,7 +119,8 @@ class Field:
         all_attrs = {
             key: value
             for key, value in vars(self).items()
-            if not key.startswith("_") and value is not None  # Skip private attrs and None values
+            if not key.startswith("_")
+            and value is not None  # Skip private attrs and None values
         }
 
         # Start with core attributes
@@ -131,7 +135,10 @@ class Field:
 
         # Special handling for validators
         if self.validators:
-            result["validators"] = [getattr(validator, "__name__", str(validator)) for validator in self.validators]
+            result["validators"] = [
+                getattr(validator, "__name__", str(validator))
+                for validator in self.validators
+            ]
 
         # Add name and model if set
         if self.name is not None:
@@ -162,11 +169,14 @@ class Field:
 
 class UUIDField(Field):
     if TYPE_CHECKING:
+
         @overload
         def __get__(self, obj: None, objtype: type = ...) -> "UUIDField": ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> str | None: ...
-        def __get__(self, obj: object | None, objtype: type = ...) -> str | "UUIDField" | None: ...
+        def __get__(
+            self, obj: object | None, objtype: type = ...
+        ) -> str | "UUIDField" | None: ...
 
     def __init__(self, **kwargs):
         super().__init__("text", **kwargs)
@@ -213,11 +223,14 @@ class UUIDFieldREAL(Field):
 
 class CharField(Field):
     if TYPE_CHECKING:
+
         @overload
         def __get__(self, obj: None, objtype: type = ...) -> "CharField": ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> str | None: ...
-        def __get__(self, obj: object | None, objtype: type = ...) -> str | "CharField" | None: ...
+        def __get__(
+            self, obj: object | None, objtype: type = ...
+        ) -> str | "CharField" | None: ...
 
     def __init__(self, max_length: int = 255, **kwargs):
         super().__init__(f"VARCHAR({max_length})", **kwargs)
@@ -240,11 +253,14 @@ class CharField(Field):
 
 class TextField(Field):
     if TYPE_CHECKING:
+
         @overload
         def __get__(self, obj: None, objtype: type = ...) -> "TextField": ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> str | None: ...
-        def __get__(self, obj: object | None, objtype: type = ...) -> str | "TextField" | None: ...
+        def __get__(
+            self, obj: object | None, objtype: type = ...
+        ) -> str | "TextField" | None: ...
 
     def __init__(self, **kwargs):
         super().__init__("TEXT", **kwargs)
@@ -262,11 +278,14 @@ class TextField(Field):
 
 class IntegerField(Field):
     if TYPE_CHECKING:
+
         @overload
         def __get__(self, obj: None, objtype: type = ...) -> "IntegerField": ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> int | None: ...
-        def __get__(self, obj: object | None, objtype: type = ...) -> int | "IntegerField" | None: ...
+        def __get__(
+            self, obj: object | None, objtype: type = ...
+        ) -> int | "IntegerField" | None: ...
 
     def __init__(self, **kwargs):
         super().__init__("INTEGER", **kwargs)
@@ -298,11 +317,14 @@ class IntegerField(Field):
 
 class FloatField(Field):
     if TYPE_CHECKING:
+
         @overload
         def __get__(self, obj: None, objtype: type = ...) -> "FloatField": ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> float | None: ...
-        def __get__(self, obj: object | None, objtype: type = ...) -> float | "FloatField" | None: ...
+        def __get__(
+            self, obj: object | None, objtype: type = ...
+        ) -> float | "FloatField" | None: ...
 
     def __init__(self, **kwargs):
         super().__init__("FLOAT", **kwargs)
@@ -323,11 +345,14 @@ class FloatField(Field):
 
 class BooleanField(Field):
     if TYPE_CHECKING:
+
         @overload
         def __get__(self, obj: None, objtype: type = ...) -> "BooleanField": ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> bool | None: ...
-        def __get__(self, obj: object | None, objtype: type = ...) -> bool | "BooleanField" | None: ...
+        def __get__(
+            self, obj: object | None, objtype: type = ...
+        ) -> bool | "BooleanField" | None: ...
 
     def __init__(self, **kwargs):
         super().__init__("BOOLEAN", **kwargs)
@@ -376,18 +401,23 @@ class BooleanField(Field):
 
         # Ensure the result is a bool before sending to the database
         if not isinstance(python_value, bool):
-            raise ValueError(f"[ORM BooleanField] Expected boolean, got {type(python_value)} after conversion")
+            raise ValueError(
+                f"[ORM BooleanField] Expected boolean, got {type(python_value)} after conversion"
+            )
 
         return python_value
 
 
 class DateTimeField(Field):
     if TYPE_CHECKING:
+
         @overload
         def __get__(self, obj: None, objtype: type = ...) -> "DateTimeField": ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> datetime | None: ...
-        def __get__(self, obj: object | None, objtype: type = ...) -> datetime | "DateTimeField" | None: ...
+        def __get__(
+            self, obj: object | None, objtype: type = ...
+        ) -> datetime | "DateTimeField" | None: ...
 
     def __init__(self, auto_now: bool = False, auto_now_add: bool = False, **kwargs):
         super().__init__("TIMESTAMP", **kwargs)
@@ -409,11 +439,14 @@ class DateTimeField(Field):
 
 class TimeField(Field):
     if TYPE_CHECKING:
+
         @overload
         def __get__(self, obj: None, objtype: type = ...) -> "TimeField": ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> time | None: ...
-        def __get__(self, obj: object | None, objtype: type = ...) -> time | "TimeField" | None: ...
+        def __get__(
+            self, obj: object | None, objtype: type = ...
+        ) -> time | "TimeField" | None: ...
 
     def __init__(self, **kwargs):
         super().__init__("TIME", **kwargs)
@@ -433,11 +466,14 @@ class TimeField(Field):
 
 class DateField(Field):
     if TYPE_CHECKING:
+
         @overload
         def __get__(self, obj: None, objtype: type = ...) -> "DateField": ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> date | None: ...
-        def __get__(self, obj: object | None, objtype: type = ...) -> date | "DateField" | None: ...
+        def __get__(
+            self, obj: object | None, objtype: type = ...
+        ) -> date | "DateField" | None: ...
 
     def __init__(self, **kwargs):
         super().__init__("DATE", **kwargs)
@@ -457,11 +493,14 @@ class DateField(Field):
 
 class JSONField(Field, Generic[_JT]):
     if TYPE_CHECKING:
+
         @overload
         def __get__(self, obj: None, objtype: type = ...) -> "JSONField[_JT]": ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> _JT | None: ...
-        def __get__(self, obj: object | None, objtype: type = ...) -> _JT | None | "JSONField[_JT]": ...
+        def __get__(
+            self, obj: object | None, objtype: type = ...
+        ) -> _JT | None | "JSONField[_JT]": ...
         def __set__(self, obj: object, value: _JT | None) -> None: ...
 
     def __init__(self, **kwargs):
@@ -480,11 +519,14 @@ class JSONField(Field, Generic[_JT]):
 
 class ArrayField(Field):
     if TYPE_CHECKING:
+
         @overload
         def __get__(self, obj: None, objtype: type = ...) -> "ArrayField": ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> list[Any] | None: ...
-        def __get__(self, obj: object | None, objtype: type = ...) -> list[Any] | "ArrayField" | None: ...
+        def __get__(
+            self, obj: object | None, objtype: type = ...
+        ) -> list[Any] | "ArrayField" | None: ...
 
     def __init__(self, item_type: Field, **kwargs):
         super().__init__(f"{item_type.db_type}[]", **kwargs)
@@ -506,7 +548,9 @@ class ArrayField(Field):
     def get_db_prep_value(self, value: list):
         if value is None:
             return value
-        return [self.item_type.get_db_prep_value(item) for item in value]  # Fixed: Return list
+        return [
+            self.item_type.get_db_prep_value(item) for item in value
+        ]  # Fixed: Return list
 
 
 class EnumField(Field):
@@ -563,7 +607,9 @@ class EnumField(Field):
             except ValueError:
                 if value in self.choices:
                     return value  # Return string if valid but not an enum value
-                raise ValueError(f"Invalid value '{value}' for enum {self.enum_class.__name__}")
+                raise ValueError(
+                    f"Invalid value '{value}' for enum {self.enum_class.__name__}"
+                )
         return value
 
     async def validate(self, value: Union[str, PythonEnum, None]) -> None:
@@ -573,7 +619,11 @@ class EnumField(Field):
             return
 
         # Convert enum to string value if needed
-        check_value = value.value if self.enum_class and isinstance(value, self.enum_class) else value
+        check_value = (
+            value.value
+            if self.enum_class and isinstance(value, self.enum_class)
+            else value
+        )
 
         if check_value not in self.choices:
             raise ValueError(f"Value '{check_value}' must be one of {self.choices}")
@@ -637,11 +687,14 @@ class EmailField(CharField):
 
 class DecimalField(Field):
     if TYPE_CHECKING:
+
         @overload
         def __get__(self, obj: None, objtype: type = ...) -> "DecimalField": ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> Decimal | None: ...
-        def __get__(self, obj: object | None, objtype: type = ...) -> Decimal | "DecimalField" | None: ...
+        def __get__(
+            self, obj: object | None, objtype: type = ...
+        ) -> Decimal | "DecimalField" | None: ...
 
     def __init__(self, max_digits: int = None, decimal_places: int = 2, **kwargs):
         column_type = "NUMERIC"
@@ -674,19 +727,28 @@ class DecimalField(Field):
             str_value = str(value)
             if "." in str_value:
                 integer_part, decimal_part = str_value.split(".")
-                if self.max_digits is not None and (len(integer_part) + len(decimal_part) > self.max_digits):
-                    raise ValueError(f"Value exceeds maximum precision of {self.max_digits} digits")
+                if self.max_digits is not None and (
+                    len(integer_part) + len(decimal_part) > self.max_digits
+                ):
+                    raise ValueError(
+                        f"Value exceeds maximum precision of {self.max_digits} digits"
+                    )
                 if len(decimal_part) > self.decimal_places:
-                    raise ValueError(f"Value exceeds allowed {self.decimal_places} decimal places")
+                    raise ValueError(
+                        f"Value exceeds allowed {self.decimal_places} decimal places"
+                    )
 
 
 class BigIntegerField(Field):
     if TYPE_CHECKING:
+
         @overload
         def __get__(self, obj: None, objtype: type = ...) -> "BigIntegerField": ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> int | None: ...
-        def __get__(self, obj: object | None, objtype: type = ...) -> int | "BigIntegerField" | None: ...
+        def __get__(
+            self, obj: object | None, objtype: type = ...
+        ) -> int | "BigIntegerField" | None: ...
 
     def __init__(self, **kwargs):
         super().__init__("BIGINT", **kwargs)
@@ -715,11 +777,14 @@ class BigIntegerField(Field):
 
 class SmallIntegerField(Field):
     if TYPE_CHECKING:
+
         @overload
         def __get__(self, obj: None, objtype: type = ...) -> "SmallIntegerField": ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> int | None: ...
-        def __get__(self, obj: object | None, objtype: type = ...) -> int | "SmallIntegerField" | None: ...
+        def __get__(
+            self, obj: object | None, objtype: type = ...
+        ) -> int | "SmallIntegerField" | None: ...
 
     def __init__(self, **kwargs):
         super().__init__("SMALLINT", **kwargs)
@@ -748,11 +813,14 @@ class SmallIntegerField(Field):
 
 class BinaryField(Field):
     if TYPE_CHECKING:
+
         @overload
         def __get__(self, obj: None, objtype: type = ...) -> "BinaryField": ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> bytes | None: ...
-        def __get__(self, obj: object | None, objtype: type = ...) -> bytes | "BinaryField" | None: ...
+        def __get__(
+            self, obj: object | None, objtype: type = ...
+        ) -> bytes | "BinaryField" | None: ...
 
     def __init__(self, **kwargs):
         super().__init__("BYTEA", **kwargs)
@@ -770,7 +838,9 @@ class SlugField(CharField):
     async def validate(self, value: str) -> None:
         await super().validate(value)
         if value is not None and not re.match(r"^[-a-zA-Z0-9_]+$", value):
-            raise ValueError("Slug can only contain letters, numbers, underscores, and hyphens")
+            raise ValueError(
+                "Slug can only contain letters, numbers, underscores, and hyphens"
+            )
 
 
 class IPNetworkField(Field):
@@ -792,11 +862,16 @@ class MoneyField(DecimalField):
 
 class HStoreField(Field):
     if TYPE_CHECKING:
+
         @overload
         def __get__(self, obj: None, objtype: type = ...) -> "HStoreField": ...
         @overload
-        def __get__(self, obj: object, objtype: type = ...) -> dict[str, str | None] | None: ...
-        def __get__(self, obj: object | None, objtype: type = ...) -> dict[str, str | None] | "HStoreField" | None: ...
+        def __get__(
+            self, obj: object, objtype: type = ...
+        ) -> dict[str, str | None] | None: ...
+        def __get__(
+            self, obj: object | None, objtype: type = ...
+        ) -> dict[str, str | None] | "HStoreField" | None: ...
 
     def __init__(self, **kwargs):
         super().__init__("HSTORE", **kwargs)
@@ -824,11 +899,14 @@ class HStoreField(Field):
 
 class JSONBField(Field, Generic[_JT]):
     if TYPE_CHECKING:
+
         @overload
         def __get__(self, obj: None, objtype: type = ...) -> "JSONBField[_JT]": ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> _JT | None: ...
-        def __get__(self, obj: object | None, objtype: type = ...) -> _JT | None | "JSONBField[_JT]": ...
+        def __get__(
+            self, obj: object | None, objtype: type = ...
+        ) -> _JT | None | "JSONBField[_JT]": ...
         def __set__(self, obj: object, value: _JT | None) -> None: ...
 
     def __init__(self, **kwargs):
@@ -859,11 +937,14 @@ class FileField(CharField):
 
 class TimeDeltaField(Field):
     if TYPE_CHECKING:
+
         @overload
         def __get__(self, obj: None, objtype: type = ...) -> "TimeDeltaField": ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> timedelta | None: ...
-        def __get__(self, obj: object | None, objtype: type = ...) -> timedelta | "TimeDeltaField" | None: ...
+        def __get__(
+            self, obj: object | None, objtype: type = ...
+        ) -> timedelta | "TimeDeltaField" | None: ...
 
     def __init__(self, **kwargs):
         super().__init__("INTERVAL", **kwargs)
@@ -884,12 +965,16 @@ class TimeDeltaField(Field):
             return value
         if isinstance(value, (int, float)):
             return timedelta(seconds=value)
-        raise ValueError(f"Field {self.name} must be a timedelta or numeric seconds value")
+        raise ValueError(
+            f"Field {self.name} must be a timedelta or numeric seconds value"
+        )
 
     async def validate(self, value) -> None:
         await super().validate(value)
         if value is not None and not isinstance(value, (int, float, timedelta)):
-            raise ValueError("Value must be a timedelta or duration in seconds (int/float)")
+            raise ValueError(
+                "Value must be a timedelta or duration in seconds (int/float)"
+            )
 
 
 class UUIDArrayField(ArrayField):
@@ -917,8 +1002,12 @@ class PointField(Field):
 
     async def validate(self, value):
         await super().validate(value)
-        if value is not None and (not isinstance(value, (tuple, list)) or len(value) != 2):
-            raise ValueError("Value must be a tuple of two float numbers representing a point")
+        if value is not None and (
+            not isinstance(value, (tuple, list)) or len(value) != 2
+        ):
+            raise ValueError(
+                "Value must be a tuple of two float numbers representing a point"
+            )
 
 
 class RangeField(Field):
@@ -974,7 +1063,9 @@ class BooleanArrayField(ArrayField):
 
 class DecimalArrayField(ArrayField):
     def __init__(self, max_digits: int, decimal_places: int, **kwargs):
-        super().__init__(DecimalField(max_digits=max_digits, decimal_places=decimal_places), **kwargs)
+        super().__init__(
+            DecimalField(max_digits=max_digits, decimal_places=decimal_places), **kwargs
+        )
 
 
 class DateArrayField(ArrayField):
@@ -1003,8 +1094,12 @@ class ImageField(FileField):
 
     async def validate(self, value: str) -> None:
         await super().validate(value)
-        if value and not value.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg")):
-            raise ValueError("Invalid image format. Supported formats: PNG, JPG, JPEG, GIF, BMP, SVG")
+        if value and not value.lower().endswith(
+            (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg")
+        ):
+            raise ValueError(
+                "Invalid image format. Supported formats: PNG, JPG, JPEG, GIF, BMP, SVG"
+            )
 
 
 class IPAddressField(Field):
@@ -1020,7 +1115,6 @@ class IPAddressField(Field):
                 IPv6Address(value)
             except ValueError:
                 raise ValueError(f"{value} is not a valid IPv4 or IPv6 address")
-
 
 
 # -------- A CRITICAL CHANGE WAS MADE HERE AND COULD CAUSE SYSTEMATIC ISSUES WITH THE FK FIELD NOW CONVERTING TO AND FROM PYTHON --------
@@ -1044,7 +1138,7 @@ class ForeignKey(Field):
         self.related_name = related_name
         self.on_delete = on_delete
         self.on_update = on_update
-        self.to_db = to_db          # target database project name (cross-database FK)
+        self.to_db = to_db  # target database project name (cross-database FK)
         self.to_schema = to_schema  # target schema hint (e.g. 'auth' for auth.users)
 
     def to_python(self, value):
