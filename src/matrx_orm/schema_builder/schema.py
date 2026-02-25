@@ -832,7 +832,7 @@ class Schema:
             self.code_handler.generate_and_save_code_from_object(
                 default_manager_config, py_base_manager_entry
             )
-            py_all_manager_import_names_str += f"from .{table.name} import {table.python_model_name}DTO, {table.python_model_name}Base\n"
+            py_all_manager_import_names_str += f"from .{table.name} import {table.python_model_name}View, {table.python_model_name}DTO, {table.python_model_name}Base\n"
 
         py_structure.append(self.get_string_model_registry(sorted_tables))
 
