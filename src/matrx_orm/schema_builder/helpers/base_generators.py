@@ -23,9 +23,12 @@ def generate_base_manager_class(
     prefetch_list = repr(relations or [])
     return f"""
 from dataclasses import dataclass
+from typing import Any
+
 from matrx_orm import BaseManager, BaseDTO, ModelView
+from matrx_utils import vcprint
+
 from {models_module_path} import {model_pascal}
-from typing import Optional, Type, Any
 
 
 # ---------------------------------------------------------------------------
@@ -176,9 +179,12 @@ def generate_legacy_dto_manager_class(
     )
     return f"""
 from dataclasses import dataclass
-from matrx_orm import BaseManager, BaseDTO
+from typing import Any
+
+from matrx_orm import BaseManager, BaseDTO, ModelView
+from matrx_utils import vcprint
+
 from {models_module_path} import {model_pascal}
-from typing import Optional, Type, Any
 
 @dataclass
 class {model_pascal}DTO(BaseDTO):
@@ -210,7 +216,7 @@ class {model_pascal}DTO(BaseDTO):
 
 
 class {model_pascal}Base(BaseManager[{model_pascal}]):
-    def __init__(self, dto_class: Optional[Type[Any]] = None):
+    def __init__(self, view_class: type[Any] | None = None):
         self.dto_class = dto_class or {model_pascal}DTO
         super().__init__({model_pascal}, self.dto_class)
 
@@ -491,7 +497,7 @@ class {model_pascal}Manager({model_pascal}Base):
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
-            cls._instance = super({model_pascal}Manager, cls).__new__(cls)
+            cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self):
