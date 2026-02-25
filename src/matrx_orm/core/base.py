@@ -53,9 +53,6 @@ def formated_error(
     vcprint("\n" + "=" * 80 + "\n", color="red")
 
 
-# https://grok.com/chat/f5581dd5-2684-445a-b2bd-40a2e7b63955 - DTO and eliminating the
-
-
 class RuntimeContainer:
     _data: dict[str, Any]
     _relationships: dict[str, Any]
@@ -172,7 +169,9 @@ class ModelMeta(type):
             base_meta = getattr(base, "_meta", None)
             if base_meta is None:
                 continue
-            if getattr(base_meta, "abstract", False) or getattr(base, "_abstract", False):
+            if getattr(base_meta, "abstract", False) or getattr(
+                base, "_abstract", False
+            ):
                 # The parent is abstract; concrete children are fine to continue
                 break
 
@@ -197,7 +196,9 @@ class ModelMeta(type):
         for base in reversed(bases):
             if getattr(base, "_abstract", False):
                 for k, v in vars(base).items():
-                    if isinstance(v, (Field, InverseForeignKeyReference, ManyToManyField)):
+                    if isinstance(
+                        v, (Field, InverseForeignKeyReference, ManyToManyField)
+                    ):
                         inherited_attrs[k] = v
 
         all_attrs = {**inherited_attrs, **attrs}
@@ -560,7 +561,9 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         return run_sync(cls.exists(**kwargs))
 
     @classmethod
-    async def update_where(cls, filters: dict[str, Any], **updates: Any) -> dict[str, Any]:
+    async def update_where(
+        cls, filters: dict[str, Any], **updates: Any
+    ) -> dict[str, Any]:
         """Bulk-update rows matching filters without fetching them first.
 
         Args:
@@ -672,13 +675,16 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             users = await User.raw("SELECT * FROM users WHERE age > $1", 18)
         """
         from matrx_orm.core.async_db_manager import AsyncDatabaseManager
+
         results = await AsyncDatabaseManager.execute_query(cls._database, sql, *params)
         instances = []
         for row in results:
             try:
                 instances.append(cls(**dict(row)))
             except Exception:
-                instances.append(cls(**{k: v for k, v in dict(row).items() if k in cls._fields}))
+                instances.append(
+                    cls(**{k: v for k, v in dict(row).items() if k in cls._fields})
+                )
         return instances
 
     @classmethod
@@ -690,6 +696,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             rows = await User.raw_sql("SELECT count(*) as cnt, role FROM users GROUP BY role")
         """
         from matrx_orm.core.async_db_manager import AsyncDatabaseManager
+
         results = await AsyncDatabaseManager.execute_query(cls._database, sql, *params)
         return [dict(row) for row in results]
 
@@ -845,7 +852,9 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         return "_".join(str(getattr(self, pk)) for pk in self._meta.primary_keys)
 
     @property
-    def table_name(self) -> Any:  # Any allows subclass fields named table_name to satisfy pyright
+    def table_name(
+        self,
+    ) -> Any:  # Any allows subclass fields named table_name to satisfy pyright
         return self._meta.table_name
 
     @classmethod
@@ -940,6 +949,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         related_model = fk_ref.related_model
         if related_model and getattr(related_model._meta, "unfetchable", False):
             import warnings
+
             warnings.warn(
                 f"fetch_fk('{field_name}') skipped: {related_model.__name__} is marked "
                 "_unfetchable = True and cannot be queried. "
@@ -991,13 +1001,15 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         raise ValueError(error_message)
 
     async def fetch_fks(self) -> dict[str, Model | None]:
-        """Fetch all foreign key relationships, skipping any that fail."""
-        results: dict[str, Model | None] = {}
-        for field_name in self._meta.foreign_keys:
+        """Fetch all foreign key relationships concurrently, skipping any that fail."""
+        fk_names = list(self._meta.foreign_keys.keys())
+        if not fk_names:
+            return {}
+
+        async def _safe_fetch_fk(field_name: str) -> tuple[str, Model | None]:
             try:
-                results[field_name] = await self.fetch_fk(field_name)
+                return field_name, await self.fetch_fk(field_name)
             except Exception as e:
-                model_name = self.__class__.__name__
                 related = self._meta.foreign_keys[field_name].to_model
                 related_name = (
                     related
@@ -1005,34 +1017,40 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
                     else getattr(related, "__name__", str(related))
                 )
                 vcprint(
-                    f"[{model_name}] Failed to fetch FK '{field_name}' -> {related_name}: {e.__class__.__name__}: {e.message if hasattr(e, 'message') else e}",
+                    f"[{self.__class__.__name__}] Failed to fetch FK '{field_name}' -> {related_name}: "
+                    f"{e.__class__.__name__}: {e.message if hasattr(e, 'message') else e}",
                     color="yellow",
                 )
-                results[field_name] = None
-        return results
+                return field_name, None
+
+        pairs = await asyncio.gather(*(_safe_fetch_fk(name) for name in fk_names))
+        return dict(pairs)
 
     async def fetch_ifks(self) -> dict[str, list[Model] | None]:
-        """Fetch all inverse foreign key relationships, skipping any that fail."""
-        results: dict[str, list[Model] | None] = {}
-        for field_name in self._meta.inverse_foreign_keys:
+        """Fetch all inverse foreign key relationships concurrently, skipping any that fail."""
+        ifk_names = list(self._meta.inverse_foreign_keys.keys())
+        if not ifk_names:
+            return {}
+
+        async def _safe_fetch_ifk(field_name: str) -> tuple[str, list[Model] | None]:
             try:
-                results[field_name] = await self.fetch_ifk(field_name)
+                return field_name, await self.fetch_ifk(field_name)
             except Exception as e:
-                model_name = self.__class__.__name__
                 ifk_ref = self._meta.inverse_foreign_keys[field_name]
                 related_name = (
                     ifk_ref.from_model
                     if isinstance(ifk_ref.from_model, str)
-                    else getattr(
-                        ifk_ref.from_model, "__name__", str(ifk_ref.from_model)
-                    )
+                    else getattr(ifk_ref.from_model, "__name__", str(ifk_ref.from_model))
                 )
                 vcprint(
-                    f"[{model_name}] Failed to fetch IFK '{field_name}' -> {related_name}: {e.__class__.__name__}: {e.message if hasattr(e, 'message') else e}",
+                    f"[{self.__class__.__name__}] Failed to fetch IFK '{field_name}' -> {related_name}: "
+                    f"{e.__class__.__name__}: {e.message if hasattr(e, 'message') else e}",
                     color="yellow",
                 )
-                results[field_name] = None
-        return results
+                return field_name, None
+
+        pairs = await asyncio.gather(*(_safe_fetch_ifk(name) for name in ifk_names))
+        return dict(pairs)
 
     async def fetch_m2m(self, relation_name: str) -> list[Model]:
         """Fetch a single many-to-many relationship by name."""
@@ -1048,13 +1066,15 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         return results
 
     async def fetch_m2ms(self) -> dict[str, list[Model]]:
-        """Fetch all M2M relationships, skipping any that fail."""
-        results: dict[str, list[Model]] = {}
-        for relation_name in self._meta.many_to_many_keys:
+        """Fetch all M2M relationships concurrently, skipping any that fail."""
+        m2m_names = list(self._meta.many_to_many_keys.keys())
+        if not m2m_names:
+            return {}
+
+        async def _safe_fetch_m2m(relation_name: str) -> tuple[str, list[Model]]:
             try:
-                results[relation_name] = await self.fetch_m2m(relation_name)
+                return relation_name, await self.fetch_m2m(relation_name)
             except Exception as e:
-                model_name = self.__class__.__name__
                 ref = self._meta.many_to_many_keys[relation_name]
                 target = (
                     ref.target_model
@@ -1062,11 +1082,14 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
                     else getattr(ref.target_model, "__name__", str(ref.target_model))
                 )
                 vcprint(
-                    f"[{model_name}] Failed to fetch M2M '{relation_name}' -> {target}: {e.__class__.__name__}: {e.message if hasattr(e, 'message') else e}",
+                    f"[{self.__class__.__name__}] Failed to fetch M2M '{relation_name}' -> {target}: "
+                    f"{e.__class__.__name__}: {e.message if hasattr(e, 'message') else e}",
                     color="yellow",
                 )
-                results[relation_name] = []
-        return results
+                return relation_name, []
+
+        pairs = await asyncio.gather(*(_safe_fetch_m2m(name) for name in m2m_names))
+        return dict(pairs)
 
     async def add_m2m(self, relation_name: str, *target_ids: Any) -> int:
         """Add targets to a many-to-many relationship."""
@@ -1105,17 +1128,17 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         return await ref.clear(self)
 
     async def fetch_all_related(self) -> dict[str, dict[str, Any]]:
-        """Fetch all related data (FKs, inverse FKs, and M2M)"""
-        fk_results = await self.fetch_fks()
-        ifk_results = await self.fetch_ifks()
-        m2m_results = await self.fetch_m2ms()
-        result: dict[str, dict[str, Any]] = {
+        """Fetch all related data (FKs, inverse FKs, and M2M) concurrently."""
+        fk_results, ifk_results, m2m_results = await asyncio.gather(
+            self.fetch_fks(),
+            self.fetch_ifks(),
+            self.fetch_m2ms(),
+        )
+        return {
             "foreign_keys": fk_results,
             "inverse_foreign_keys": ifk_results,
+            "many_to_many": m2m_results,
         }
-        if m2m_results:
-            result["many_to_many"] = m2m_results
-        return result
 
     async def filter_fk(self, field_name: str, **kwargs: Any) -> list[Model]:
         if field_name not in self._meta.foreign_keys:

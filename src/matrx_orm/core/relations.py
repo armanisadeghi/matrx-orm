@@ -333,7 +333,7 @@ class ManyToManyReference:
         }
 
     async def fetch_related(self, instance: Model) -> list[Model]:
-        """Two-query hop: junction table -> target model."""
+        """Single-query JOIN: junction table + target model in one round-trip."""
         from matrx_orm.core.async_db_manager import AsyncDatabaseManager
         from matrx_orm.exceptions import ORMException
 
@@ -345,17 +345,23 @@ class ManyToManyReference:
         try:
             db_name = await self._get_db_name(instance)
             junction = self.qualified_junction_table
+            target_model = self.resolved_model
+            target_table = target_model._meta.qualified_table_name
 
-            sql = f"SELECT {self.target_column} FROM {junction} WHERE {self.source_column} = $1"
+            # Determine the target PK column name (nearly always "id")
+            target_pk = target_model._meta.primary_keys[0]
+
+            sql = (
+                f"SELECT t.* FROM {target_table} t "
+                f"JOIN {junction} j ON j.{self.target_column} = t.{target_pk} "
+                f"WHERE j.{self.source_column} = $1"
+            )
             rows = await AsyncDatabaseManager.execute_query(db_name, sql, source_value)
 
             if not rows:
                 return []
 
-            target_ids = [row[self.target_column] for row in rows]
-            target_model = self.resolved_model
-            results = await target_model.filter(id__in=target_ids).all()
-            return results
+            return [target_model(**dict(row)) for row in rows]
         except ORMException as e:
             e.enrich(model=instance.__class__, operation="fetch_m2m", **self._enrich_context())
             raise
