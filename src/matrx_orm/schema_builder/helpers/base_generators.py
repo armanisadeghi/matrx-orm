@@ -115,7 +115,7 @@ class {model_pascal}DTO(BaseDTO):
 class {model_pascal}Base(BaseManager[{model_pascal}]):
     view_class = {model_pascal}View
 
-    def __init__(self, view_class: Optional[Type[Any]] = None):
+    def __init__(self, view_class: type[Any] | None = None):
         if view_class is not None:
             self.view_class = view_class
         super().__init__({model_pascal})
