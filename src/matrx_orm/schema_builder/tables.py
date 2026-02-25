@@ -1035,9 +1035,13 @@ class Table:
     def to_python_inverse_foreign_key_field(self, source_table, relationship):
         """
         Creates a dictionary for inverse foreign key relationships.
+        The relationship key is the source table name itself (already the
+        correct lookup key used by _meta.inverse_foreign_keys at runtime).
+        We do NOT append 's' here — the table name is used as-is so that
+        prefetch lists and get_related() calls work without any suffix magic.
         """
         source_model = self.utils.to_pascal_case(source_table)
-        relationship_name = f"{source_table}s"
+        relationship_name = source_table
 
         return {
             relationship_name: {
@@ -1065,7 +1069,7 @@ class Table:
                     target_col = fk.column
 
             if source_col and target_col:
-                relation_name = f"{related_table.name}s"
+                relation_name = related_table.name
                 m2m_config[relation_name] = {
                     "junction_table": junction_table.name,
                     "source_column": source_col,

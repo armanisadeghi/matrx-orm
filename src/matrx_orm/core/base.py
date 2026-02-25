@@ -1017,9 +1017,71 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             return await fk_ref.fetch_data(self, value)
         return None
 
+    def _check_double_s_typo(self, field_name: str, method_name: str) -> None:
+        """
+        Detect the legacy double-s naming bug produced by old schema builder versions.
+
+        Old generator: relationship_name = f"{source_table}s"
+        → tool_test_samples → tool_test_sampless  (wrong)
+
+        New generator: relationship_name = source_table
+        → tool_test_samples → tool_test_samples   (correct)
+
+        If the caller passed a name ending in 'ss' and the same name without
+        the trailing 's' exists as a valid relation, emit a loud red warning
+        pointing at the exact fix needed.
+        """
+        if not field_name.endswith("s"):
+            return
+
+        candidate = field_name[:-1]  # strip one trailing 's'
+        all_relations = (
+            set(self._meta.foreign_keys)
+            | set(self._meta.inverse_foreign_keys)
+            | set(self._meta.many_to_many_keys)
+        )
+        if candidate in all_relations:
+            vcprint(
+                "\n" + "=" * 80,
+                color="red",
+            )
+            vcprint(
+                f"[DOUBLE-S NAMING BUG DETECTED — {self.__class__.__name__}.{method_name}()]",
+                color="red",
+            )
+            vcprint(
+                f"\n  You called: {method_name}('{field_name}')",
+                color="red",
+            )
+            vcprint(
+                f"  Correct name: '{candidate}'",
+                color="red",
+            )
+            vcprint(
+                "\n  This is caused by an old schema builder that appended 's' to relation",
+                color="red",
+            )
+            vcprint(
+                "  names that were already plural (e.g. 'tool_test_samples' → 'tool_test_sampless').",
+                color="red",
+            )
+            vcprint(
+                "\n  Fix: regenerate your models and managers with the updated schema builder,",
+                color="red",
+            )
+            vcprint(
+                f"  then update any hardcoded references from '{field_name}' → '{candidate}'.",
+                color="red",
+            )
+            vcprint(
+                "=" * 80 + "\n",
+                color="red",
+            )
+
     async def fetch_ifk(self, field_name: str) -> list[Model]:
         """Fetch a single inverse foreign key relationship"""
         if field_name not in self._meta.inverse_foreign_keys:
+            self._check_double_s_typo(field_name, "fetch_ifk")
             error_message = f"No inverse foreign key found for field {field_name}"
             formated_error(error_message, class_name="Model", method_name="fetch_ifk")
             raise ValueError(error_message)
@@ -1040,6 +1102,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         if field_name in self._meta.many_to_many_keys:
             return await self.fetch_m2m(field_name)
 
+        self._check_double_s_typo(field_name, "fetch_one_relation")
         all_relations = (
             set(self._meta.foreign_keys)
             | set(self._meta.inverse_foreign_keys)
@@ -1258,6 +1321,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         if m2m_field in self._dynamic_fields:
             return self._dynamic_data[m2m_field]
 
+        self._check_double_s_typo(field_name, "get_related")
         error_message = f"No related field for {field_name}"
         formated_error(error_message, class_name="Model", method_name="get_related")
         raise AttributeError(error_message)
