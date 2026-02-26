@@ -13,21 +13,20 @@ def generate_base_manager_class(
 ) -> str:
     """Generate the minimal core manager class with both ModelView and legacy DTO.
 
-    Both classes are generated so that:
-    - Existing code that imports ``{Model}DTO`` from this file continues to work
-      without any changes (zero breaking changes).
-    - New code can use ``{Model}View`` / ``view_class`` for the flat, zero-
-      duplication projection pattern.
-    - The manager uses ``view_class`` by default. To revert to the legacy DTO
-      path set ``view_class = None`` and pass ``dto_class={Model}DTO`` to super().
+    Both classes are always generated so that:
+    - The DTO is wired in by default — existing code that relies on item.dto
+      continues to work without any changes (zero breaking changes).
+    - The View class is scaffolded and ready to use, but is NOT active by default.
+    - To opt into the View, set ``view_class = {Model}View`` on the subclass
+      OR pass ``view_class={Model}View`` to super().__init__().  When view_class
+      is set, the DTO path is skipped automatically by BaseManager.
 
     Args:
         view_prefetch: Explicit list of relation names to auto-prefetch on every
-            load. Defaults to [] (no automatic prefetching). Set specific relation
-            names in matrx_orm.yaml manager_flags.view_prefetch to opt in.
+            load when using the View. Defaults to [] (no automatic prefetching).
+            Set specific relation names in matrx_orm.yaml manager_flags.view_prefetch
+            to opt in.
     """
-    # Default to empty — prefetching everything automatically is expensive.
-    # Users opt in per-table via matrx_orm.yaml manager_flags.view_prefetch.
     prefetch_list = repr(view_prefetch if view_prefetch is not None else [])
     return f"""
 from dataclasses import dataclass
@@ -40,8 +39,11 @@ from {models_module_path} import {model_pascal}
 
 
 # ---------------------------------------------------------------------------
-# ModelView (new) — preferred projection layer.
+# ModelView (new) — opt-in projection layer.
 # Stores results flat on the model instance; no duplication, no nesting.
+# To activate: set view_class = {model_pascal}View on your manager subclass,
+# or pass view_class={model_pascal}View to super().__init__().
+# When active, the DTO path below is skipped automatically.
 # ---------------------------------------------------------------------------
 
 class {model_pascal}View(ModelView):
@@ -74,9 +76,10 @@ class {model_pascal}View(ModelView):
 
 
 # ---------------------------------------------------------------------------
-# BaseDTO (legacy) — kept for backward compatibility.
-# Existing imports of {model_pascal}DTO from this file continue to work.
-# Migrate business logic to {model_pascal}View when ready.
+# BaseDTO (default) — active by default, fully backward compatible.
+# Extend _process_core_data / _process_metadata with your business logic.
+# When you are ready to migrate to the View above, set view_class on your
+# manager subclass and this DTO will be bypassed automatically.
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -114,19 +117,19 @@ class {model_pascal}DTO(BaseDTO):
 
 
 # ---------------------------------------------------------------------------
-# Manager — uses ModelView by default.
-# To revert to the legacy DTO path:
-#   view_class = None
-#   super().__init__({model_pascal}, dto_class={model_pascal}DTO)
+# Manager — DTO is active by default for full backward compatibility.
+# To switch to the View (opt-in):
+#   1. Quick: set view_class = {model_pascal}View  (replaces DTO automatically)
+#   2. Explicit: super().__init__({model_pascal}, view_class={model_pascal}View)
 # ---------------------------------------------------------------------------
 
 class {model_pascal}Base(BaseManager[{model_pascal}]):
-    view_class = {model_pascal}View
+    view_class = None  # DTO is used by default; set to {model_pascal}View to opt in
 
     def __init__(self, view_class: type[Any] | None = None):
         if view_class is not None:
             self.view_class = view_class
-        super().__init__({model_pascal})
+        super().__init__({model_pascal}, dto_class={model_pascal}DTO)
 
     def _initialize_manager(self):
         super()._initialize_manager()

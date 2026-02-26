@@ -48,25 +48,9 @@ class BaseDTO:
                     customer = model.get_related("customer_id")
                     return customer.full_name if customer else ""
 
-        Existing BaseDTO subclasses continue to work without changes.
-        A DeprecationWarning is emitted when a new subclass is *defined*
-        (not when it is used) to guide gradual migration.
+        Existing BaseDTO subclasses continue to work without any changes.
+        Migration is entirely opt-in — move to ModelView when ready.
     """
-
-    _base_dto_deprecation_warned: bool = False
-
-    def __init_subclass__(cls, **kwargs: Any) -> None:
-        super().__init_subclass__(**kwargs)
-        import warnings
-
-        warnings.warn(
-            f"'{cls.__name__}' inherits from BaseDTO which is deprecated. "
-            "Migrate to ModelView for a flat, zero-duplication projection layer. "
-            "See matrx_orm.ModelView for usage. "
-            "BaseDTO continues to work — this is a soft deprecation notice only.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
 
     id: str
     _model: Model | None = None
