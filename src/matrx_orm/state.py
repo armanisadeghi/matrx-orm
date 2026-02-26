@@ -37,7 +37,7 @@ class ModelState:
                 model=model_class,
                 config_key="model_state",
                 reason=f"Failed to initialize model state: {str(e)}",
-            )
+            ) from e
 
     def _get_cache_key(self, **kwargs):
         try:
@@ -51,7 +51,7 @@ class ModelState:
                 operation="get_cache_key",
                 details={"kwargs": kwargs},
                 original_error=e,
-            )
+            ) from e
 
     def _get_record_cache_key(self, record):
         return "_".join(str(getattr(record, pk)) for pk in record._meta.primary_keys)
@@ -86,11 +86,11 @@ class ModelState:
                     self._locks[cache_key] = asyncio.Lock()
                 except Exception as e:
                     raise CacheError(
-                        model=self.model_class,  # Use self.model_class here
+                        model=self.model_class,
                         operation="create_lock",
                         details={"cache_key": cache_key},
                         original_error=e,
-                    )
+                    ) from e
 
             # Use lock for thread safety
             async with self._locks[cache_key]:
@@ -107,14 +107,14 @@ class ModelState:
                             return record
                     except Exception as e:
                         raise CacheError(
-                            model=self.model_class,  # Use self.model_class here
+                            model=self.model_class,
                             operation="check_staleness",
                             details={
                                 "cache_key": cache_key,
                                 "record_id": getattr(record, "id", None),
                             },
                             original_error=e,
-                        )
+                        ) from e
 
                 # Try finding by criteria if direct lookup fails
                 try:
@@ -128,11 +128,11 @@ class ModelState:
                         return cached_record
                 except Exception as e:
                     raise CacheError(
-                        model=self.model_class,  # Use self.model_class here
+                        model=self.model_class,
                         operation="find_in_cache",
                         details={"kwargs": kwargs},
                         original_error=e,
-                    )
+                    ) from e
 
                 return None
 
@@ -148,13 +148,12 @@ class ModelState:
                 reason="Operation cancelled",
             )
         except Exception as e:
-            # Catch all other exceptions
             raise CacheError(
-                model=self.model_class,  # Use self.model_class here
+                model=self.model_class,
                 operation="get",
                 details={"kwargs": kwargs, "error_type": type(e).__name__},
                 original_error=e,
-            )
+            ) from e
 
     def _find_in_cache(self, **kwargs):
         for record in self._cache.values():
@@ -213,7 +212,7 @@ class ModelState:
                 operation="cache",
                 details={"record_id": getattr(record, "id", None)},
                 original_error=e,
-            )
+            ) from e
 
     async def remove(self, record):
         cache_key = self._get_record_cache_key(record)
@@ -264,7 +263,7 @@ class StateManager:
                 model=model_class,
                 config_key="state_registration",
                 reason=f"Failed to register model: {str(e)}",
-            )
+            ) from e
 
     @classmethod
     async def get(cls, model_class, **kwargs):
@@ -297,7 +296,7 @@ class StateManager:
                     operation="database_fetch",
                     details={"kwargs": kwargs},
                     original_error=e,
-                )
+                ) from e
 
             # Cache the record
             if record:
@@ -312,7 +311,7 @@ class StateManager:
                 operation="get",
                 details={"kwargs": kwargs},
                 original_error=e,
-            )
+            ) from e
 
     @classmethod
     async def get_or_none(cls, model_class, **kwargs):
@@ -433,7 +432,7 @@ class StateManager:
                 operation="cache_bulk",
                 details={"record_count": len(records)},
                 original_error=e,
-            )
+            ) from e
 
     @classmethod
     async def remove(cls, model_class, record):

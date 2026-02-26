@@ -84,7 +84,7 @@ class TransactionContext:
                 raise DatabaseError(
                     message=f"Failed to begin transaction: {e}",
                     details={"database": self.database},
-                )
+                ) from e
             self._conn_token = _active_connection.set(self._pool_conn)
             self._depth_token = _savepoint_depth.set(0)
         return self

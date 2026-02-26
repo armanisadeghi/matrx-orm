@@ -364,7 +364,7 @@ class QueryBuilder(Generic[ModelT]):
             e.enrich(model=self.model, operation="all", filters=self._merge_filters_excludes())
             raise
         except Exception as e:
-            raise QueryError(model=self.model, details={"operation": "all", "error": str(e)})
+            raise QueryError(model=self.model, details={"operation": "all", "error": str(e)}) from e
 
     async def first(self) -> ModelT | None:
         """Get the first matching record."""

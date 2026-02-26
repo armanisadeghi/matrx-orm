@@ -1,5 +1,33 @@
+import traceback as _tb
+
+from matrx_utils import vcprint
+
 _RED = "\033[91m"
 _RESET = "\033[0m"
+
+_ORM_PACKAGE = "matrx_orm"
+
+
+def _capture_caller_frames() -> list[str]:
+    """Walk the stack to find frames outside the matrx_orm package.
+
+    Returns the most recent external caller and a compact chain of up to 3
+    frames showing how the user's code reached the ORM, formatted like:
+
+        File "/home/user/app/views.py", line 42, in handle_request
+        File "/home/user/app/db/persistence.py", line 204, in persist
+
+    Returns an empty list when no external caller is found.
+    """
+    frames: list[str] = []
+    for fi in reversed(_tb.extract_stack()[:-1]):
+        if _ORM_PACKAGE in fi.filename:
+            continue
+        frames.append(f'  File "{fi.filename}", line {fi.lineno}, in {fi.name}')
+        if len(frames) >= 3:
+            break
+    frames.reverse()
+    return frames
 
 
 class ORMException(Exception):
@@ -20,7 +48,16 @@ class ORMException(Exception):
         self.class_name = class_name
         self.method_name = method_name
         self._enriched = False
+        self._caller_frames = _capture_caller_frames()
         super().__init__(self.format_message())
+
+    def _format_caller_section(self) -> str | None:
+        """Return a 'Your code:' block if external caller frames were captured."""
+        if not self._caller_frames:
+            return None
+        lines = ["Your code (most recent call last):"]
+        lines.extend(self._caller_frames)
+        return "\n".join(lines)
 
     def enrich(self, model=None, operation=None, args=None, **extra):
         """Stamp context onto this exception as it bubbles up through layers.
@@ -46,17 +83,13 @@ class ORMException(Exception):
     def _sanitize_details(details):
         """Prevent nested ORMException str() output from ballooning error messages."""
         sanitized = {}
+        _sep_80 = "-" * 80
+        _eq_80 = "=" * 80
         for key, value in details.items():
             if isinstance(value, ORMException):
                 sanitized[key] = value.message
-            elif isinstance(value, str) and value.count("=" * 80) > 1:
-                lines = value.strip().split("\n")
-                for line in lines:
-                    if line.startswith("Message: "):
-                        sanitized[key] = line[len("Message: ") :]
-                        break
-                else:
-                    sanitized[key] = lines[0] if lines else value
+            elif isinstance(value, str) and (_sep_80 in value or _eq_80 in value):
+                sanitized[key] = "(see chained exception below)"
             else:
                 sanitized[key] = value
         return sanitized
@@ -94,7 +127,17 @@ class ORMException(Exception):
         return "\n".join(error_msg)
 
     def __str__(self):
-        return self.format_message()
+        msg = self.format_message()
+        caller_section = self._format_caller_section()
+        if not caller_section:
+            return msg
+        # Inject caller section before the closing separator line
+        # Subclass format_message outputs end with "-" * 80 or "=" * 80
+        for sep in ("-" * 80, "=" * 80):
+            last_sep_idx = msg.rfind(sep)
+            if last_sep_idx > 0:
+                return msg[:last_sep_idx] + caller_section + "\n" + msg[last_sep_idx:]
+        return msg + "\n" + caller_section
 
 
 class ValidationError(ORMException):
@@ -207,6 +250,7 @@ class QueryError(ORMException):
             lines.append(f"  Missing:   {missing_keys}")
         if error:
             lines.append(f"  Detail:    {error}")
+            vcprint(error, "Error", color="red")
         if query:
             short_query = str(query)[:300] + ("..." if len(str(query)) > 300 else "")
             lines.append(f"  Query:     {short_query}")
@@ -662,6 +706,7 @@ class MigrationError(ORMException):
             lines.append(f"  Migration: {migration}")
         if original:
             lines.append(f"  Detail:    {original}")
+            vcprint(original, "Error", color="red")
         lines.append("")
         lines.append("Hint:")
         if "modified after being applied" in original or "checksum" in original.lower():

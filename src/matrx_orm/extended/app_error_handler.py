@@ -73,6 +73,8 @@ def handle_errors(func: _F) -> _F:
                 for key in ("query", "params", "filters", "args", "operation"):
                     if key in e.details:
                         context[key] = e.details[key]
+            if getattr(e, "_caller_frames", None):
+                context["caller_frames"] = e._caller_frames
             error_message = e.message
         else:
             error_message = f"{type(e).__name__}: {e}"
@@ -82,7 +84,7 @@ def handle_errors(func: _F) -> _F:
             error_type=e.__class__.__name__,
             client_visible=DEFAULT_CLIENT_MESSAGE,
             context=context,
-        )
+        ) from e
     
     if asyncio.iscoroutinefunction(func):
         @wraps(func)

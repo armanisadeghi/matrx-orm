@@ -129,21 +129,21 @@ class AsyncDatabaseManager:
                             model=None,
                             config_key=config_name,
                             reason=f"Invalid or missing configuration: {str(e)}",
-                        )
+                        ) from e
                     except asyncpg.exceptions.ConnectionFailureError as e:
                         raise ConnectionError(
                             model=None,
                             db_url=f"{config.get('host')}:{config.get('port')}/{config.get('database_name')}",
                             original_error=e,
-                        )
+                        ) from e
                     except asyncpg.exceptions.InvalidAuthorizationSpecificationError as e:
                         raise ConnectionError(
                             model=None,
                             db_url=f"{config.get('host')}:{config.get('port')}/{config.get('database_name')}",
                             original_error=e,
-                        )
+                        ) from e
                     except Exception as e:
-                        raise AdapterError(model=None, adapter_name="asyncpg", original_error=e)
+                        raise AdapterError(model=None, adapter_name="asyncpg", original_error=e) from e
             return cls._pools[config_name]
 
     @classmethod
@@ -169,7 +169,7 @@ class AsyncDatabaseManager:
                     model=None,
                     message=f"Timeout acquiring connection after {timeout}s",
                     details={"config_name": config_name, "timeout": timeout},
-                )
+                ) from None
         except asyncpg.exceptions.InterfaceError as e:
             async with handle_orm_operation(
                 operation_name="acquire_connection",
@@ -183,7 +183,7 @@ class AsyncDatabaseManager:
                     reason="Connection pool issue",
                     details={"config_name": config_name},
                     original_error=e,
-                )
+                ) from e
 
     @classmethod
     async def execute_query(cls, config_name, query, *args, timeout=10.0):
@@ -210,11 +210,11 @@ class AsyncDatabaseManager:
                     model=None,
                     message=f"Invalid SQL syntax: {str(e)}",
                     details={"query": query, "args": args, "config_name": config_name},
-                )
+                ) from e
             except asyncpg.exceptions.UniqueViolationError as e:
-                raise IntegrityError(model=None, constraint="unknown", original_error=e)
+                raise IntegrityError(model=None, constraint="unknown", original_error=e) from e
             except asyncpg.exceptions.DataError as e:
-                raise ParameterError(model=None, query=query, args=args, reason=str(e))
+                raise ParameterError(model=None, query=query, args=args, reason=str(e)) from e
             except Exception as e:
                 raise UnknownDatabaseError(
                     model=None,
@@ -223,7 +223,7 @@ class AsyncDatabaseManager:
                     args=args,
                     traceback="",
                     original_error=e,
-                )
+                ) from e
 
         async with handle_orm_operation(
             operation_name="execute_query",
@@ -246,21 +246,21 @@ class AsyncDatabaseManager:
                             "args": args,
                             "config_name": config_name,
                         },
-                    )
+                    ) from e
                 except asyncpg.exceptions.UniqueViolationError as e:
                     raise IntegrityError(
                         model=None,
                         constraint="unknown",
                         original_error=e,
-                    )
+                    ) from e
                 except asyncpg.exceptions.ConnectionDoesNotExistError as e:
                     raise ConnectionError(
                         model=None,
                         db_url=config_name,
                         original_error=e,
-                    )
+                    ) from e
                 except asyncpg.exceptions.DataError as e:
-                    raise ParameterError(model=None, query=query, args=args, reason=str(e))
+                    raise ParameterError(model=None, query=query, args=args, reason=str(e)) from e
                 except Exception as e:
                     tb = traceback.format_exc()
                     raise UnknownDatabaseError(
@@ -270,7 +270,7 @@ class AsyncDatabaseManager:
                         args=args,
                         traceback=tb,
                         original_error=e,
-                    )
+                    ) from e
 
     @classmethod
     async def cleanup(cls):
@@ -286,7 +286,7 @@ class AsyncDatabaseManager:
                         reason=f"Failed to close pool for {config_name}",
                         details={"config_name": config_name},
                         original_error=e,
-                    )
+                    ) from e
             cls._pools.clear()
             cls._pool_loops.clear()
             cls._locks.clear()

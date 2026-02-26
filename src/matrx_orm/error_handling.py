@@ -26,4 +26,4 @@ async def handle_orm_operation(operation_name, model=None, **context):
         )
         raise CacheError(
             model=model, operation=operation_name, details=context, original_error=e
-        )
+        ) from e

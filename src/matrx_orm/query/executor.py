@@ -440,7 +440,7 @@ class QueryExecutor:
             raise QueryError(
                 model=self.model,
                 details={"query": self.query, "params": self.params, "error": str(e)},
-            )
+            ) from e
 
     def _hydrate_with_select_related(self, rows: list[dict[str, Any]]) -> list[Any]:
         """Hydrate rows that include prefixed select_related columns."""
@@ -503,8 +503,8 @@ class QueryExecutor:
             return rows[0]
         except DatabaseError as e:
             if "unique constraint" in str(e).lower():
-                raise IntegrityError(original_error=e)
-            raise DatabaseError(str(e))
+                raise IntegrityError(original_error=e) from e
+            raise DatabaseError(str(e)) from e
 
     async def bulk_insert(self, query: dict[str, Any]) -> list[Model]:
         """Bulk INSERT, RETURNING *."""
@@ -528,7 +528,7 @@ class QueryExecutor:
                 model=self.model,
                 reason="First item in data list is invalid",
                 details={"error": str(e)},
-            )
+            ) from e
 
         all_values: list[Any] = []
         placeholders_list: list[str] = []
@@ -562,13 +562,13 @@ class QueryExecutor:
             return [self.model(**row) for row in results]
         except DatabaseError as e:
             if "unique constraint" in str(e).lower():
-                raise IntegrityError(model=self.model, constraint="unique", original_error=e)
-            raise DatabaseError(model=self.model, operation="bulk_insert", original_error=e)
+                raise IntegrityError(model=self.model, constraint="unique", original_error=e) from e
+            raise DatabaseError(model=self.model, operation="bulk_insert", original_error=e) from e
         except Exception as e:
             raise QueryError(
                 model=self.model,
                 details={"operation": "bulk_insert", "row_count": len(data_list), "error": str(e)},
-            )
+            ) from e
 
     async def upsert(self, query: dict[str, Any]) -> dict[str, Any]:
         """INSERT ... ON CONFLICT (conflict_fields) DO UPDATE SET ... RETURNING *"""
@@ -604,8 +604,8 @@ class QueryExecutor:
             return rows[0]
         except DatabaseError as e:
             if "unique constraint" in str(e).lower():
-                raise IntegrityError(model=self.model, constraint="unique", original_error=e)
-            raise DatabaseError(model=self.model, operation="upsert", original_error=e)
+                raise IntegrityError(model=self.model, constraint="unique", original_error=e) from e
+            raise DatabaseError(model=self.model, operation="upsert", original_error=e) from e
 
     async def bulk_upsert(self, query: dict[str, Any]) -> list[Model]:
         """Bulk INSERT ... ON CONFLICT DO UPDATE."""
@@ -655,13 +655,13 @@ class QueryExecutor:
             return [self.model(**row) for row in results]
         except DatabaseError as e:
             if "unique constraint" in str(e).lower():
-                raise IntegrityError(model=self.model, constraint="unique", original_error=e)
-            raise DatabaseError(model=self.model, operation="bulk_upsert", original_error=e)
+                raise IntegrityError(model=self.model, constraint="unique", original_error=e) from e
+            raise DatabaseError(model=self.model, operation="bulk_upsert", original_error=e) from e
         except Exception as e:
             raise QueryError(
                 model=self.model,
                 details={"operation": "bulk_upsert", "row_count": len(data_list), "error": str(e)},
-            )
+            ) from e
 
     async def update(self, **kwargs: Any) -> dict[str, Any]:
         """UPDATE rows matching the WHERE clause built from filters."""
@@ -747,7 +747,7 @@ class QueryExecutor:
             raise QueryError(
                 model=self.model,
                 details={"operation": "update", "error": str(e)},
-            )
+            ) from e
 
     async def delete(self) -> int:
         """DELETE rows matching the WHERE clause."""
@@ -762,7 +762,7 @@ class QueryExecutor:
             result = await self.db.execute_query(self.database, sql, *where_params)
             return len(result)
         except DatabaseError as e:
-            raise DatabaseError(f"Delete failed: {str(e)}")
+            raise DatabaseError(f"Delete failed: {str(e)}") from e
 
     # ------------------------------------------------------------------
     # SELECT terminal methods
@@ -804,7 +804,7 @@ class QueryExecutor:
             result = await self.db.execute_query(self.database, count_sql, *params)
             return result[0]["count"] if result else 0
         except DatabaseError as e:
-            raise DatabaseError(f"Count query failed: {str(e)}")
+            raise DatabaseError(f"Count query failed: {str(e)}") from e
 
     async def exists(self) -> bool:
         """EXISTS check for the current WHERE clause."""
