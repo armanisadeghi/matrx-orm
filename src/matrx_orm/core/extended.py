@@ -244,7 +244,7 @@ class BaseManager(Generic[ModelT]):
             self.view_class = view_class
         elif not hasattr(self, "view_class"):
             self.view_class = None
-        self.fetch_on_init_limit = fetch_on_init_limit
+        self.fetch_on_init_limit = int(fetch_on_init_limit) if fetch_on_init_limit is not None else 0
         self._FETCH_ON_INIT_WITH_WARNINGS_OFF = FETCH_ON_INIT_WITH_WARNINGS_OFF
         self._active_items: set[Any] = set()
         self.computed_fields: set[str] = set()
@@ -257,7 +257,7 @@ class BaseManager(Generic[ModelT]):
         Auto-fetch now works correctly in all contexts thanks to automatic
         event loop detection and pool recreation in AsyncDatabaseManager.
         """
-        if self.fetch_on_init_limit > 0:
+        if int(self.fetch_on_init_limit) > 0:
             try:
                 asyncio.get_running_loop()
                 asyncio.create_task(self._auto_fetch_on_init_async())
@@ -343,7 +343,7 @@ class BaseManager(Generic[ModelT]):
             manager = MyManager()
             await manager.initialize()
         """
-        if self.fetch_on_init_limit > 0:
+        if int(self.fetch_on_init_limit) > 0:
             await self._auto_fetch_on_init_async()
         return self
 
@@ -357,7 +357,7 @@ class BaseManager(Generic[ModelT]):
             manager = MyManager()
             manager.initialize_sync()
         """
-        if self.fetch_on_init_limit > 0:
+        if int(self.fetch_on_init_limit) > 0:
             self._auto_fetch_on_init_sync()
         return self
 
@@ -1403,14 +1403,14 @@ class BaseManager(Generic[ModelT]):
         Runs the async fetch using asyncio.run() since we're in a pure sync context.
         All logic is handled by the async version.
         """
-        if self.fetch_on_init_limit <= 0:
+        if int(self.fetch_on_init_limit) <= 0:
             return
 
         run_sync(self._auto_fetch_on_init_async())
 
     async def _auto_fetch_on_init_async(self) -> None:
         """Fetch items on initialization (async version with full DTO support)."""
-        if self.fetch_on_init_limit <= 0:
+        if int(self.fetch_on_init_limit) <= 0:
             return
 
         start_time = time.perf_counter()
