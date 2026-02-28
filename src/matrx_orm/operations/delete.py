@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, TYPE_CHECKING
 
+from matrx_orm.core.types import UpdateResult
 from matrx_orm.state import StateManager
 
 from ..query.builder import QueryBuilder
@@ -37,14 +38,14 @@ async def bulk_delete(model_cls: type[Model], objects: list[Model]) -> int:
     return rows_affected
 
 
-async def soft_delete(model_cls: type[Model], **kwargs: Any) -> dict[str, Any]:
+async def soft_delete(model_cls: type[Model], **kwargs: Any) -> UpdateResult:
     from datetime import datetime
 
-    return await update(model_cls, deleted_at=datetime.now(), **kwargs)
+    return await update(model_cls, kwargs, deleted_at=datetime.now())
 
 
-async def restore(model_cls: type[Model], **kwargs: Any) -> dict[str, Any]:
-    return await update(model_cls, deleted_at=None, **kwargs)
+async def restore(model_cls: type[Model], **kwargs: Any) -> UpdateResult:
+    return await update(model_cls, kwargs, deleted_at=None)
 
 
 async def purge(model_cls: type[Model], **kwargs: Any) -> int:

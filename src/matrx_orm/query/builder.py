@@ -5,6 +5,7 @@ from typing import Any, Generic, TypeVar, TYPE_CHECKING
 
 from matrx_utils import vcprint
 from ..core.async_db_manager import run_sync
+from ..core.types import AggregateResult, UpdateResult
 from ..query.executor import QueryExecutor
 from ..exceptions import (
     DoesNotExist,
@@ -405,7 +406,7 @@ class QueryBuilder(Generic[ModelT]):
             vcprint(f"Error in QueryBuilder.get_or_none: {str(e)}", color="red")
             return None
 
-    async def update(self, **kwargs: Any) -> dict[str, Any]:
+    async def update(self, **kwargs: Any) -> UpdateResult:
         """Update matching records."""
         try:
             if not kwargs:
@@ -441,7 +442,7 @@ class QueryBuilder(Generic[ModelT]):
             e.enrich(model=self.model, operation="exists", filters=self._merge_filters_excludes())
             raise
 
-    async def aggregate(self, **kwargs: Any) -> dict[str, Any]:
+    async def aggregate(self, **kwargs: Any) -> AggregateResult:
         """Run aggregation functions and return a single result dict.
 
         Usage::

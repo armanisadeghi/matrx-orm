@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Iterable, TYPE_CHECKING
 
 from matrx_utils import vcprint
+from matrx_orm.core.types import UpdateResult
 from matrx_orm.state import StateManager
 
 from ..core.expressions import F
@@ -14,7 +15,7 @@ if TYPE_CHECKING:
 debug = False
 
 
-async def update(model_cls: type[Model], filters: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+async def update(model_cls: type[Model], filters: dict[str, Any], **kwargs: Any) -> UpdateResult:
     return await QueryBuilder(model_cls).filter(**filters).update(**kwargs)
 
 
@@ -56,7 +57,7 @@ async def bulk_update(model_cls: type[Model], objects: list[Model], fields: list
                 result = (
                     await QueryBuilder(model_cls).filter(id=obj.id).update(**update_data)
                 )
-                if result.get("rows_affected", 0) > 0:
+                if result.rows_affected > 0:
                     rows_affected += 1
 
                     await StateManager.cache(model_cls, obj)
@@ -104,14 +105,14 @@ async def update_or_create(
         return instance, True
 
 
-async def increment(model_cls: type[Model], filters: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+async def increment(model_cls: type[Model], filters: dict[str, Any], **kwargs: Any) -> UpdateResult:
     updates: dict[str, Any] = {}
     for field, amount in kwargs.items():
         updates[field] = F(field) + amount
     return await update(model_cls, filters, **updates)
 
 
-async def decrement(model_cls: type[Model], filters: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+async def decrement(model_cls: type[Model], filters: dict[str, Any], **kwargs: Any) -> UpdateResult:
     updates: dict[str, Any] = {}
     for field, amount in kwargs.items():
         updates[field] = F(field) - amount
@@ -133,7 +134,6 @@ async def update_instance(instance: Model, fields: Iterable[str] | None = None) 
     if pk_value is None:
         raise ValueError(f"Cannot update {model_cls.__name__}, {pk_name} is None")
 
-    # Detect version field for optimistic locking
     version_field_name: str | None = None
     current_version: int | None = None
     for fname, fobj in model_cls._fields.items():
@@ -154,7 +154,6 @@ async def update_instance(instance: Model, fields: Iterable[str] | None = None) 
         if field_name not in model_cls._fields:
             continue
         field = model_cls._fields[field_name]
-        # Increment version column automatically
         if field_name == version_field_name:
             next_version = (current_version or 1) + 1
             update_data[field_name] = next_version
@@ -163,10 +162,8 @@ async def update_instance(instance: Model, fields: Iterable[str] | None = None) 
         if value is not None:
             update_data[field_name] = field.get_db_prep_value(value)
         elif field.nullable:
-            # Explicitly include nullable fields set to None so they're nulled in the DB
             update_data[field_name] = None
 
-    # Build filters — include version guard when present
     filters: dict[str, Any] = {pk_name: pk_value}
     if version_field_name is not None and current_version is not None:
         filters[version_field_name] = current_version
@@ -179,7 +176,7 @@ async def update_instance(instance: Model, fields: Iterable[str] | None = None) 
 
     result = await update(model_cls, filters, **update_data)
 
-    if result["rows_affected"] == 0:
+    if result.rows_affected == 0:
         if version_field_name is not None:
             raise OptimisticLockError(
                 model=model_cls,
@@ -190,11 +187,10 @@ async def update_instance(instance: Model, fields: Iterable[str] | None = None) 
             f"No rows were updated for {model_cls.__name__} with {pk_name}={pk_value}"
         )
 
-    if result["updated_rows"]:
-        for key, value in result["updated_rows"][0].items():
+    if result.updated_rows:
+        for key, value in result.updated_rows[0].items():
             setattr(instance, key, value)
     elif version_field_name is not None and version_field_name in update_data:
-        # Sync the new version onto the instance even when RETURNING is unavailable
         setattr(instance, version_field_name, update_data[version_field_name])
 
     await post_save.send(model_cls, instance=instance, created=False)

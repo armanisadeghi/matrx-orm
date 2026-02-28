@@ -4,7 +4,16 @@ import asyncio
 import re
 from dataclasses import dataclass
 from typing import Any, ClassVar
+from typing_extensions import Self
 from uuid import UUID
+
+from matrx_orm.core.types import (
+    AllRelatedResults,
+    ForeignKeyResults,
+    InverseForeignKeyResults,
+    ManyToManyResults,
+    UpdateResult,
+)
 
 from matrx_utils import vcprint
 from matrx_orm.exceptions import (
@@ -583,7 +592,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
     @classmethod
     async def update_where(
         cls, filters: dict[str, Any], **updates: Any
-    ) -> dict[str, Any]:
+    ) -> UpdateResult:
         """Bulk-update rows matching filters without fetching them first.
 
         Args:
@@ -591,13 +600,14 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             **updates: Field=value pairs to SET.
 
         Returns:
-            {"rows_affected": int, "updated_rows": list[dict]}
+            UpdateResult with ``rows_affected`` and ``updated_rows`` attributes.
 
         Usage:
             result = await MyModel.update_where(
                 {"status": "draft", "created_at__lt": cutoff},
                 status="archived",
             )
+            print(result.rows_affected)
         """
         return await QueryBuilder(cls).filter(**filters).update(**updates)
 
@@ -764,7 +774,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
 
         return run_sync(cls.all())
 
-    async def save(self, **kwargs: Any) -> Model:
+    async def save(self, **kwargs: Any) -> Self:
         """Save the current state of the model instance."""
         if kwargs:
             error_message = f"Error for {self.__class__.__name__}: For updating fields, use update() instead of save()"
@@ -785,10 +795,10 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             e.enrich(model=self.__class__, operation="save")
             raise
 
-    async def update(self, **kwargs: Any) -> Model:
-        """
-        Update specific fields and save in one operation.
-        Returns the updated instance.
+    async def update(self, **kwargs: Any) -> Self:
+        """Update specific fields and save in one operation.
+
+        Returns the same instance with updated fields.
         """
         invalid_fields = [k for k in kwargs if k not in self._fields]
         if invalid_fields:
@@ -1114,11 +1124,11 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         )
         raise ValueError(error_message)
 
-    async def fetch_fks(self) -> dict[str, Model | None]:
+    async def fetch_fks(self) -> ForeignKeyResults[Model]:
         """Fetch all foreign key relationships concurrently, skipping any that fail."""
         fk_names = list(self._meta.foreign_keys.keys())
         if not fk_names:
-            return {}
+            return ForeignKeyResults(data={})
 
         async def _safe_fetch_fk(field_name: str) -> tuple[str, Model | None]:
             try:
@@ -1138,13 +1148,13 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
                 return field_name, None
 
         pairs = await asyncio.gather(*(_safe_fetch_fk(name) for name in fk_names))
-        return dict(pairs)
+        return ForeignKeyResults(data=dict(pairs))
 
-    async def fetch_ifks(self) -> dict[str, list[Model] | None]:
+    async def fetch_ifks(self) -> InverseForeignKeyResults[Model]:
         """Fetch all inverse foreign key relationships concurrently, skipping any that fail."""
         ifk_names = list(self._meta.inverse_foreign_keys.keys())
         if not ifk_names:
-            return {}
+            return InverseForeignKeyResults(data={})
 
         async def _safe_fetch_ifk(field_name: str) -> tuple[str, list[Model] | None]:
             try:
@@ -1164,7 +1174,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
                 return field_name, None
 
         pairs = await asyncio.gather(*(_safe_fetch_ifk(name) for name in ifk_names))
-        return dict(pairs)
+        return InverseForeignKeyResults(data=dict(pairs))
 
     async def fetch_m2m(self, relation_name: str) -> list[Model]:
         """Fetch a single many-to-many relationship by name."""
@@ -1179,11 +1189,11 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         self._dynamic_data[f"_{relation_name}_m2m"] = results
         return results
 
-    async def fetch_m2ms(self) -> dict[str, list[Model]]:
+    async def fetch_m2ms(self) -> ManyToManyResults[Model]:
         """Fetch all M2M relationships concurrently, skipping any that fail."""
         m2m_names = list(self._meta.many_to_many_keys.keys())
         if not m2m_names:
-            return {}
+            return ManyToManyResults(data={})
 
         async def _safe_fetch_m2m(relation_name: str) -> tuple[str, list[Model]]:
             try:
@@ -1203,7 +1213,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
                 return relation_name, []
 
         pairs = await asyncio.gather(*(_safe_fetch_m2m(name) for name in m2m_names))
-        return dict(pairs)
+        return ManyToManyResults(data=dict(pairs))
 
     async def add_m2m(self, relation_name: str, *target_ids: Any) -> int:
         """Add targets to a many-to-many relationship."""
@@ -1241,18 +1251,18 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         ref = self._meta.many_to_many_keys[relation_name]
         return await ref.clear(self)
 
-    async def fetch_all_related(self) -> dict[str, dict[str, Any]]:
+    async def fetch_all_related(self) -> AllRelatedResults[Model]:
         """Fetch all related data (FKs, inverse FKs, and M2M) concurrently."""
         fk_results, ifk_results, m2m_results = await asyncio.gather(
             self.fetch_fks(),
             self.fetch_ifks(),
             self.fetch_m2ms(),
         )
-        return {
-            "foreign_keys": fk_results,
-            "inverse_foreign_keys": ifk_results,
-            "many_to_many": m2m_results,
-        }
+        return AllRelatedResults(
+            foreign_keys=fk_results,
+            inverse_foreign_keys=ifk_results,
+            many_to_many=m2m_results,
+        )
 
     async def filter_fk(self, field_name: str, **kwargs: Any) -> list[Model]:
         if field_name not in self._meta.foreign_keys:

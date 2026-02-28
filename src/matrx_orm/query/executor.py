@@ -5,6 +5,7 @@ from typing import Any, TYPE_CHECKING
 
 from matrx_utils import vcprint
 from matrx_orm.core.async_db_manager import AsyncDatabaseManager
+from matrx_orm.core.types import AggregateResult, UpdateResult
 from matrx_orm.exceptions import (
     DatabaseError,
     ValidationError,
@@ -663,7 +664,7 @@ class QueryExecutor:
                 details={"operation": "bulk_upsert", "row_count": len(data_list), "error": str(e)},
             ) from e
 
-    async def update(self, **kwargs: Any) -> dict[str, Any]:
+    async def update(self, **kwargs: Any) -> UpdateResult:
         """UPDATE rows matching the WHERE clause built from filters."""
         try:
             if not kwargs:
@@ -705,7 +706,6 @@ class QueryExecutor:
                 elif isinstance(value, Expression):
                     sub_params: list[Any] = []
                     expr_sql = value.as_sql(sub_params)
-                    # Re-number params
                     for sp in sub_params:
                         params.append(sp)
                     set_clause.append(f"{field_name} = {expr_sql}")
@@ -723,7 +723,6 @@ class QueryExecutor:
                 )
 
             where_clause, where_params = self._extract_where_clause()
-            # Renumber where params
             if where_clause:
                 for i in range(len(where_params)):
                     where_clause = where_clause.replace(f"${i + 1}", f"${param_index + i}")
@@ -738,8 +737,7 @@ class QueryExecutor:
                 vcprint(params, "With params", verbose=debug, color="cyan")
 
             result = await self.db.execute_query(self.database, sql + " RETURNING *", *params)
-            rows_affected = len(result)
-            return {"rows_affected": rows_affected, "updated_rows": result}
+            return UpdateResult(rows_affected=len(result), updated_rows=result)
 
         except (ValidationError, IntegrityError, DatabaseError):
             raise
@@ -813,7 +811,7 @@ class QueryExecutor:
         results = await self._execute()
         return len(results) > 0
 
-    async def aggregate(self) -> dict[str, Any]:
+    async def aggregate(self) -> AggregateResult:
         """Execute the query and return the first row as a dict (for aggregation queries)."""
         results = await self._execute()
         if not results:

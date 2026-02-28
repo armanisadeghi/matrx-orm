@@ -10,6 +10,7 @@ from matrx_utils import vcprint
 
 from matrx_orm.core.async_db_manager import run_sync
 from matrx_orm.core.base import Model, RuntimeContainer
+from matrx_orm.core.types import AllRelatedResults, UpdateResult
 from matrx_orm.extended.app_error_handler import AppError, handle_errors
 
 ModelT = TypeVar("ModelT", bound=Model)
@@ -523,7 +524,7 @@ class BaseManager(Generic[ModelT]):
         return related
 
     @handle_errors
-    async def _fetch_all_related(self, item: ModelT) -> dict[str, dict[str, Any]]:
+    async def _fetch_all_related(self, item: ModelT) -> AllRelatedResults[Model]:
         """Fetch all relationships for an item."""
         if not item:
             raise AppError(
@@ -811,7 +812,7 @@ class BaseManager(Generic[ModelT]):
 
     async def update_where(
         self, filters: dict[str, Any], **updates: Any
-    ) -> dict[str, Any]:
+    ) -> UpdateResult:
         """Bulk-update rows matching filters without fetching them first.
 
         Args:
@@ -819,7 +820,7 @@ class BaseManager(Generic[ModelT]):
             **updates: Field=value pairs to SET.
 
         Returns:
-            {"rows_affected": int, "updated_rows": list[dict]}
+            UpdateResult with ``rows_affected`` and ``updated_rows`` attributes.
         """
         return await self.model.update_where(filters, **updates)
 
@@ -999,13 +1000,16 @@ class BaseManager(Generic[ModelT]):
 
     async def get_item_with_all_related(
         self, item_id: Any
-    ) -> tuple[ModelT, dict[str, dict[str, Any]] | None]:
-        """Get an item with all relationships."""
+    ) -> tuple[ModelT, AllRelatedResults[Model]]:
+        """Get an item with all relationships.
+
+        Raises AppError if the item is not found (via load_by_id).
+        The returned ``AllRelatedResults`` is never None — empty relations
+        are represented as empty containers inside the result.
+        """
         item = await self.load_by_id(item_id)
-        if item:
-            related_items = await self._fetch_all_related(item)
-            return item, related_items
-        return item, None  # type: ignore[return-value]
+        related = await self._fetch_all_related(item)
+        return item, related
 
     async def get_items_with_all_related(self) -> list[ModelT]:
         """Get all active items with all relationships."""
@@ -1016,13 +1020,85 @@ class BaseManager(Generic[ModelT]):
     @handle_errors
     async def get_item_with_m2m(
         self, item_id: Any, relation_name: str
-    ) -> tuple[ModelT | None, list[Model] | None]:
-        """Load an item and fetch one M2M relationship."""
+    ) -> tuple[ModelT, list[Model]]:
+        """Load an item and fetch one M2M relationship.
+
+        Raises AppError if the item is not found (via load_by_id).
+        """
         item = await self.load_by_id(item_id)
-        if item:
-            m2m_items = await item.fetch_m2m(relation_name)
-            return item, m2m_items
-        return item, None  # type: ignore[return-value]
+        m2m_items = await item.fetch_m2m(relation_name)
+        return item, m2m_items
+
+    @handle_errors
+    async def get_item_with_fk(
+        self, item_id: Any, fk_name: str, *, use_join: bool = True
+    ) -> tuple[ModelT, Model | None]:
+        """Load an item and fetch a single FK relationship.
+
+        Unlike ``get_item_with_related``, the return type is narrowed:
+        the second element is always a single ``Model | None`` (never a list).
+
+        Args:
+            item_id: Primary key of the item to load.
+            fk_name: Name of the FK field (must exist in ``model._meta.foreign_keys``).
+            use_join: Use a JOIN query (default True) for a single round-trip.
+
+        Raises:
+            AppError: If the item is not found.
+            ValueError: If ``fk_name`` is not a FK on this model.
+        """
+        if fk_name not in self.model._meta.foreign_keys:
+            raise ValueError(
+                f"'{fk_name}' is not a foreign key on {self.model.__name__}. "
+                f"FK fields: {', '.join(self.model._meta.foreign_keys)}"
+            )
+
+        if use_join:
+            pk_field = self.model._meta.primary_keys[0]
+            items = (
+                await self.model.filter(**{pk_field: item_id})
+                .select_related(fk_name)
+                .all()
+            )
+            if not items:
+                raise AppError(
+                    message="Item not found",
+                    error_type="NotFoundError",
+                    client_visible="The requested item could not be found.",
+                )
+            item = await self._initialize_item_runtime(items[0])
+            related = item.get_related(fk_name) if item else None  # type: ignore[union-attr]
+            return item, related  # type: ignore[return-value]
+
+        item = await self.load_by_id(item_id)
+        related = await item.fetch_fk(fk_name)
+        return item, related
+
+    @handle_errors
+    async def get_item_with_ifk(
+        self, item_id: Any, ifk_name: str
+    ) -> tuple[ModelT, list[Model]]:
+        """Load an item and fetch a single IFK (inverse foreign key) relationship.
+
+        Unlike ``get_item_with_related``, the return type is narrowed:
+        the second element is always ``list[Model]`` (never a single Model or None).
+
+        Args:
+            item_id: Primary key of the item to load.
+            ifk_name: Name of the IFK relation (must exist in ``model._meta.inverse_foreign_keys``).
+
+        Raises:
+            AppError: If the item is not found.
+            ValueError: If ``ifk_name`` is not an IFK on this model.
+        """
+        if ifk_name not in self.model._meta.inverse_foreign_keys:
+            raise ValueError(
+                f"'{ifk_name}' is not an inverse foreign key on {self.model.__name__}. "
+                f"IFK fields: {', '.join(self.model._meta.inverse_foreign_keys)}"
+            )
+        item = await self.load_by_id(item_id)
+        related = await item.fetch_ifk(ifk_name)
+        return item, related
 
     @handle_errors
     async def add_m2m(self, item_id: Any, relation_name: str, *target_ids: Any) -> int:
@@ -1067,16 +1143,20 @@ class BaseManager(Generic[ModelT]):
 
     async def get_item_through_fk(
         self, item_id: Any, first_relation: str, second_relation: str
-    ) -> tuple[ModelT | None, Model | list[Model] | None, Model | list[Model] | None]:
-        """Get an item through two FK hops."""
+    ) -> tuple[ModelT, Model | None, Model | None]:
+        """Traverse two FK hops: item -> first FK -> second FK.
+
+        Raises AppError if the item is not found (via load_by_id).
+        Returns (item, first_fk_or_none, second_fk_or_none).
+        """
         item = await self.load_by_id(item_id)
-        if item:
-            fk_instance = await self._fetch_related(item, first_relation)
-            if fk_instance and not isinstance(fk_instance, list):
-                target = await self._fetch_related(fk_instance, second_relation)
+        fk_instance = await self._fetch_related(item, first_relation)
+        if fk_instance and not isinstance(fk_instance, list):
+            target = await self._fetch_related(fk_instance, second_relation)
+            if not isinstance(target, list):
                 return item, fk_instance, target
             return item, fk_instance, None
-        return None, None, None
+        return item, None, None
 
     async def get_items_with_related_dict(
         self, relation_name: str
@@ -1317,34 +1397,36 @@ class BaseManager(Generic[ModelT]):
 
     async def get_active_item_with_through_fk(
         self, item_id: Any, first_relationship: str, second_relationship: str
-    ) -> tuple[ModelT | None, Model | None, Model | None]:
-        """Get an active item through two FK hops."""
+    ) -> tuple[ModelT, Model | None, Model | None]:
+        """Traverse two FK hops from an active item.
+
+        Raises AppError if the item is not found.
+        Returns (item, first_fk_or_none, second_fk_or_none).
+        """
         item, fk_instance = await self.get_active_item_with_fk(
             item_id, first_relationship
         )
         if fk_instance and not isinstance(fk_instance, list):
             target_instance = await fk_instance.fetch_fk(second_relationship)
-            return item, fk_instance, target_instance
-        elif item:
-            return item, None, None
-        else:
-            return None, None, None
+            return item, fk_instance, target_instance  # type: ignore[return-value]
+        return item, None, None  # type: ignore[return-value]
 
     @handle_errors
     async def get_active_item_through_ifk(
         self, item_id: Any, first_relationship: str, second_relationship: str
-    ) -> tuple[ModelT | None, Model | list[Model] | None, Any]:
-        """Get an active item through two inverse FK hops."""
+    ) -> tuple[ModelT, Model | list[Model] | None, list[Model] | None]:
+        """Traverse item -> IFK -> IFK.
+
+        Raises AppError if the item is not found.
+        Returns (item, first_ifk_or_none, second_ifk_list_or_none).
+        """
         item, ifk_instance = await self.get_active_item_with_ifk(
             item_id, first_relationship
         )
         if ifk_instance:
             target_instance = await ifk_instance.fetch_ifk(second_relationship)
-            return item, ifk_instance, target_instance
-        elif item:
-            return item, None, None
-        else:
-            return None, None, None
+            return item, ifk_instance, target_instance  # type: ignore[return-value]
+        return item, None, None  # type: ignore[return-value]
 
     @property
     def active_item_ids(self) -> set[Any]:
@@ -1740,7 +1822,7 @@ class BaseManager(Generic[ModelT]):
 
     def update_where_sync(
         self, filters: dict[str, Any], **updates: Any
-    ) -> dict[str, Any]:
+    ) -> UpdateResult:
         """Synchronous wrapper for update_where()."""
         try:
             asyncio.get_running_loop()

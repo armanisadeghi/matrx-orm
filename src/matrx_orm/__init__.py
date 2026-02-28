@@ -16,6 +16,14 @@ from .core.extended import BaseManager, BaseDTO
 from .core.model_view import ModelView
 from .core.base import Model
 from .core.registry import model_registry
+from .core.types import (
+    AggregateResult,
+    AllRelatedResults,
+    ForeignKeyResults,
+    InverseForeignKeyResults,
+    ManyToManyResults,
+    UpdateResult,
+)
 from .core.fields import (
     Field,
     CharField,
@@ -144,6 +152,13 @@ __all__ = [
     "BaseDTO",
     "ModelView",
     "Model",
+    # Typed result containers
+    "AggregateResult",
+    "AllRelatedResults",
+    "ForeignKeyResults",
+    "InverseForeignKeyResults",
+    "ManyToManyResults",
+    "UpdateResult",
     "model_registry",
     "Field",
     "CharField",
