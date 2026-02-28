@@ -1795,6 +1795,7 @@ When you run the schema builder against a database that has `vector(n)` columns,
 
 | Version | Highlights |
 |---|---|
+| **v2.0.28** | Patch release |
 | **v2.0.26** | fix: coerce fetch_on_init_limit to int to handle string values passed by subclasses |
 | **v2.0.2** | Patch release |
 | **v2.0.0** | pgvector support: `VectorField(dimensions=n)` with serialization/validation; `VectorDistance` expression; `.nearest(column, vector, metric)` query builder method; automatic null guard; `_vector_distance` in results; asyncpg codec auto-registered on pool init; `IndexDef` extended with `vector_ops` / `index_params` for HNSW & IVFFlat DDL; schema builder recognises `vector(n)` columns |
