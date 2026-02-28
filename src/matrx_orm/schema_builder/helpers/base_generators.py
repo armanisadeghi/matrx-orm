@@ -126,10 +126,14 @@ class {model_pascal}DTO(BaseDTO):
 class {model_pascal}Base(BaseManager[{model_pascal}]):
     view_class = None  # DTO is used by default; set to {model_pascal}View to opt in
 
-    def __init__(self, view_class: type[Any] | None = None):
+    def __init__(
+        self,
+        dto_class: type[Any] | None = None,
+        view_class: type[Any] | None = None,
+    ):
         if view_class is not None:
             self.view_class = view_class
-        super().__init__({model_pascal}, dto_class={model_pascal}DTO)
+        super().__init__({model_pascal}, dto_class=dto_class or {model_pascal}DTO)
 
     def _initialize_manager(self):
         super()._initialize_manager()
@@ -227,9 +231,8 @@ class {model_pascal}DTO(BaseDTO):
 
 
 class {model_pascal}Base(BaseManager[{model_pascal}]):
-    def __init__(self, view_class: type[Any] | None = None):
-        self.dto_class = dto_class or {model_pascal}DTO
-        super().__init__({model_pascal}, self.dto_class)
+    def __init__(self, dto_class: type[Any] | None = None):
+        super().__init__({model_pascal}, dto_class=dto_class or {model_pascal}DTO)
 
     def _initialize_manager(self):
         super()._initialize_manager()

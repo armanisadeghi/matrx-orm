@@ -96,10 +96,14 @@ class ai_modelDTO(BaseDTO):
 class ai_modelBase(BaseManager[ai_model]):
     view_class = None  # DTO is used by default; set to ai_modelView to opt in
 
-    def __init__(self, view_class: type[Any] | None = None):
+    def __init__(
+        self,
+        dto_class: type[Any] | None = None,
+        view_class: type[Any] | None = None,
+    ):
         if view_class is not None:
             self.view_class = view_class
-        super().__init__(ai_model, dto_class=ai_modelDTO)
+        super().__init__(ai_model, dto_class=dto_class or ai_modelDTO)
 
     def _initialize_manager(self):
         super()._initialize_manager()
