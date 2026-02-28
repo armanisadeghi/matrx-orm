@@ -1795,6 +1795,7 @@ When you run the schema builder against a database that has `vector(n)` columns,
 
 | Version | Highlights |
 |---|---|
+| **v2.0.30** | Patch release |
 | **v2.0.29** | Patch release |
 | **v2.0.28** | Patch release |
 | **v2.0.26** | fix: coerce fetch_on_init_limit to int to handle string values passed by subclasses |
