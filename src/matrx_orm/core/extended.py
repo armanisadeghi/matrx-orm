@@ -59,8 +59,18 @@ class BaseDTO:
     @classmethod
     @handle_errors
     async def from_model(cls, model: Model) -> BaseDTO:
-        instance = cls()
-        instance.id = str(model.id)
+        import inspect
+        id_str = str(model.id)
+        try:
+            sig = inspect.signature(cls.__init__)
+            if "id" in sig.parameters:
+                instance: BaseDTO = cls(**{"id": id_str})  # type: ignore[call-arg]
+            else:
+                instance = cls()  # type: ignore[call-arg]
+                instance.id = id_str
+        except (TypeError, ValueError):
+            instance = cls()  # type: ignore[call-arg]
+            instance.id = id_str
         instance._model = model
         if hasattr(model, "runtime"):
             model.runtime.dto = instance
