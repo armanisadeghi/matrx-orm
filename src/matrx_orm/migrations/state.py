@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from matrx_orm.exceptions import MigrationError
 
 if TYPE_CHECKING:
     from .operations import MigrationDB

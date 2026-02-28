@@ -142,10 +142,9 @@ class ModelState:
         except asyncio.CancelledError:
             # Handle task cancellation
             raise CacheError(
-                model=self.model_class,  # Use self.model_class here
+                model=self.model_class,
                 operation="get",
-                details={"kwargs": kwargs},
-                reason="Operation cancelled",
+                details={"kwargs": kwargs, "reason": "Operation cancelled"},
             )
         except Exception as e:
             raise CacheError(

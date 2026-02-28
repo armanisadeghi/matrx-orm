@@ -202,7 +202,7 @@ class AccessControlMiddleware(BaseMiddleware):
         self.get_user_permissions = get_user_permissions
 
     async def process_query(self, query: Dict[str, Any]) -> Dict[str, Any]:
-        permissions = self.get_user_permissions()
+        self.get_user_permissions()
         # Modify query based on user permissions
         return query
 

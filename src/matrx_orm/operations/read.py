@@ -51,7 +51,7 @@ async def iterator(model_cls, chunk_size=2000, **kwargs):
     qb = QueryBuilder(model_cls).filter(**kwargs)
     start, end = 0, chunk_size
     while True:
-        chunk = await qb[start:end]
+        chunk = await qb[start:end].all()
         if not chunk:
             break
         for item in chunk:

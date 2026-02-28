@@ -46,6 +46,11 @@ class MigrationExecutor:
             if name in applied:
                 continue
             mig = migrations[name]
+            if mig.up is None:
+                raise MigrationError(
+                    migration=name,
+                    original_error="Migration file is missing an 'up' function",
+                )
             try:
                 await mig.up(self._db)
             except MigrationError:

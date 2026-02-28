@@ -181,7 +181,7 @@ async def migrate_rebuild(
     migrations_dir: str | Path = "migrations",
     schema: str = "public",
     database_project: str | None = None,
-) -> dict[str, object]:
+) -> dict[str, list[str] | dict[str, object] | None]:
     """Apply pending migrations then regenerate models from the updated DB.
 
     Returns the result dict from ``migrate_and_rebuild``.

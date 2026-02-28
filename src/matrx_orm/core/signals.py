@@ -29,9 +29,8 @@ Module-level signal instances
 """
 from __future__ import annotations
 
-import asyncio
 import inspect
-from typing import Any, Callable, Coroutine
+from typing import Any, Callable
 
 
 class Signal:

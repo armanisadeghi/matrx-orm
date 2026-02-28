@@ -29,9 +29,9 @@ def clean_default_value(default_value, data_type):
 
 def save_to_json(data, dir_override=None, filename_override=None, save_to_local_data=False):
     if save_to_local_data:
-        directory = os.path.join(settings.BASE_DIR, "code_generator/local_data/current_sql_data")
+        directory = os.path.join(str(settings.BASE_DIR), "code_generator/local_data/current_sql_data")
     else:
-        directory = dir_override if dir_override else os.path.join(settings.TEMP_DIR, "code_generator/sql_queries")
+        directory = dir_override if dir_override else os.path.join(str(settings.TEMP_DIR), "code_generator/sql_queries")
 
     if not os.path.exists(directory):
         os.makedirs(directory)

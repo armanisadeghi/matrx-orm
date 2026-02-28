@@ -25,10 +25,10 @@ Usage::
 from __future__ import annotations
 
 import math
-from typing import Any, Generic, TypeVar, TYPE_CHECKING
+from typing import Generic, TypeVar, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from matrx_orm.query.builder import QueryBuilder
+    from matrx_orm.query.builder import QueryBuilder  # noqa: F401
     from matrx_orm.core.base import Model
 
 ModelT = TypeVar("ModelT", bound="Model")

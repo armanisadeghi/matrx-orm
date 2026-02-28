@@ -258,7 +258,7 @@ class SchemaDiff:
         tables: dict[str, TableState] = {}
         all_models = ModelRegistry.all_models()
 
-        for model_name, model_cls in all_models.items():
+        for _, model_cls in all_models.items():
             meta = getattr(model_cls, "_meta", None)
             if meta is None:
                 continue
@@ -350,7 +350,7 @@ class SchemaDiff:
                     nullable=cs.nullable,
                     primary_key=cs.primary_key,
                     unique=cs.unique,
-                    references=ForeignKeyDef(table=cs.fk_table, column=cs.fk_column) if cs.fk_table else None,
+                    references=ForeignKeyDef(table=cs.fk_table, column=cs.fk_column or "") if cs.fk_table else None,
                 )
                 for cs in mt.columns.values()
             ]
@@ -384,7 +384,7 @@ class SchemaDiff:
                     nullable=mc.nullable,
                     primary_key=mc.primary_key,
                     unique=mc.unique,
-                    references=ForeignKeyDef(table=mc.fk_table, column=mc.fk_column) if mc.fk_table else None,
+                    references=ForeignKeyDef(table=mc.fk_table, column=mc.fk_column or "") if mc.fk_table else None,
                 )
                 ops.append(Operation(op_type="add_column", table=tname, schema=self._schema, details={"column": col}))
 
@@ -427,7 +427,7 @@ class SchemaDiff:
                 m_has_fk = bool(mc.fk_table)
                 d_has_fk = bool(dc.fk_table)
                 if m_has_fk and not d_has_fk:
-                    fk = ForeignKeyDef(table=mc.fk_table, column=mc.fk_column)
+                    fk = ForeignKeyDef(table=mc.fk_table or "", column=mc.fk_column or "")
                     ops.append(Operation(
                         op_type="add_foreign_key", table=tname, schema=self._schema,
                         details={"fk": fk, "column": cname},

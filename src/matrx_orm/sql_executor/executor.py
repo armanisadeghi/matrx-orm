@@ -1,6 +1,6 @@
-import os
-from typing import Dict, Any, List, Optional
-from matrx_utils import vcprint
+from __future__ import annotations
+
+from typing import Any
 from matrx_orm.client.postgres_connection import execute_sql_query as db_execute_query
 from matrx_orm.client.postgres_connection import execute_transaction_query as db_execute_transaction_query
 from matrx_orm.client.postgres_connection import execute_batch_query as db_execute_batch_query
@@ -9,7 +9,7 @@ from .utils import list_available_queries
 
 
 
-def validate_params(query_name: str, params: Dict[str, Any]):
+def validate_params(query_name: str, params: dict[str, Any]):
     """
     Validate parameters and return a clean parameter dictionary with defaults applied.
     Instead of raising errors for non-critical issues, this attempts to fix or adapt the input.
@@ -49,7 +49,7 @@ def validate_params(query_name: str, params: Dict[str, Any]):
             cleaned_params[param_name] = param_def["default"]
     return cleaned_params
 
-def execute_query(query_name: str, params: Optional[Dict[str, Any]] = None, batch_params: Optional[List[Dict[str, Any]]] = None, batch_size: int = 50):
+def execute_query(query_name: str, params: dict[str, Any] | None = None, batch_params: list[dict[str, Any]] | None = None, batch_size: int = 50):
     """
     Central function to execute a query using the appropriate executor based on its type.
 
@@ -93,7 +93,7 @@ def execute_query(query_name: str, params: Optional[Dict[str, Any]] = None, batc
             query_data["database"]
         )
 
-def execute_standard_query(query_name: str, params: Optional[Dict[str, Any]] = None):
+def execute_standard_query(query_name: str, params: dict[str, Any] | None = None):
     """Execute a predefined SQL query by name with the given parameters."""
     params = params or {}
     registry = get_registry()
@@ -112,7 +112,7 @@ def execute_standard_query(query_name: str, params: Optional[Dict[str, Any]] = N
         query_data["database"]
     )
 
-def execute_transaction_query(query_name: str, params: Optional[Dict[str, Any]] = None):
+def execute_transaction_query(query_name: str, params: dict[str, Any] | None = None):
     """Execute a predefined SQL query that requires transaction handling."""
     params = params or {}
     registry = get_registry()
@@ -131,7 +131,7 @@ def execute_transaction_query(query_name: str, params: Optional[Dict[str, Any]] 
         query_data["database"]
     )
 
-def execute_batch_query(query_name: str, batch_params: List[Dict[str, Any]], batch_size: int = 50):
+def execute_batch_query(query_name: str, batch_params: list[dict[str, Any]], batch_size: int = 50):
     """
     Execute a predefined SQL query using batch processing.
 

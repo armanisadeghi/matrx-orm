@@ -19,7 +19,7 @@ async def migrate_and_rebuild(
     schema: str = "public",
     database_project: str | None = None,
     additional_schemas: list[str] | None = None,
-) -> dict[str, object]:
+) -> dict[str, list[str] | dict[str, object] | None]:
     """Apply pending migrations then regenerate models from the updated database.
 
     Parameters

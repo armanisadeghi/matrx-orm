@@ -1,7 +1,7 @@
 from collections.abc import Mapping
 from functools import wraps
+import inspect
 import traceback
-import asyncio
 from typing import Callable, Protocol, TypeVar, runtime_checkable
 
 DEFAULT_CLIENT_MESSAGE = "Oops. Something went wrong. Please reload the page and try again."
@@ -91,7 +91,7 @@ def handle_errors(func: _F) -> _F:
             context=context,
         ) from e
 
-    if asyncio.iscoroutinefunction(func):
+    if inspect.iscoroutinefunction(func):
         @wraps(func)
         async def async_wrapper(cls_or_self: object, *args: object, **kwargs: object) -> object:
             try:
