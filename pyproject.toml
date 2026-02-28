@@ -73,6 +73,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/matrx_orm"]
+include = ["src/matrx_orm/py.typed"]
 
 [tool.hatch.metadata]
 allow-direct-references = true

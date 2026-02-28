@@ -469,20 +469,20 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         return cls._database
 
     @classmethod
-    async def create(cls, **kwargs: Any) -> Model:
-        instance = await create.create_instance(cls, **kwargs)
+    async def create(cls, **kwargs: Any) -> Self:
+        instance = await create.create_instance(model_cls=cls, **kwargs)
         await StateManager.cache(cls, instance)
-        return instance
+        return cast(Self, instance)
 
     @classmethod
-    async def bulk_create(cls, objects_data: list[dict[str, Any]]) -> list[Model]:
+    async def bulk_create(cls, objects_data: list[dict[str, Any]]) -> list[Self]:
         """
         Bulk create multiple instances using enhanced bulk operations.
         Follows the same data processing pipeline as individual create().
         """
         from matrx_orm.operations.create import bulk_create
 
-        return await bulk_create(cls, objects_data)
+        return cast(list[Self], await bulk_create(cls, objects_data))
 
     @classmethod
     async def bulk_update(cls, objects: Sequence[Model], fields: list[str]) -> int:
@@ -508,7 +508,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         data: dict[str, Any],
         conflict_fields: list[str],
         update_fields: list[str] | None = None,
-    ) -> Model:
+    ) -> Self:
         """INSERT ... ON CONFLICT (conflict_fields) DO UPDATE SET ... RETURNING *
 
         Args:
@@ -520,7 +520,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         """
         from matrx_orm.operations.create import upsert
 
-        return await upsert(cls, data, conflict_fields, update_fields)
+        return cast(Self, await upsert(cls, data, conflict_fields, update_fields))
 
     @classmethod
     async def bulk_upsert(
@@ -528,7 +528,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         objects_data: list[dict[str, Any]],
         conflict_fields: list[str],
         update_fields: list[str] | None = None,
-    ) -> list[Model]:
+    ) -> list[Self]:
         """Bulk INSERT ... ON CONFLICT DO UPDATE for multiple rows.
 
         Args:
@@ -539,7 +539,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         """
         from matrx_orm.operations.create import bulk_upsert
 
-        return await bulk_upsert(cls, objects_data, conflict_fields, update_fields)
+        return cast(list[Self], await bulk_upsert(cls, objects_data, conflict_fields, update_fields))
 
     @classmethod
     async def count(cls, **kwargs: Any) -> int:
@@ -625,7 +625,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         return await QueryBuilder(cls).filter(**filters).delete()
 
     @classmethod
-    async def get(cls, use_cache: bool = True, **kwargs: Any) -> Model:
+    async def get(cls, use_cache: bool = True, **kwargs: Any) -> Self:
         try:
             if use_cache:
                 return await StateManager.get(cls, **kwargs)
@@ -636,7 +636,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             raise
 
     @classmethod
-    def get_sync(cls, use_cache: bool = True, **kwargs: Any) -> Model:
+    def get_sync(cls, use_cache: bool = True, **kwargs: Any) -> Self:
         """
         Synchronous wrapper for get(). Runs the async get() method in the current event loop.
         Use this in synchronous contexts to avoid RuntimeWarning for unawaited coroutines.
@@ -653,7 +653,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         return run_sync(cls.get(use_cache=use_cache, **kwargs))
 
     @classmethod
-    async def get_or_none(cls, use_cache: bool = True, **kwargs: Any) -> Model | None:
+    async def get_or_none(cls, use_cache: bool = True, **kwargs: Any) -> Self | None:
         try:
             if use_cache:
                 return await StateManager.get_or_none(cls, **kwargs)
@@ -666,7 +666,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             return None
 
     @classmethod
-    def get_or_none_sync(cls, use_cache: bool = True, **kwargs: Any) -> Model | None:
+    def get_or_none_sync(cls, use_cache: bool = True, **kwargs: Any) -> Self | None:
         """
         Synchronous wrapper for get_or_none().
         Use this in synchronous contexts to avoid RuntimeWarning for unawaited coroutines.
@@ -680,10 +680,10 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             if "no running event loop" not in str(e):
                 raise
 
-        return run_sync(cls.get_or_none(use_cache=use_cache, **kwargs))
+        return run_sync(coro=cls.get_or_none(use_cache=use_cache, **kwargs))
 
     @classmethod
-    def filter(cls, *args: Any, **kwargs: Any) -> QueryBuilder:
+    def filter(cls, *args: Any, **kwargs: Any) -> QueryBuilder[Self]:
         """Return a QueryBuilder with the given filters applied.
 
         Accepts Q objects as positional args and/or keyword filters::
@@ -692,10 +692,10 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             User.filter(status="active", role="admin")
             User.filter(Q(is_active=True), tenant_id=tid)
         """
-        return QueryBuilder(cls).filter(*args, **kwargs)
+        return QueryBuilder(model_cls=cls).filter(*args, **kwargs)
 
     @classmethod
-    async def raw(cls, sql: str, *params: Any) -> list[Model]:
+    async def raw(cls, sql: str, *params: Any) -> list[Self]:
         """Execute raw SQL and hydrate results as model instances.
 
         Usage::
@@ -704,7 +704,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         """
         from matrx_orm.core.async_db_manager import AsyncDatabaseManager
 
-        results = await AsyncDatabaseManager.execute_query(cls.get_database_name(), sql, *params)
+        results = await AsyncDatabaseManager.execute_query(config_name=cls.get_database_name(), query=sql, *params)
         instances = []
         for row in results:
             try:
@@ -729,7 +729,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         return [dict(row) for row in results]
 
     @classmethod
-    def filter_sync(cls, **kwargs: Any) -> list[Model]:
+    def filter_sync(cls, **kwargs: Any) -> list[Self]:
         """
         Synchronous wrapper for filter().all().
         Use this in synchronous contexts to fetch filtered results without async/await.
@@ -748,8 +748,8 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
     @classmethod
     async def all(cls) -> list[Self]:
         try:
-            results = await QueryBuilder(cls).all()
-            await StateManager.cache_bulk(cls, results)
+            results: list[Self] = await QueryBuilder(model_cls=cls).all()
+            await StateManager.cache_bulk(model_class=cls, records=results)
             return results
         except ORMException as e:
             e.enrich(model=cls, operation="all")
@@ -822,7 +822,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
     @classmethod
     async def update_fields(
         cls, instance_or_id: Model | Any, **kwargs: Any
-    ) -> Model | None:
+    ) -> Self | None:
         """
         Static method to update an instance or create it if it doesn't exist.
         Merges the provided fields with existing values.
@@ -1364,7 +1364,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             return False
 
     @classmethod
-    async def get_by_id(cls, id_value: Any, use_cache: bool = True) -> Model:
+    async def get_by_id(cls, id_value: Any, use_cache: bool = True) -> Self:
         pk_field = cls._meta.primary_keys[0]
         return await cls.get(use_cache=use_cache, **{pk_field: id_value})
 
@@ -1389,4 +1389,4 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
 
     @classmethod
     async def get_many(cls, **kwargs: Any) -> list[Self]:
-        return await QueryBuilder(cls).filter(**kwargs).all()
+        return await QueryBuilder[Self](cls).filter(**kwargs).all()

@@ -12,7 +12,8 @@ from .core.config import (
     get_all_database_projects_redacted,
 )
 
-from .core.extended import BaseManager, BaseDTO
+from .core.extended import BaseManager
+from .core.model_dto import BaseDTO
 from .core.model_view import ModelView
 from .core.base import Model
 from .core.registry import model_registry
@@ -23,6 +24,7 @@ from .core.types import (
     InverseForeignKeyResults,
     ManyToManyResults,
     UpdateResult,
+    ModelT,
 )
 from .core.fields import (
     Field,
@@ -59,6 +61,21 @@ from .core.fields import (
     PrimitiveArrayField,
     VersionField,
     VectorField,
+    EmailField,
+    SlugField,
+    FileField,
+    ImageField,
+    CITextField,
+    CompositeField,
+    RangeField,
+    DecimalArrayField,
+    DateArrayField,
+    TimeArrayField,
+    IPv4Field,
+    IPv6Field,
+    HStoreArrayField,
+    IPNetworkArrayField,
+    IPv6ArrayField,
 )
 from .core.relations import ManyToManyField
 from .core.expressions import (
@@ -69,6 +86,7 @@ from .core.expressions import (
     Subquery,
     Exists,
     Func,
+    Aggregate,
     Coalesce,
     Lower,
     Upper,
@@ -120,7 +138,29 @@ from .core.signals import (
     post_delete,
 )
 from .core.transaction import transaction
-from .exceptions import OptimisticLockError
+from .exceptions import (
+    ORMException,
+    ValidationError,
+    QueryError,
+    DoesNotExist,
+    MultipleObjectsReturned,
+    DatabaseError,
+    ConnectionError,
+    IntegrityError,
+    TransactionError,
+    ConfigurationError,
+    CacheError,
+    StateError,
+    RelationshipError,
+    AdapterError,
+    FieldError,
+    MigrationError,
+    ParameterError,
+    UnknownDatabaseError,
+    OptimisticLockError,
+)
+from .state import CachePolicy, StateManager
+from .query.builder import QueryBuilder
 from .migrations import (
     MigrationDB,
     MigrationLoader,
@@ -139,6 +179,7 @@ from .migrations import (
 )
 
 __all__ = [
+    # ── Configuration ──────────────────────────────────────────────────────────
     "DatabaseProjectConfig",
     "register_database",
     "register_database_from_env",
@@ -146,41 +187,80 @@ __all__ = [
     "get_connection_string",
     "get_manager_config",
     "get_code_config",
+    "get_schema_builder_overrides",
     "get_all_database_project_names",
-    "get_default_code_config",
+    "get_database_alias",
+    "get_all_database_projects_redacted",
+    # ── Core model layer ───────────────────────────────────────────────────────
+    "Model",
     "BaseManager",
     "BaseDTO",
     "ModelView",
-    "Model",
-    # Typed result containers
+    "model_registry",
+    # ── Query API ─────────────────────────────────────────────────────────────
+    "QueryBuilder",
+    # ── Typed result containers ────────────────────────────────────────────────
     "AggregateResult",
     "AllRelatedResults",
     "ForeignKeyResults",
     "InverseForeignKeyResults",
     "ManyToManyResults",
     "UpdateResult",
-    "model_registry",
+    # ── TypeVars (useful for generic annotations in downstream code) ───────────
+    "ModelT",
+    # ── Fields ────────────────────────────────────────────────────────────────
     "Field",
     "CharField",
-    "EnumField",
-    "DateField",
     "TextField",
     "IntegerField",
-    "FloatField",
-    "BooleanField",
-    "DateTimeField",
-    "TimeField",
-    "UUIDField",
-    "JSONField",
-    "DecimalField",
     "BigIntegerField",
     "SmallIntegerField",
+    "FloatField",
+    "DecimalField",
+    "BooleanField",
+    "UUIDField",
+    "DateField",
+    "DateTimeField",
+    "TimeField",
+    "TimeDeltaField",
+    "JSONField",
     "JSONBField",
+    "ArrayField",
     "UUIDArrayField",
     "JSONBArrayField",
+    "TextArrayField",
+    "IntegerArrayField",
+    "BooleanArrayField",
+    "DecimalArrayField",
+    "DateArrayField",
+    "TimeArrayField",
+    "HStoreArrayField",
+    "IPv6ArrayField",
+    "IPNetworkArrayField",
+    "PrimitiveArrayField",
+    "EnumField",
+    "IPAddressField",
+    "IPv4Field",
+    "IPv6Field",
+    "IPNetworkField",
+    "MacAddressField",
+    "HStoreField",
+    "PointField",
+    "MoneyField",
+    "BinaryField",
+    "EmailField",
+    "SlugField",
+    "FileField",
+    "ImageField",
+    "CITextField",
+    "CompositeField",
+    "RangeField",
+    "VersionField",
+    "VectorField",
+    # ── Relation fields ────────────────────────────────────────────────────────
     "ForeignKey",
     "ManyToManyField",
-    # Expressions
+    # ── Expressions & Q objects ────────────────────────────────────────────────
     "F",
     "Expression",
     "Q",
@@ -188,6 +268,7 @@ __all__ = [
     "Subquery",
     "Exists",
     "Func",
+    "Aggregate",
     "Coalesce",
     "Lower",
     "Upper",
@@ -202,6 +283,7 @@ __all__ = [
     "Cast",
     "Extract",
     "DateTrunc",
+    # ── Aggregate functions ────────────────────────────────────────────────────
     "Sum",
     "Avg",
     "Min",
@@ -209,7 +291,7 @@ __all__ = [
     "Count",
     "StdDev",
     "Variance",
-    # Window functions
+    # ── Window functions ───────────────────────────────────────────────────────
     "Window",
     "RowNumber",
     "Rank",
@@ -222,20 +304,15 @@ __all__ = [
     "Ntile",
     "CumeDist",
     "PercentRank",
-    # CTEs
+    # ── CTEs ──────────────────────────────────────────────────────────────────
     "CTE",
-    # Vector search
-    "VectorField",
+    # ── Vector search ─────────────────────────────────────────────────────────
     "VectorDistance",
     "VECTOR_METRICS",
-    # Paginator
+    # ── Pagination ─────────────────────────────────────────────────────────────
     "Paginator",
     "Page",
-    # Fields
-    "VersionField",
-    # Exceptions
-    "OptimisticLockError",
-    # Signals
+    # ── Signals ────────────────────────────────────────────────────────────────
     "Signal",
     "pre_create",
     "post_create",
@@ -243,24 +320,32 @@ __all__ = [
     "post_save",
     "pre_delete",
     "post_delete",
-    # Transactions
+    # ── Transactions ───────────────────────────────────────────────────────────
     "transaction",
-    "IPAddressField",
-    "ArrayField",
-    "TextArrayField",
-    "IntegerArrayField",
-    "BooleanArrayField",
-    "BinaryField",
-    "TimeDeltaField",
-    "IPNetworkField",
-    "MacAddressField",
-    "HStoreField",
-    "PointField",
-    "MoneyField",
-    "PrimitiveArrayField",
-    "get_schema_builder_overrides",
-    "get_database_alias",
-    "get_all_database_projects_redacted",
+    # ── Cache ──────────────────────────────────────────────────────────────────
+    "CachePolicy",
+    "StateManager",
+    # ── Exceptions ─────────────────────────────────────────────────────────────
+    "ORMException",
+    "ValidationError",
+    "QueryError",
+    "DoesNotExist",
+    "MultipleObjectsReturned",
+    "DatabaseError",
+    "ConnectionError",
+    "IntegrityError",
+    "TransactionError",
+    "ConfigurationError",
+    "CacheError",
+    "StateError",
+    "RelationshipError",
+    "AdapterError",
+    "FieldError",
+    "MigrationError",
+    "ParameterError",
+    "UnknownDatabaseError",
+    "OptimisticLockError",
+    # ── Migrations ─────────────────────────────────────────────────────────────
     "MigrationDB",
     "MigrationLoader",
     "MigrationState",
