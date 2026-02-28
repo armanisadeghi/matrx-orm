@@ -22,16 +22,16 @@ verbose = False
 
 class BaseManager(Generic[ModelT]):
     model: type[ModelT]
-    dto_class: type[BaseDTO] | None
-    view_class: type | None  # type[ModelView] | None — avoids circular import
+    dto_class: type[BaseDTO[ModelT]] | None
+    view_class: type[ModelView[ModelT]] | None
     fetch_on_init_limit: int
     _fetch_on_init_with_warnings_off: str | None
 
     def __init__(
         self,
         model: type[ModelT],
-        dto_class: type[BaseDTO] | None = None,
-        view_class: type | None = None,
+        dto_class: type[BaseDTO[ModelT]] | None = None,
+        view_class: type[ModelView[ModelT]] | None = None,
         fetch_on_init_limit: int = 0,
         FETCH_ON_INIT_WITH_WARNINGS_OFF: str | None = None,
     ) -> None:
@@ -92,7 +92,7 @@ class BaseManager(Generic[ModelT]):
             context=self._get_error_context(),
         )
 
-    async def _initialize_dto_runtime(self, dto: BaseDTO, item: ModelT) -> None:
+    async def _initialize_dto_runtime(self, dto: BaseDTO[ModelT], item: ModelT) -> None:
         """Hook for subclasses to add runtime data to DTO"""
         pass
 
@@ -121,7 +121,7 @@ class BaseManager(Generic[ModelT]):
         # Applies the view in-place: prefetches relations, runs computed       #
         # fields, stores everything flat on the model instance.               #
         # ------------------------------------------------------------------ #
-        view_cls: ModelView | None = getattr(self, "view_class", None)
+        view_cls: type[ModelView[ModelT]] | None = getattr(self, "view_class", None)
         if view_cls is not None:
             await view_cls.apply(model=item)
             return item
@@ -132,7 +132,7 @@ class BaseManager(Generic[ModelT]):
         # to the model instance as item.dto / item.runtime.dto.              #
         # ------------------------------------------------------------------ #
         if self.dto_class:
-            dto: BaseDTO = await self.dto_class.from_model(model=item)
+            dto: BaseDTO[ModelT] = await self.dto_class.from_model(model=item)
             await self._initialize_dto_runtime(dto, item)
             item.runtime.dto = dto
             item.dto = dto

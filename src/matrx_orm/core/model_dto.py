@@ -1,7 +1,8 @@
 from __future__ import annotations
+from inspect import Signature
 
 from enum import Enum
-from typing import Any, TypeVar
+from typing import Any, Generic, TypeVar
 from uuid import UUID
 
 from matrx_orm.core.base import Model
@@ -14,7 +15,7 @@ debug = False
 verbose = False
 
 
-class BaseDTO:
+class BaseDTO(Generic[ModelT]):
     """
     Legacy data-transfer object layer.
 
@@ -48,17 +49,17 @@ class BaseDTO:
     """
 
     id: str
-    _model: Model | None = None
+    _model: ModelT | None = None
 
     @classmethod
     @handle_errors
-    async def from_model(cls, model: Model) -> BaseDTO:
+    async def from_model(cls, model: ModelT) -> BaseDTO[ModelT]:
         import inspect
-        id_str = str(model.id)
+        id_str: str = str(model.id)
         try:
-            sig = inspect.signature(cls.__init__)
+            sig: Signature = inspect.signature(obj=cls.__init__)
             if "id" in sig.parameters:
-                instance: BaseDTO = cls(**{"id": id_str})  # type: ignore[call-arg]
+                instance: BaseDTO[ModelT] = cls(**{"id": id_str})  # type: ignore[call-arg]
             else:
                 instance = cls()  # type: ignore[call-arg]
                 instance.id = id_str
@@ -71,7 +72,7 @@ class BaseDTO:
         await instance._initialize_dto(model)
         return instance
 
-    async def _initialize_dto(self, model: Model) -> None:
+    async def _initialize_dto(self, model: ModelT) -> None:
         pass
 
     def _get_error_context(self) -> dict[str, str]:
@@ -107,15 +108,15 @@ class BaseDTO:
     async def fetch_fk(self, field_name: str) -> Model | None:
         if not self._model:
             raise AttributeError("No model instance attached to DTO")
-        result = await self._model.fetch_fk(field_name)
-        self._model.runtime.set_relationship(field_name, result)
+        result: Model | None = await self._model.fetch_fk(field_name)
+        self._model.runtime.set_relationship(name=field_name, value=result)
         return result
 
     @handle_errors
     async def fetch_ifk(self, field_name: str) -> list[Model]:
         if not self._model:
             raise AttributeError("No model instance attached to DTO")
-        result = await self._model.fetch_ifk(field_name)
+        result: list[Model] = await self._model.fetch_ifk(field_name)
         self._model.runtime.set_relationship(field_name, result)
         return result
 
@@ -123,7 +124,7 @@ class BaseDTO:
     async def fetch_one_relation(self, field_name: str) -> Model | list[Model] | None:
         if not self._model:
             raise AttributeError("No model instance attached to DTO")
-        result = await self._model.fetch_one_relation(field_name)
+        result: Model | list[Model] | None = await self._model.fetch_one_relation(field_name)
         self._model.runtime.set_relationship(field_name, result)
         return result
 
@@ -131,7 +132,7 @@ class BaseDTO:
     async def filter_fk(self, field_name: str, **kwargs: Any) -> list[Model]:
         if not self._model:
             raise AttributeError("No model instance attached to DTO")
-        result = await self._model.filter_fk(field_name, **kwargs)
+        result: list[Model] = await self._model.filter_fk(field_name, **kwargs)
         self._model.runtime.set_relationship(field_name, result)
         return result
 
@@ -139,7 +140,7 @@ class BaseDTO:
     async def filter_ifk(self, field_name: str, **kwargs: Any) -> list[Model]:
         if not self._model:
             raise AttributeError("No model instance attached to DTO")
-        result = await self._model.filter_ifk(field_name, **kwargs)
+        result: list[Model] = await self._model.filter_ifk(field_name, **kwargs)
         self._model.runtime.set_relationship(field_name, result)
         return result
 

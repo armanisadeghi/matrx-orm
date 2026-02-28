@@ -47,7 +47,7 @@ from {models_module_path} import {model_pascal}
 # When active, the DTO path below is skipped automatically.
 # ---------------------------------------------------------------------------
 
-class {model_pascal}View(ModelView):
+class {model_pascal}View(ModelView[{model_pascal}]):
     \"\"\"
     Declarative view for {model_pascal}.
 
@@ -84,7 +84,7 @@ class {model_pascal}View(ModelView):
 # ---------------------------------------------------------------------------
 
 @dataclass
-class {model_pascal}DTO(BaseDTO):
+class {model_pascal}DTO(BaseDTO[{model_pascal}]):
     id: str
 
     async def _initialize_dto(self, model: {model_pascal}) -> None:
@@ -205,7 +205,7 @@ from {models_module_path} import {model_pascal}
 
 
 @dataclass
-class {model_pascal}DTO(BaseDTO):
+class {model_pascal}DTO(BaseDTO[{model_pascal}]):
     id: str
 
     async def _initialize_dto(self, model: {model_pascal}) -> None:

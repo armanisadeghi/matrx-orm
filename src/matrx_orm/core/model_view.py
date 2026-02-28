@@ -61,10 +61,12 @@ from __future__ import annotations
 import asyncio
 import inspect
 import warnings
-from typing import Any, TYPE_CHECKING
+from typing import Any, Generic, TypeVar, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from matrx_orm.core.base import Model
+
+ModelT = TypeVar("ModelT", bound="Model")
 
 
 class ModelViewMeta(type):
@@ -98,7 +100,7 @@ class ModelViewMeta(type):
         return super().__new__(mcs, name, bases, attrs)
 
 
-class ModelView(metaclass=ModelViewMeta):
+class ModelView(Generic[ModelT], metaclass=ModelViewMeta):
     """
     Base class for all model views.
 
@@ -121,7 +123,7 @@ class ModelView(metaclass=ModelViewMeta):
     _computed_methods: dict[str, Any] = {}
 
     @classmethod
-    async def apply(cls, model: "Model") -> "Model":
+    async def apply(cls, model: ModelT) -> ModelT:
         """
         Materialise this view onto *model* in-place.
 
@@ -188,7 +190,7 @@ class ModelView(metaclass=ModelViewMeta):
     # ---------------------------------------------------------------------- #
 
     @classmethod
-    async def _prefetch_relations(cls, model: "Model", relation_names: list[str]) -> None:
+    async def _prefetch_relations(cls, model: ModelT, relation_names: list[str]) -> None:
         """
         Fetch the listed relation names concurrently, routing each to the
         correct fetch method (FK / IFK / M2M) based on the model's metadata.
