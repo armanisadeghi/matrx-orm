@@ -59,7 +59,8 @@ class BaseDTO:
     @classmethod
     @handle_errors
     async def from_model(cls, model: Model) -> BaseDTO:
-        instance = cls(id=str(model.id))
+        instance = cls()
+        instance.id = str(model.id)
         instance._model = model
         if hasattr(model, "runtime"):
             model.runtime.dto = instance
