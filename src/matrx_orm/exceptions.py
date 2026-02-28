@@ -1,4 +1,5 @@
 import traceback as _tb
+from collections.abc import Mapping
 
 from matrx_utils import vcprint
 
@@ -34,16 +35,20 @@ class ORMException(Exception):
     """Base exception class for all ORM-related errors."""
 
     def __init__(
-        self, message=None, model=None, details=None, class_name=None, method_name=None
+        self,
+        message: str | None = None,
+        model: type | str | None = None,
+        details: Mapping[str, object] | None = None,
+        class_name: str | None = None,
+        method_name: str | None = None,
     ):
-        self.model = (
-            model.__name__
-            if hasattr(model, "__name__")
-            else str(model)
-            if model
-            else "Unknown Model"
-        )
-        self.details = self._sanitize_details(details or {})
+        if isinstance(model, type):
+            self.model = model.__name__
+        elif isinstance(model, str):
+            self.model = model
+        else:
+            self.model = "Unknown Model"
+        self.details = self._sanitize_details(dict(details) if details else {})
         self._message = message
         self.class_name = class_name
         self.method_name = method_name
@@ -59,15 +64,24 @@ class ORMException(Exception):
         lines.extend(self._caller_frames)
         return "\n".join(lines)
 
-    def enrich(self, model=None, operation=None, args=None, **extra):
+    def enrich(
+        self,
+        model: type | str | None = None,
+        operation: str | None = None,
+        args: object = None,
+        **extra: object,
+    ) -> "ORMException":
         """Stamp context onto this exception as it bubbles up through layers.
 
         Each layer that catches an ORMException should call enrich() with
         whatever it knows, then re-raise — never wrap in a new exception.
         Only the first enrichment for each field wins (closest to the error).
         """
-        if model and self.model == "Unknown Model":
-            self.model = model.__name__ if hasattr(model, "__name__") else str(model)
+        if model is not None and self.model == "Unknown Model":
+            if isinstance(model, type):
+                self.model = model.__name__
+            else:
+                self.model = model
         if operation and not self.method_name:
             self.method_name = operation
         if args is not None and "args" not in self.details:
@@ -79,10 +93,15 @@ class ORMException(Exception):
         super().__init__(self.format_message())
         return self
 
+    def _str(self, key: str, default: str = "") -> str:
+        """Extract a string value from details, falling back to default."""
+        value = self.details.get(key, default)
+        return str(value) if value is not None else default
+
     @staticmethod
-    def _sanitize_details(details):
+    def _sanitize_details(details: Mapping[str, object]) -> dict[str, object]:
         """Prevent nested ORMException str() output from ballooning error messages."""
-        sanitized = {}
+        sanitized: dict[str, object] = {}
         _sep_80 = "-" * 80
         _eq_80 = "=" * 80
         for key, value in details.items():
@@ -170,8 +189,8 @@ class ValidationError(ORMException):
         super().__init__(message=message, model=model, details=merged_details)
 
     def format_message(self):
-        reason = self.details.get("reason")
-        field = self.details.get("field")
+        reason = self._str("reason")
+        field = self._str("field")
         value = self.details.get("value")
         lines = ["\n" + "-" * 80]
         lines.append("Matrx ORM  |  ValidationError")
@@ -186,14 +205,14 @@ class ValidationError(ORMException):
         lines.append("")
         lines.append("Hint:")
         # Contextual hints based on the reason string
-        if reason and "no update data" in reason.lower():
+        if "no update data" in reason.lower():
             lines.append(
                 "  - You called update() or save() without passing any fields to change."
             )
             lines.append(
                 "  - Ensure you are passing at least one keyword argument, e.g. update(status='active')."
             )
-        elif reason and "invalid field" in reason.lower():
+        elif "invalid field" in reason.lower():
             lines.append(
                 "  - One or more field names you passed do not exist on this model."
             )
@@ -203,17 +222,17 @@ class ValidationError(ORMException):
             lines.append(
                 "  - Fields marked is_native=False (computed/virtual) cannot be updated directly."
             )
-        elif reason and "no lookup criteria" in reason.lower():
+        elif "no lookup criteria" in reason.lower():
             lines.append(
                 "  - You called get() or a cache lookup without any filter arguments."
             )
             lines.append("  - Pass at least one field to match on, e.g. get(id='...').")
-        elif reason and "no data provided" in reason.lower():
+        elif "no data provided" in reason.lower():
             lines.append("  - You called create() or insert() with an empty data dict.")
             lines.append(
                 "  - Ensure the object has at least the required fields set before saving."
             )
-        elif reason and "cannot cache none" in reason.lower():
+        elif "cannot cache none" in reason.lower():
             lines.append(
                 "  - The record returned from the database was None and cannot be cached."
             )
@@ -287,12 +306,18 @@ class QueryError(ORMException):
 class DoesNotExist(QueryError):
     """Raised when a queried object does not exist."""
 
-    def __init__(self, model=None, filters=None, class_name=None, method_name=None):
-        details = {"filters": filters or {}}
-        filter_str = ", ".join(f"{k}={v}" for k, v in details["filters"].items())
-        message = (
-            f"No {model.__name__ if model else 'object'} found matching: {filter_str}"
-        )
+    def __init__(
+        self,
+        model: type | str | None = None,
+        filters: dict[str, object] | None = None,
+        class_name: str | None = None,
+        method_name: str | None = None,
+    ):
+        resolved_filters: dict[str, object] = filters or {}
+        details: dict[str, object] = {"filters": resolved_filters}
+        filter_str = ", ".join(f"{k}={v}" for k, v in resolved_filters.items())
+        model_name = model.__name__ if isinstance(model, type) else str(model) if model else "object"
+        message = f"No {model_name} found matching: {filter_str}"
         super().__init__(
             message=message,
             model=model,
@@ -308,10 +333,11 @@ class DoesNotExist(QueryError):
         lines.append("NOTICE: Requested item not found")
         lines.append("")
         lines.append(self.message)
-        if self.details.get("filters"):
+        filters = self.details.get("filters")
+        if isinstance(filters, dict) and filters:
             lines.append("")
             lines.append("Search criteria:")
-            for k, v in self.details["filters"].items():
+            for k, v in filters.items():
                 lines.append(f"  {k}: {v}")
         lines.append("")
         lines.append("Hint:")
@@ -336,14 +362,21 @@ class DoesNotExist(QueryError):
 class MultipleObjectsReturned(QueryError):
     """Raised when a query returns multiple objects but one was expected."""
 
-    def __init__(self, model=None, count=None, filters=None):
-        details = {"count": count, "filters": filters or {}}
-        filter_str = ", ".join(f"{k}={v}" for k, v in details["filters"].items())
+    def __init__(
+        self,
+        model: type | str | None = None,
+        count: int | None = None,
+        filters: dict[str, object] | None = None,
+    ):
+        resolved_filters: dict[str, object] = filters or {}
+        details: dict[str, object] = {"count": count, "filters": resolved_filters}
+        filter_str = ", ".join(f"{k}={v}" for k, v in resolved_filters.items())
         message = f"Found {count} objects when expecting one. Filters: {filter_str}"
         super().__init__(message=message, model=model, details=details)
 
     def format_message(self):
         count = self.details.get("count", "?")
+        filters = self.details.get("filters")
         lines = ["\n" + "-" * 80]
         lines.append("Matrx ORM  |  MultipleObjectsReturned")
         lines.append("")
@@ -352,10 +385,10 @@ class MultipleObjectsReturned(QueryError):
         )
         lines.append("")
         lines.append(self.message)
-        if self.details.get("filters"):
+        if isinstance(filters, dict) and filters:
             lines.append("")
             lines.append("Search criteria:")
-            for k, v in self.details["filters"].items():
+            for k, v in filters.items():
                 lines.append(f"  {k}: {v}")
         lines.append("")
         lines.append("Hint:")
@@ -604,8 +637,8 @@ class StateError(ORMException):
         super().__init__(message=message, model=model, details=details)
 
     def format_message(self):
-        reason = self.details.get("reason", "")
-        original = self.details.get("original_error", "")
+        reason = self._str("reason")
+        original = self._str("original_error")
         lines = ["\n" + "-" * 80]
         lines.append("Matrx ORM  |  StateError")
         lines.append("")
@@ -616,7 +649,7 @@ class StateError(ORMException):
             lines.append(f"  Cause:    {original}")
         lines.append("")
         lines.append("Hint:")
-        if reason and "not registered" in reason.lower():
+        if "not registered" in reason.lower():
             lines.append("  - The model has not been registered with the StateManager.")
             lines.append(
                 "  - This usually means the model file was not imported before queries ran."

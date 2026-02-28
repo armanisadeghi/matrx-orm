@@ -206,6 +206,7 @@ class RelationField(Field):
                 self._related_model = get_model_by_name(self.to_model)
             else:
                 self._related_model = self.to_model
+        assert self._related_model is not None, f"Could not resolve model for {self.to_model!r}"
         return self._related_model
 
     def get_field_type(self) -> str:
@@ -323,7 +324,7 @@ class ManyToManyReference:
         return self.junction_table
 
     async def _get_db_name(self, instance: Model) -> str:
-        return instance._meta.database
+        return instance.get_database_name()
 
     def _enrich_context(self) -> dict[str, str]:
         return {

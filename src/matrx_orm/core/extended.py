@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 from enum import Enum
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, TypeVar, cast
 from uuid import UUID
 
 from matrx_utils import vcprint
@@ -59,7 +59,8 @@ class BaseDTO:
     @classmethod
     @handle_errors
     async def from_model(cls, model: Model) -> BaseDTO:
-        instance = cls(id=str(model.id))
+        instance = cls()
+        instance.id = str(model.id)
         instance._model = model
         if hasattr(model, "runtime"):
             model.runtime.dto = instance
@@ -208,10 +209,7 @@ class BaseManager(Generic[ModelT]):
     dto_class: type[BaseDTO] | None
     view_class: type | None  # type[ModelView] | None — avoids circular import
     fetch_on_init_limit: int
-    _FETCH_ON_INIT_WITH_WARNINGS_OFF: str | None
-    _active_items: set[Any]
-    computed_fields: set[str]
-    relation_fields: set[str]
+    _fetch_on_init_with_warnings_off: str | None
 
     def __init__(
         self,
@@ -229,8 +227,8 @@ class BaseManager(Generic[ModelT]):
             self.view_class = view_class
         elif not hasattr(self, "view_class"):
             self.view_class = None
-        self.fetch_on_init_limit = int(fetch_on_init_limit) if fetch_on_init_limit is not None else 0
-        self._FETCH_ON_INIT_WITH_WARNINGS_OFF = FETCH_ON_INIT_WITH_WARNINGS_OFF
+        self.fetch_on_init_limit = int(fetch_on_init_limit)
+        self._fetch_on_init_with_warnings_off = FETCH_ON_INIT_WITH_WARNINGS_OFF
         self._active_items: set[Any] = set()
         self.computed_fields: set[str] = set()
         self.relation_fields: set[str] = set()
@@ -379,7 +377,7 @@ class BaseManager(Generic[ModelT]):
         item = await self.model.get_or_none(use_cache=use_cache, **kwargs)
         if not item:
             return None
-        return await self._initialize_item_runtime(item)
+        return await self._initialize_item_runtime(cast(ModelT, item))
 
     @handle_errors
     async def _get_item_with_retry(
@@ -448,7 +446,7 @@ class BaseManager(Generic[ModelT]):
             return []
 
         try:
-            created_items = await self.model.bulk_create(items_data)
+            created_items = cast(list[ModelT], await self.model.bulk_create(items_data))
 
             initialized_items: list[ModelT] = []
             for item in created_items:
@@ -504,7 +502,7 @@ class BaseManager(Generic[ModelT]):
 
     @handle_errors
     async def _fetch_related(
-        self, item: ModelT, relation_name: str
+        self, item: Model, relation_name: str
     ) -> Model | list[Model] | None:
         """Fetch a single relationship for an item."""
         if not item:
@@ -1285,8 +1283,11 @@ class BaseManager(Generic[ModelT]):
 
     @handle_errors
     async def get_active_item_with_ifk(self, related_model: str) -> ModelT | None:
-        """Get an active item with an inverse foreign key relation."""
-        item = await self.add_active_item()
+        """Get the first active item with an inverse foreign key relation."""
+        active_ids = list(self._active_items)
+        if not active_ids:
+            return None
+        item = await self._get_item_or_none(id=active_ids[0])
         if item:
             await item.fetch_ifk(related_model)
         return item
@@ -1307,8 +1308,11 @@ class BaseManager(Generic[ModelT]):
         ]
 
     async def get_active_item_with_all_related(self) -> ModelT | None:
-        """Get an active item with all relations."""
-        item = await self.add_active_item()
+        """Get the first active item with all relations."""
+        active_ids = list(self._active_items)
+        if not active_ids:
+            return None
+        item = await self._get_item_or_none(id=active_ids[0])
         if item:
             await item.fetch_all_related()
         return item
@@ -1414,19 +1418,17 @@ class BaseManager(Generic[ModelT]):
     @handle_errors
     async def get_active_item_through_ifk(
         self, item_id: Any, first_relationship: str, second_relationship: str
-    ) -> tuple[ModelT, Model | list[Model] | None, list[Model] | None]:
+    ) -> tuple[ModelT, list[Model] | None, list[Model] | None]:
         """Traverse item -> IFK -> IFK.
 
         Raises AppError if the item is not found.
-        Returns (item, first_ifk_or_none, second_ifk_list_or_none).
+        Returns (item, first_ifk_list_or_none, second_ifk_list_or_none).
         """
-        item, ifk_instance = await self.get_active_item_with_ifk(
-            item_id, first_relationship
-        )
+        item, ifk_instance = await self.get_item_with_ifk(item_id, first_relationship)
         if ifk_instance:
-            target_instance = await ifk_instance.fetch_ifk(second_relationship)
-            return item, ifk_instance, target_instance  # type: ignore[return-value]
-        return item, None, None  # type: ignore[return-value]
+            target_instance = await ifk_instance[0].fetch_ifk(second_relationship) if ifk_instance else None
+            return item, ifk_instance, target_instance
+        return item, None, None
 
     @property
     def active_item_ids(self) -> set[Any]:
@@ -1494,7 +1496,7 @@ class BaseManager(Generic[ModelT]):
         else:
             time_str = f"{elapsed_time:.3f}s"
 
-        if not self._FETCH_ON_INIT_WITH_WARNINGS_OFF:
+        if not self._fetch_on_init_with_warnings_off:
             vcprint(initialized_items, "FETCHED ITEMS:", color="red", pretty=True)
 
         vcprint(
@@ -1506,19 +1508,19 @@ class BaseManager(Generic[ModelT]):
 
         warnings_suppressed = False
         warning_limit_threshold = 100
-        if self._FETCH_ON_INIT_WITH_WARNINGS_OFF:
+        if self._fetch_on_init_with_warnings_off:
             suppression_prefix = "YES_I_KNOW_WHAT_IM_DOING_TURN_OFF_WARNINGS_FOR_LIMIT_"
-            if self._FETCH_ON_INIT_WITH_WARNINGS_OFF.startswith(suppression_prefix):
+            if self._fetch_on_init_with_warnings_off.startswith(suppression_prefix):
                 try:
                     warning_limit_threshold = int(
-                        self._FETCH_ON_INIT_WITH_WARNINGS_OFF[len(suppression_prefix) :]
+                        self._fetch_on_init_with_warnings_off[len(suppression_prefix):]
                     )
                     warnings_suppressed = (
                         warning_limit_threshold >= self.fetch_on_init_limit
                     )
                 except ValueError:
                     vcprint(
-                        f"Invalid FETCH_ON_INIT_WITH_WARNINGS_OFF format: {self._FETCH_ON_INIT_WITH_WARNINGS_OFF}",
+                        f"Invalid FETCH_ON_INIT_WITH_WARNINGS_OFF format: {self._fetch_on_init_with_warnings_off}",
                         "[ERROR] Expected format: YES_I_KNOW_WHAT_IM_DOING_TURN_OFF_WARNINGS_FOR_LIMIT_<number>",
                         color="red",
                     )

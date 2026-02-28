@@ -6,8 +6,8 @@ from decimal import Decimal
 
 
 class TypeConverter:
-    @staticmethod
-    def to_python(value, field_type):
+    @classmethod
+    def to_python(cls, value, field_type):
         if value is None:
             return None
 
@@ -31,12 +31,12 @@ class TypeConverter:
             return Decimal(value) if isinstance(value, (str, int, float)) else value
         elif field_type.startswith("array"):
             item_type = field_type.split(":")[1]
-            return [TypeConverter.to_python(item, item_type) for item in value]
+            return [cls.to_python(item, item_type) for item in value]
         else:
             return value
 
-    @staticmethod
-    def get_db_prep_value(value, field_type):
+    @classmethod
+    def get_db_prep_value(cls, value, field_type):
         if value is None:
             return None
 
@@ -52,7 +52,7 @@ class TypeConverter:
             return str(value)
         elif field_type.startswith("array"):
             item_type = field_type.split(":")[1]
-            return [TypeConverter.get_db_prep_value(item, item_type) for item in value]
+            return [cls.get_db_prep_value(item, item_type) for item in value]
         else:
             return value
 

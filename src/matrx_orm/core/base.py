@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import re
-from dataclasses import dataclass
-from typing import Any, ClassVar
+from collections.abc import Sequence
+from dataclasses import dataclass, field as dc_field
+from typing import Any, ClassVar, cast
 from typing_extensions import Self
 from uuid import UUID
 
@@ -130,7 +131,7 @@ class RuntimeMixin:
 @dataclass
 class ModelOptions:
     table_name: str
-    database: str
+    database: str | None
     fields: dict[str, Field]
     primary_keys: list[str]
     unique_fields: set[str]
@@ -141,11 +142,7 @@ class ModelOptions:
     constraints: list[Any]
     db_schema: str | None = None
     unfetchable: bool = False
-    many_to_many_keys: dict[str, ManyToManyReference] = None  # type: ignore[assignment]
-
-    def __post_init__(self) -> None:
-        if self.many_to_many_keys is None:
-            self.many_to_many_keys = {}
+    many_to_many_keys: dict[str, ManyToManyReference] = dc_field(default_factory=dict)
 
     @property
     def qualified_table_name(self) -> str:
@@ -347,7 +344,7 @@ class ModelMeta(type):
                 k: v for k, v in kwargs.items() if k not in self._fields
             }
 
-            self._dynamic_data: dict[str, Any] = {}
+            self._dynamic_data = {}
             for field in self._dynamic_fields:
                 if field.endswith("_related"):
                     self._dynamic_data[field] = {}
@@ -356,11 +353,10 @@ class ModelMeta(type):
                 elif field.endswith("_m2m"):
                     self._dynamic_data[field] = []
 
-            # View-layer stores — always present, populated by ModelView.apply()
-            self._view_data: dict[str, Any] = {}
-            self._view_excluded: set[str] = set()
-            self._view_inlined_fks: dict[str, str] = {}
-            self._applied_view: Any = None
+            self._view_data = {}
+            self._view_excluded = set()
+            self._view_inlined_fks = {}
+            self._applied_view = None
 
         def get_related(self: Any, field_name: str) -> Any:
             regular_field = f"_{field_name}_related"
@@ -453,6 +449,8 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
     # Annotating `id` here covers the near-universal primary key pattern used
     # by generated DTOs and managers.  All other fields remain dynamically typed.
     id: Any
+    # Legacy DTO container — set by BaseDTO subclasses, None otherwise.
+    dto: Any
 
     def __init__(self, **kwargs: Any) -> None:
         for field_name, field in self._fields.items():
@@ -487,7 +485,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         return await bulk_create(cls, objects_data)
 
     @classmethod
-    async def bulk_update(cls, objects: list[Model], fields: list[str]) -> int:
+    async def bulk_update(cls, objects: Sequence[Model], fields: list[str]) -> int:
         """
         Bulk update multiple instances with validation like individual operations.
         """
@@ -496,7 +494,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         return await bulk_update(cls, objects, fields)
 
     @classmethod
-    async def bulk_delete(cls, objects: list[Model]) -> int:
+    async def bulk_delete(cls, objects: Sequence[Model]) -> int:
         """
         Bulk delete multiple instances.
         """
@@ -706,7 +704,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         """
         from matrx_orm.core.async_db_manager import AsyncDatabaseManager
 
-        results = await AsyncDatabaseManager.execute_query(cls._database, sql, *params)
+        results = await AsyncDatabaseManager.execute_query(cls.get_database_name(), sql, *params)
         instances = []
         for row in results:
             try:
@@ -727,7 +725,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         """
         from matrx_orm.core.async_db_manager import AsyncDatabaseManager
 
-        results = await AsyncDatabaseManager.execute_query(cls._database, sql, *params)
+        results = await AsyncDatabaseManager.execute_query(cls.get_database_name(), sql, *params)
         return [dict(row) for row in results]
 
     @classmethod
@@ -748,7 +746,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         return run_sync(cls.filter(**kwargs).all())
 
     @classmethod
-    async def all(cls) -> list[Model]:
+    async def all(cls) -> list[Self]:
         try:
             results = await QueryBuilder(cls).all()
             await StateManager.cache_bulk(cls, results)
@@ -758,7 +756,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             raise
 
     @classmethod
-    def all_sync(cls) -> list[Model]:
+    def all_sync(cls) -> list[Self]:
         """
         Synchronous wrapper for all().
         Use this in synchronous contexts to fetch all results without async/await.
@@ -849,8 +847,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
                     field="multiple",
                     value=invalid_fields,
                     reason="Invalid fields provided",
-                    class_name="Model",
-                    method_name="update_fields",
+                    details={"class_name": "Model", "method_name": "update_fields"},
                 )
 
             for field, value in kwargs.items():
@@ -938,7 +935,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         # FK fields replaced by their inline object — skip the raw ID column.
         view_inlined: set[str] = set(getattr(self, "_view_inlined_fks", {}).keys())
 
-        for field_name, field in self._fields.items():
+        for field_name in self._fields:
             if field_name in view_excluded or field_name in view_inlined:
                 continue
             value = getattr(self, field_name, None)
@@ -983,7 +980,8 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             if hasattr(self, "runtime"):
                 data.update(self.runtime.to_dict())
             if hasattr(self, "dto") and self.dto is not None:
-                data.update(self.dto.to_dict() if callable(self.dto.to_dict) else {})
+                dto_dict = cast(dict[str, Any], self.dto.to_dict() if callable(self.dto.to_dict) else {})
+                data.update(dto_dict)
 
         return data
 
@@ -1140,9 +1138,10 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
                     if isinstance(related, str)
                     else getattr(related, "__name__", str(related))
                 )
+                msg = e.message if isinstance(e, ORMException) else str(e)
                 vcprint(
                     f"[{self.__class__.__name__}] Failed to fetch FK '{field_name}' -> {related_name}: "
-                    f"{e.__class__.__name__}: {e.message if hasattr(e, 'message') else e}",
+                    f"{e.__class__.__name__}: {msg}",
                     color="yellow",
                 )
                 return field_name, None
@@ -1166,9 +1165,10 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
                     if isinstance(ifk_ref.from_model, str)
                     else getattr(ifk_ref.from_model, "__name__", str(ifk_ref.from_model))
                 )
+                msg = e.message if isinstance(e, ORMException) else str(e)
                 vcprint(
                     f"[{self.__class__.__name__}] Failed to fetch IFK '{field_name}' -> {related_name}: "
-                    f"{e.__class__.__name__}: {e.message if hasattr(e, 'message') else e}",
+                    f"{e.__class__.__name__}: {msg}",
                     color="yellow",
                 )
                 return field_name, None
@@ -1205,9 +1205,10 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
                     if isinstance(ref.target_model, str)
                     else getattr(ref.target_model, "__name__", str(ref.target_model))
                 )
+                msg = e.message if isinstance(e, ORMException) else str(e)
                 vcprint(
                     f"[{self.__class__.__name__}] Failed to fetch M2M '{relation_name}' -> {target}: "
-                    f"{e.__class__.__name__}: {e.message if hasattr(e, 'message') else e}",
+                    f"{e.__class__.__name__}: {msg}",
                     color="yellow",
                 )
                 return relation_name, []
@@ -1318,6 +1319,22 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         )
         raise ValueError(error_message)
 
+    def set_related(
+        self,
+        field_name: str,
+        value: Any,
+        is_inverse: bool = False,
+        is_m2m: bool = False,
+    ) -> None:
+        """Store a pre-fetched related object on this instance.
+
+        Injected by the metaclass at class creation time; this stub keeps
+        static analysis tools happy while the real implementation lives in
+        ModelMeta to handle the dynamic field naming conventions.
+        """
+        # Delegated to the metaclass-injected version at runtime.
+        raise NotImplementedError  # pragma: no cover
+
     def get_related(self, field_name: str) -> Any:
         regular_field = f"_{field_name}_related"
         if regular_field in self._dynamic_fields:
@@ -1359,7 +1376,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
 
         from matrx_orm.core.async_db_manager import AsyncDatabaseManager
 
-        db_name = cls._meta.database
+        db_name = cls.get_database_name()
         for jt in cls._pending_junction_tables:
             sql = (
                 f"CREATE TABLE IF NOT EXISTS {jt['junction_table']} ("
@@ -1371,5 +1388,5 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             await AsyncDatabaseManager.execute_query(db_name, sql)
 
     @classmethod
-    async def get_many(cls, **kwargs: Any) -> list[Model]:
+    async def get_many(cls, **kwargs: Any) -> list[Self]:
         return await QueryBuilder(cls).filter(**kwargs).all()

@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Any, Dict, List
+from typing import Any
 from urllib.parse import quote_plus
 
 from psycopg_pool import ConnectionPool
@@ -29,16 +29,25 @@ def init_connection_details(config_name):
 
         if not all([db_host, db_port, db_name, db_user, db_password]):
             raise ValueError(
-                f"Incomplete database configuration for '{config_name}'. " "Please check your environment variables or settings.")
+                f"Incomplete database configuration for '{config_name}'. "
+                "Please check your environment variables or settings."
+            )
+
+        # All values guaranteed non-None after the guard above.
+        safe_user: str = db_user  # type: ignore[assignment]
+        safe_password: str = db_password  # type: ignore[assignment]
+        safe_host: str = db_host  # type: ignore[assignment]
+        safe_port: str = db_port  # type: ignore[assignment]
+        safe_name: str = db_name  # type: ignore[assignment]
 
         # URL-encode user and password so special characters (#, $, @, etc.)
         # don't corrupt the URI — this is the root cause of auth failures when
         # passwords contain symbols.
         connection_string = (
-            f"{db_protocol}://{quote_plus(db_user)}:{quote_plus(db_password)}"
-            f"@{db_host}:{db_port}/{db_name}"
+            f"{db_protocol}://{quote_plus(safe_user)}:{quote_plus(safe_password)}"
+            f"@{safe_host}:{safe_port}/{safe_name}"
         )
-        redacted = f"{db_protocol}://{db_user}:****@{db_host}:{db_port}/{db_name}"
+        redacted = f"{db_protocol}://{safe_user}:****@{safe_host}:{safe_port}/{safe_name}"
 
         vcprint(f"\n[Matrx ORM] Connection String:\n{redacted}\n", color="yellow")
 
@@ -113,13 +122,13 @@ def execute_transaction_query(query, params=None, database_project="this_will_ca
             # Try to fetch results if any are available
             try:
                 return cur.fetchall()
-            except:
+            except Exception:
                 return []
     finally:
         connection_pools[database_project].putconn(conn)
 
 
-def execute_batch_query(query: str, batch_params: List[Dict[str, Any]], batch_size: int = 50,
+def execute_batch_query(query: str, batch_params: list[dict[str, Any]], batch_size: int = 50,
                         database_project: str = ""):
     """
     Executes a SQL query with batched parameters.
@@ -135,7 +144,7 @@ def execute_batch_query(query: str, batch_params: List[Dict[str, Any]], batch_si
                     color="blue")
 
             # Process each row individually within the batch
-            for idx, row_params in enumerate(batch):
+            for _, row_params in enumerate(batch):
                 # Handle JSONB serialization properly
                 processed_params = {}
                 for key, value in row_params.items():
@@ -155,7 +164,7 @@ def execute_batch_query(query: str, batch_params: List[Dict[str, Any]], batch_si
                             result = cur.fetchall()
                             if result:
                                 all_results.extend(result)
-                        except:
+                        except Exception:
                             pass
     finally:
         connection_pools[database_project].putconn(conn)

@@ -22,7 +22,7 @@ keywords = [
     "database",
     "asyncio",
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -50,6 +50,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "asyncpg-stubs>=0.30.0",
+    "pyright>=1.1.408",
     "pytest>=9.0",
     "pytest-asyncio>=1.0",
 ]
@@ -74,6 +76,43 @@ packages = ["src/matrx_orm"]
 
 [tool.hatch.metadata]
 allow-direct-references = true
+
+[tool.pyright]
+include = ["src/matrx_orm"]
+exclude = [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.venv",
+]
+ignore = [
+    "src/matrx_orm/adapters",
+    "src/matrx_orm/python_sql",
+    "src/matrx_orm/schema_builder",
+]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.13"
+pythonPlatform = "Linux"
+typeCheckingMode = "standard"
+strictListInference = true
+strictDictionaryInference = true
+strictSetInference = true
+reportMissingTypeStubs = "none"
+useLibraryCodeForTypes = true
+reportUnusedImport = "warning"
+reportUnusedVariable = "warning"
+reportDuplicateImport = "warning"
+reportUnnecessaryIsInstance = "warning"
+reportUnnecessaryCast = "warning"
+reportUnnecessaryComparison = "warning"
+reportUnnecessaryContains = "warning"
+reportDeprecated = "warning"
+reportPrivateUsage = false
+reportImportCycles = "warning"
+reportConstantRedefinition = "warning"
+reportInconsistentConstructor = "warning"
+reportUntypedFunctionDecorator = "warning"
+reportUntypedClassDecorator = "warning"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

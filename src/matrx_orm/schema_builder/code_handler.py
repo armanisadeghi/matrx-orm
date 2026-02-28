@@ -46,5 +46,5 @@ class SchemaCodeHandler(CodeHandler):
 
     def write_to_json(self, path, data, root="temp", clean=True):
         if not self.output_config.json:
-            return
-        super().write_to_json(path, data, root=root, clean=clean)
+            return False
+        return super().write_to_json(path, data, root=root, clean=clean)

@@ -1,11 +1,22 @@
+from collections.abc import Mapping
 from functools import wraps
 import traceback
 import asyncio
-from typing import Callable, TypeVar, overload
+from typing import Callable, Protocol, TypeVar, runtime_checkable
 
 DEFAULT_CLIENT_MESSAGE = "Oops. Something went wrong. Please reload the page and try again."
 
 _F = TypeVar("_F", bound=Callable[..., object])
+
+
+@runtime_checkable
+class _HasErrorContext(Protocol):
+    def _get_error_context(self) -> Mapping[str, object]: ...
+
+
+@runtime_checkable
+class _HasModel(Protocol):
+    model: type
 
 
 class AppError(Exception):
@@ -14,7 +25,7 @@ class AppError(Exception):
         message: str,
         error_type: str = "GenericError",
         client_visible: str | None = None,
-        context: dict[str, object] | None = None,
+        context: Mapping[str, object] | None = None,
     ):
         self.error: dict[str, object] = {
             "status": "error",
@@ -27,17 +38,12 @@ class AppError(Exception):
         super().__init__(message)
 
 
-@overload
-def handle_errors(func: _F) -> _F: ...
-@overload
-def handle_errors(func: Callable[..., object]) -> Callable[..., object]: ...
-
 def handle_errors(func: _F) -> _F:
     """Smart error handler that works with both sync and async functions.
-    
+
     Preserves the decorated function's type signature for static analysis.
     """
-    
+
     def _handle_exception(e: Exception, cls_or_self: object, func_name: str) -> None:
         """Common error handling logic for both sync and async."""
         if isinstance(e, AppError):
@@ -48,22 +54,20 @@ def handle_errors(func: _F) -> _F:
         if isinstance(cls_or_self, type):
             class_name = cls_or_self.__name__
         else:
-            class_name = cls_or_self.__class__.__name__
-
-        model_name = None
-        if hasattr(cls_or_self, 'model') and hasattr(cls_or_self.model, '__name__'):
-            model_name = cls_or_self.model.__name__
+            class_name = type(cls_or_self).__name__
 
         context: dict[str, object] = {
             "manager": class_name,
             "method": func_name,
         }
-        if model_name:
-            context["model"] = model_name
 
-        if hasattr(cls_or_self, "_get_error_context") and callable(cls_or_self._get_error_context):
+        if isinstance(cls_or_self, _HasModel):
+            context["model"] = cls_or_self.model.__name__
+
+        if isinstance(cls_or_self, _HasErrorContext):
             try:
-                context.update(cls_or_self._get_error_context())
+                extra = cls_or_self._get_error_context()
+                context.update(extra)
             except Exception:
                 pass
 
@@ -73,8 +77,9 @@ def handle_errors(func: _F) -> _F:
                 for key in ("query", "params", "filters", "args", "operation"):
                     if key in e.details:
                         context[key] = e.details[key]
-            if getattr(e, "_caller_frames", None):
-                context["caller_frames"] = e._caller_frames
+            caller_frames = getattr(e, "_caller_frames", None)
+            if caller_frames:
+                context["caller_frames"] = caller_frames
             error_message = e.message
         else:
             error_message = f"{type(e).__name__}: {e}"
@@ -85,7 +90,7 @@ def handle_errors(func: _F) -> _F:
             client_visible=DEFAULT_CLIENT_MESSAGE,
             context=context,
         ) from e
-    
+
     if asyncio.iscoroutinefunction(func):
         @wraps(func)
         async def async_wrapper(cls_or_self: object, *args: object, **kwargs: object) -> object:
@@ -93,7 +98,7 @@ def handle_errors(func: _F) -> _F:
                 return await func(cls_or_self, *args, **kwargs)
             except Exception as e:
                 _handle_exception(e, cls_or_self, func.__name__)
-        
+
         return async_wrapper  # type: ignore[return-value]
     else:
         @wraps(func)
@@ -102,5 +107,5 @@ def handle_errors(func: _F) -> _F:
                 return func(cls_or_self, *args, **kwargs)
             except Exception as e:
                 _handle_exception(e, cls_or_self, func.__name__)
-        
+
         return sync_wrapper  # type: ignore[return-value]

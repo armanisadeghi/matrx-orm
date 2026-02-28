@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import Dict
-from matrx_utils import settings, vcprint, redact_object, redact_string
+from typing import Any, cast
 import os
+
+from matrx_utils import settings, vcprint, redact_object, redact_string
 
 
 class DatabaseConfigError(Exception):
@@ -20,15 +23,15 @@ class DatabaseProjectConfig:
 
     protocol: str = "postgresql"
     alias: str = ""
-    manager_config_overrides: Dict = field(default_factory=dict)
+    manager_config_overrides: dict[str, Any] = field(default_factory=dict)
 
     # Schema builder overrides — app-specific TypeScript entity/field configurations.
     # entity_overrides: maps camelCase entity name → dict of entity-level override props
     #   e.g. {"recipe": {"defaultFetchStrategy": '"fkAndIfk"'}}
     # field_overrides: maps camelCase entity name → dict of field-level override props
     #   e.g. {"broker": {"name": "{isDisplayField: false, ...}"}}
-    entity_overrides: Dict = field(default_factory=dict)
-    field_overrides: Dict = field(default_factory=dict)
+    entity_overrides: dict[str, Any] = field(default_factory=dict)
+    field_overrides: dict[str, Any] = field(default_factory=dict)
 
     # Extra PostgreSQL schemas to introspect and include in schema builder output.
     # For Supabase projects this typically includes ["auth", "storage"].
@@ -45,9 +48,9 @@ class DatabaseRegistry:
             cls._instance = super(DatabaseRegistry, cls).__new__(cls)
         return cls._instance
 
-    def __init__(self):
+    def __init__(self) -> None:
         if not self._initialized:
-            self._configs: Dict[str, DatabaseProjectConfig] = {}
+            self._configs: dict[str, DatabaseProjectConfig] = {}
             self._used_aliases: list[str] = []
             self._initialized = True
 
@@ -144,7 +147,7 @@ class DatabaseRegistry:
         config = self._configs[config_name]
         return config.manager_config_overrides
 
-    def get_all_database_configs(self) -> Dict[str, dict]:
+    def get_all_database_configs(self) -> dict[str, dict[str, Any]]:
         all_configs = {}
         for config_name, config in self._configs.items():
             all_configs[config_name] = {
@@ -171,9 +174,9 @@ class DatabaseRegistry:
             items.append(config)
         return items
 
-    def get_all_database_projects_redacted(self) -> list[dict]:
+    def get_all_database_projects_redacted(self) -> list[dict[str, Any]]:
         items = self.get_all_database_projects()
-        return redact_object(items)
+        return cast(list[dict[str, Any]], redact_object(items))
 
     def get_database_alias(self, db_project):
         if db_project not in self._configs:
@@ -202,11 +205,11 @@ def register_database_from_env(
     name: str,
     env_prefix: str,
     alias: str = "",
-    additional_schemas: list = None,
-    entity_overrides: Dict = None,
-    field_overrides: Dict = None,
-    manager_config_overrides: Dict = None,
-    env_var_overrides: Dict = None,
+    additional_schemas: list[str] | None = None,
+    entity_overrides: dict[str, Any] | None = None,
+    field_overrides: dict[str, Any] | None = None,
+    manager_config_overrides: dict[str, Any] | None = None,
+    env_var_overrides: dict[str, str] | None = None,
 ) -> bool:
     """
     Read database connection details from environment variables, validate them,
@@ -303,7 +306,7 @@ def get_database_alias(db_project):
     return registry.get_database_alias(db_project)
 
 
-def get_schema_builder_overrides(db_project: str) -> Dict:
+def get_schema_builder_overrides(db_project: str) -> dict[str, dict[str, Any]]:
     """Return the schema-builder override dicts registered for *db_project*.
 
     Returns a dict with keys ``entity_overrides`` and ``field_overrides``.
@@ -316,8 +319,9 @@ def get_schema_builder_overrides(db_project: str) -> Dict:
     }
 
 
-def get_code_config(db_project):
-    python_root, ts_root = settings.ADMIN_PYTHON_ROOT, settings.ADMIN_TS_ROOT
+def get_code_config(db_project: str) -> dict[str, Any]:
+    python_root: str = str(settings.ADMIN_PYTHON_ROOT)
+    ts_root: str = str(settings.ADMIN_TS_ROOT)
 
     ADMIN_PYTHON_ROOT = os.path.join(python_root, "db")
     ADMIN_TS_ROOT = ts_root

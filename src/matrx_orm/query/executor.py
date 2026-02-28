@@ -102,11 +102,13 @@ class QueryExecutor:
             return f"{field} != {placeholder}", value
         # JSONB operators
         if operator == "json_key":
-            # field ->> 'key' = $n   (value is (key, expected_value))
+            # value is either a bare key (non-null test) or (key, expected_value)
             if isinstance(value, tuple) and len(value) == 2:
                 key, expected = value
-                return f"{field} ->> {placeholder}", key
-            # Single arg — just test extraction (non-null)
+                # Two placeholders: one for the key, one for the expected value
+                expected_placeholder = f"${param_idx + 1}"
+                return f"{field} ->> {placeholder} = {expected_placeholder}", (key, expected)
+            # Single arg — just test that the key extracts to a non-null value
             return f"{field} ->> {placeholder} IS NOT NULL", value
         if operator == "json_has_key":
             # field ? 'key'  — key-exists, no param needed when literal
@@ -168,8 +170,6 @@ class QueryExecutor:
                 if fk_ref is None:
                     continue
                 related_model = fk_ref.related_model
-                if related_model is None:
-                    continue
                 related_table = related_model._meta.qualified_table_name
                 alias = f"__sr_{fk_field}__"
                 join_clauses.append(
@@ -275,7 +275,10 @@ class QueryExecutor:
                 cond_sql, param = self._build_condition(field_name, operator, value, len(params) + 1)
                 having_conditions.append(cond_sql)
                 if param is not _SKIP_PARAM:
-                    params.append(param)
+                    if isinstance(param, tuple):
+                        params.extend(param)
+                    else:
+                        params.append(param)
             if having_conditions:
                 sql += " HAVING " + " AND ".join(having_conditions)
 
@@ -373,12 +376,15 @@ class QueryExecutor:
 
         cond, param = self._build_condition(field_name, operator, value, len(params) + 1)
         if param is not _SKIP_PARAM:
-            params.append(param)
+            # json_key with (key, expected) returns a 2-tuple that maps to two placeholders
+            if isinstance(param, tuple):
+                params.extend(param)
+            else:
+                params.append(param)
         return cond, param
 
     def _render_q(self, q: Any, params: list[Any]) -> str:
         """Recursively render a Q tree to a SQL WHERE fragment."""
-        from matrx_orm.core.expressions import Q  # noqa: F401 (needed for isinstance)
 
         if q.is_leaf:
             conditions: list[str] = []
@@ -564,7 +570,10 @@ class QueryExecutor:
         except DatabaseError as e:
             if "unique constraint" in str(e).lower():
                 raise IntegrityError(model=self.model, constraint="unique", original_error=e) from e
-            raise DatabaseError(model=self.model, operation="bulk_insert", original_error=e) from e
+            raise DatabaseError(
+                model=self.model,
+                details={"operation": "bulk_insert", "original_error": str(e)},
+            ) from e
         except Exception as e:
             raise QueryError(
                 model=self.model,
@@ -606,7 +615,10 @@ class QueryExecutor:
         except DatabaseError as e:
             if "unique constraint" in str(e).lower():
                 raise IntegrityError(model=self.model, constraint="unique", original_error=e) from e
-            raise DatabaseError(model=self.model, operation="upsert", original_error=e) from e
+            raise DatabaseError(
+                model=self.model,
+                details={"operation": "upsert", "original_error": str(e)},
+            ) from e
 
     async def bulk_upsert(self, query: dict[str, Any]) -> list[Model]:
         """Bulk INSERT ... ON CONFLICT DO UPDATE."""
@@ -657,7 +669,10 @@ class QueryExecutor:
         except DatabaseError as e:
             if "unique constraint" in str(e).lower():
                 raise IntegrityError(model=self.model, constraint="unique", original_error=e) from e
-            raise DatabaseError(model=self.model, operation="bulk_upsert", original_error=e) from e
+            raise DatabaseError(
+                model=self.model,
+                details={"operation": "bulk_upsert", "original_error": str(e)},
+            ) from e
         except Exception as e:
             raise QueryError(
                 model=self.model,

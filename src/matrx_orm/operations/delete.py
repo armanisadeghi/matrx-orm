@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any, TYPE_CHECKING
 
 from matrx_orm.core.types import UpdateResult
@@ -16,7 +17,7 @@ async def delete(model_cls: type[Model], **kwargs: Any) -> int:
     return await QueryBuilder(model_cls).filter(**kwargs).delete()
 
 
-async def bulk_delete(model_cls: type[Model], objects: list[Model]) -> int:
+async def bulk_delete(model_cls: type[Model], objects: Sequence[Model]) -> int:
     """
     Enhanced bulk_delete that follows the same patterns as individual operations.
     Now properly handles cache removal like individual delete operations do.

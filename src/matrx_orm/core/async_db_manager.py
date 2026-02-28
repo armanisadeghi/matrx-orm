@@ -1,7 +1,10 @@
+from __future__ import annotations
 
 import os
 import asyncio
 import traceback
+from typing import Any
+
 import asyncpg
 from contextlib import asynccontextmanager
 from matrx_orm.core.config import get_database_config, DatabaseConfigError
@@ -101,8 +104,8 @@ class AsyncDatabaseManager:
                     model=None,
                     config_name=config_name,
                 ):
+                    config = get_database_config(config_name)
                     try:
-                        config = get_database_config(config_name)
                         pool = await asyncpg.create_pool(
                             host=config["host"],
                             port=config["port"],
@@ -118,7 +121,6 @@ class AsyncDatabaseManager:
                         )
                         cls._pools[config_name] = pool
                         
-                        # Track which event loop this pool belongs to
                         try:
                             current_loop = asyncio.get_running_loop()
                             cls._pool_loops[config_name] = id(current_loop)
@@ -186,7 +188,7 @@ class AsyncDatabaseManager:
                 ) from e
 
     @classmethod
-    async def execute_query(cls, config_name, query, *args, timeout=10.0):
+    async def execute_query(cls, config_name: str, query: str, *args: Any, timeout: float = 10.0) -> list[dict[str, Any]]:
         """Execute a query and return results with error handling.
 
         When a transaction is active for the current task (set via the
@@ -201,10 +203,9 @@ class AsyncDatabaseManager:
             tx_conn = None
 
         if tx_conn is not None:
-            # Execute on the transaction connection directly (no pool acquire)
             try:
                 results = await tx_conn.fetch(query, *args)
-                return results
+                return [dict(r) for r in results]
             except asyncpg.exceptions.PostgresSyntaxError as e:
                 raise QueryError(
                     model=None,
@@ -236,7 +237,7 @@ class AsyncDatabaseManager:
             async with cls.get_connection(config_name, timeout) as conn:
                 try:
                     results = await conn.fetch(query, *args)
-                    return results
+                    return [dict(r) for r in results]
                 except asyncpg.exceptions.PostgresSyntaxError as e:
                     raise QueryError(
                         model=None,
@@ -341,7 +342,7 @@ async def cause_error():
         )
         print(results)
     except DatabaseError as e:
-        print("Database error: {e}")
+        print(f"Database error: {e}")
     finally:
         await db.cleanup()
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any, Iterable, TYPE_CHECKING
 
 from matrx_utils import vcprint
@@ -19,7 +20,7 @@ async def update(model_cls: type[Model], filters: dict[str, Any], **kwargs: Any)
     return await QueryBuilder(model_cls).filter(**filters).update(**kwargs)
 
 
-async def bulk_update(model_cls: type[Model], objects: list[Model], fields: list[str]) -> int:
+async def bulk_update(model_cls: type[Model], objects: Sequence[Model], fields: list[str]) -> int:
     """
     Enhanced bulk_update that works within the current ORM limitations.
     Uses controlled batch processing for individual per-row updates.

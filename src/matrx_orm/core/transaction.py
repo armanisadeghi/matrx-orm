@@ -21,25 +21,25 @@ automatically uses the same connection without any manual passing.
 """
 from __future__ import annotations
 
+import os
 import uuid
-import asyncio
 import asyncpg
-from contextlib import asynccontextmanager
+import asyncpg.pool
 from contextvars import ContextVar, Token
-from typing import Any, AsyncIterator
+from typing import Any
 
 from matrx_orm.core.async_db_manager import AsyncDatabaseManager
-from matrx_orm.exceptions import DatabaseError, ConnectionError as OrmConnectionError
+from matrx_orm.exceptions import DatabaseError
 
 # ContextVar holding the active connection (if any) for the current task tree.
-_active_connection: ContextVar[asyncpg.Connection | None] = ContextVar(
+_active_connection: ContextVar[asyncpg.Connection[asyncpg.Record] | None] = ContextVar(
     "_active_connection", default=None
 )
 # ContextVar tracking savepoint depth (0 = top-level transaction)
 _savepoint_depth: ContextVar[int] = ContextVar("_savepoint_depth", default=0)
 
 
-def get_active_connection() -> asyncpg.Connection | None:
+def get_active_connection() -> asyncpg.Connection[asyncpg.Record] | None:
     """Return the connection bound to the current transaction context, or None."""
     return _active_connection.get()
 
@@ -55,12 +55,12 @@ class TransactionContext:
 
     def __init__(self, database: str) -> None:
         self.database = database
-        self._conn_token: Token[asyncpg.Connection | None] | None = None
+        self._conn_token: Token[asyncpg.Connection[asyncpg.Record] | None] | None = None
         self._depth_token: Token[int] | None = None
         self._is_savepoint: bool = False
         self._savepoint_name: str = ""
-        self._pool_conn: asyncpg.Connection | None = None
-        self._pool: asyncpg.Pool | None = None
+        self._pool_conn: asyncpg.pool.PoolConnectionProxy[asyncpg.Record] | None = None
+        self._pool: asyncpg.Pool[asyncpg.Record] | None = None
 
     async def __aenter__(self) -> TransactionContext:
         existing = _active_connection.get()
@@ -76,16 +76,17 @@ class TransactionContext:
             self._is_savepoint = False
             pool = await AsyncDatabaseManager.get_pool(self.database)
             self._pool = pool
-            self._pool_conn = await pool.acquire()
+            conn = await pool.acquire()
+            self._pool_conn = conn
             try:
-                await self._pool_conn.execute("BEGIN")
+                await conn.execute("BEGIN")
             except Exception as e:
-                await pool.release(self._pool_conn)
+                await pool.release(conn)
                 raise DatabaseError(
                     message=f"Failed to begin transaction: {e}",
                     details={"database": self.database},
                 ) from e
-            self._conn_token = _active_connection.set(self._pool_conn)
+            self._conn_token = _active_connection.set(conn)
             self._depth_token = _savepoint_depth.set(0)
         return self
 
@@ -149,9 +150,10 @@ def transaction(database: str | None = None) -> TransactionContext:
 def _get_default_database() -> str:
     """Infer a default database name from env / config."""
     try:
-        from matrx_orm.core.config import get_default_database_name
-        return get_default_database_name()
-    except (ImportError, Exception):
+        from matrx_orm.core.config import get_all_database_project_names
+        names = get_all_database_project_names()
+        if names:
+            return names[0]
+    except Exception:
         pass
-    import os
     return os.environ.get("MATRX_DEFAULT_DATABASE", "default")

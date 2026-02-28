@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import re
 import uuid
@@ -5,22 +7,19 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 from enum import Enum as PythonEnum
 from ipaddress import IPv4Address, IPv6Address, ip_network
-from typing import TYPE_CHECKING, Any, Generic, List, Type, Union, overload
+from typing import TYPE_CHECKING, Any, Generic, overload
 from typing_extensions import TypeVar
 from uuid import UUID
 
-# TypeVar with default (PEP 696) via typing_extensions for Python < 3.13 compatibility.
+# TypeVar with default (PEP 696) — requires Python 3.13+ or typing_extensions.
 _JT = TypeVar("_JT", default=dict[str, Any] | list[Any])
-
-if TYPE_CHECKING:
-    pass  # overload imports already available via typing
 
 
 class Field:
     if TYPE_CHECKING:
 
         @overload
-        def __get__(self, obj: None, objtype: type = ...) -> "Field": ...
+        def __get__(self, obj: None, objtype: type = ...) -> Field: ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> Any: ...
         def __get__(self, obj: object | None, objtype: type = ...) -> Any: ...
@@ -40,13 +39,13 @@ class Field:
         db_type: str,
         is_native: bool = True,
         null: bool = True,
-        nullable: bool = None,
+        nullable: bool | None = None,
         unique: bool = False,
         primary_key: bool = False,
-        default=None,
+        default: Any = None,
         index: bool = False,
-        validators: list = None,
-        **kwargs,
+        validators: list[Any] | None = None,
+        **kwargs: Any,
     ):
         self.db_type = db_type
         self.is_native = is_native
@@ -87,11 +86,19 @@ class Field:
         for validator in self.validators:
             await validator(value)
 
-    def to_python(self, value):
+    def to_python(self, value: Any) -> Any:
         """Convert the database value to a Python object."""
         return value
 
-    def get_db_prep_value(self, value):
+    def from_db_value(self, value: Any) -> Any:
+        """Post-process a value coming directly from the database driver.
+
+        By default delegates to ``to_python``. Subclasses may override when
+        the DB wire format differs from the normal Python input format.
+        """
+        return self.to_python(value)
+
+    def get_db_prep_value(self, value: Any) -> Any:
         """Convert the Python value to a database value."""
         if value is None:
             return None
@@ -171,12 +178,12 @@ class UUIDField(Field):
     if TYPE_CHECKING:
 
         @overload
-        def __get__(self, obj: None, objtype: type = ...) -> "UUIDField": ...
+        def __get__(self, obj: None, objtype: type = ...) -> UUIDField: ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> str | None: ...
         def __get__(
             self, obj: object | None, objtype: type = ...
-        ) -> str | "UUIDField" | None: ...
+        ) -> str | UUIDField | None: ...
 
     def __init__(self, **kwargs):
         super().__init__("text", **kwargs)
@@ -225,12 +232,12 @@ class CharField(Field):
     if TYPE_CHECKING:
 
         @overload
-        def __get__(self, obj: None, objtype: type = ...) -> "CharField": ...
+        def __get__(self, obj: None, objtype: type = ...) -> CharField: ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> str | None: ...
         def __get__(
             self, obj: object | None, objtype: type = ...
-        ) -> str | "CharField" | None: ...
+        ) -> str | CharField | None: ...
 
     def __init__(self, max_length: int = 255, **kwargs):
         super().__init__(f"VARCHAR({max_length})", **kwargs)
@@ -242,11 +249,9 @@ class CharField(Field):
         value = str(value)
         return value[: self.max_length]  # Ensure db value doesn't exceed max_length
 
-    async def validate(self, value: str) -> None:
+    async def validate(self, value: str | None) -> None:
         await super().validate(value)
         if value is not None:
-            if not isinstance(value, str):
-                raise ValueError(f"Field {self.name} must be a string")
             if len(value) > self.max_length:
                 raise ValueError(f"Value exceeds maximum length of {self.max_length}")
 
@@ -255,12 +260,12 @@ class TextField(Field):
     if TYPE_CHECKING:
 
         @overload
-        def __get__(self, obj: None, objtype: type = ...) -> "TextField": ...
+        def __get__(self, obj: None, objtype: type = ...) -> TextField: ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> str | None: ...
         def __get__(
             self, obj: object | None, objtype: type = ...
-        ) -> str | "TextField" | None: ...
+        ) -> str | TextField | None: ...
 
     def __init__(self, **kwargs):
         super().__init__("TEXT", **kwargs)
@@ -270,22 +275,20 @@ class TextField(Field):
             return None
         return str(value)
 
-    async def validate(self, value: str) -> None:
+    async def validate(self, value: str | None) -> None:
         await super().validate(value)
-        if value is not None and not isinstance(value, str):
-            raise ValueError(f"Field {self.name} must be a string")
 
 
 class IntegerField(Field):
     if TYPE_CHECKING:
 
         @overload
-        def __get__(self, obj: None, objtype: type = ...) -> "IntegerField": ...
+        def __get__(self, obj: None, objtype: type = ...) -> IntegerField: ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> int | None: ...
         def __get__(
             self, obj: object | None, objtype: type = ...
-        ) -> int | "IntegerField" | None: ...
+        ) -> int | IntegerField | None: ...
 
     def __init__(self, **kwargs):
         super().__init__("INTEGER", **kwargs)
@@ -306,11 +309,11 @@ class IntegerField(Field):
         except (TypeError, ValueError):
             raise ValueError(f"Field {self.name} must be convertible to integer")
 
-    async def validate(self, value: int) -> None:
+    async def validate(self, value: int | None) -> None:
         await super().validate(value)
         if value is not None:
             try:
-                int(value)  # Ensure value can be converted to int
+                int(value)
             except (TypeError, ValueError):
                 raise ValueError(f"Field {self.name} must be an integer")
 
@@ -319,12 +322,12 @@ class FloatField(Field):
     if TYPE_CHECKING:
 
         @overload
-        def __get__(self, obj: None, objtype: type = ...) -> "FloatField": ...
+        def __get__(self, obj: None, objtype: type = ...) -> FloatField: ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> float | None: ...
         def __get__(
             self, obj: object | None, objtype: type = ...
-        ) -> float | "FloatField" | None: ...
+        ) -> float | FloatField | None: ...
 
     def __init__(self, **kwargs):
         super().__init__("FLOAT", **kwargs)
@@ -337,30 +340,26 @@ class FloatField(Field):
         except (TypeError, ValueError):
             raise ValueError(f"Field {self.name} must be convertible to float")
 
-    async def validate(self, value: float) -> None:
+    async def validate(self, value: float | int | None) -> None:
         await super().validate(value)
-        if value is not None and not isinstance(value, (float, int)):
-            raise ValueError("Value must be a float")
 
 
 class BooleanField(Field):
     if TYPE_CHECKING:
 
         @overload
-        def __get__(self, obj: None, objtype: type = ...) -> "BooleanField": ...
+        def __get__(self, obj: None, objtype: type = ...) -> BooleanField: ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> bool | None: ...
         def __get__(
             self, obj: object | None, objtype: type = ...
-        ) -> bool | "BooleanField" | None: ...
+        ) -> bool | BooleanField | None: ...
 
     def __init__(self, **kwargs):
         super().__init__("BOOLEAN", **kwargs)
 
-    async def validate(self, value: bool) -> None:
+    async def validate(self, value: bool | None) -> None:
         await super().validate(value)
-        if value is not None and not isinstance(value, bool):
-            raise ValueError("Value must be a boolean after conversion")
 
     def to_python(self, value):
         """Convert input value to Python bool."""
@@ -412,12 +411,12 @@ class DateTimeField(Field):
     if TYPE_CHECKING:
 
         @overload
-        def __get__(self, obj: None, objtype: type = ...) -> "DateTimeField": ...
+        def __get__(self, obj: None, objtype: type = ...) -> DateTimeField: ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> datetime | None: ...
         def __get__(
             self, obj: object | None, objtype: type = ...
-        ) -> datetime | "DateTimeField" | None: ...
+        ) -> datetime | DateTimeField | None: ...
 
     def __init__(self, auto_now: bool = False, auto_now_add: bool = False, **kwargs):
         super().__init__("TIMESTAMP", **kwargs)
@@ -441,12 +440,12 @@ class TimeField(Field):
     if TYPE_CHECKING:
 
         @overload
-        def __get__(self, obj: None, objtype: type = ...) -> "TimeField": ...
+        def __get__(self, obj: None, objtype: type = ...) -> TimeField: ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> time | None: ...
         def __get__(
             self, obj: object | None, objtype: type = ...
-        ) -> time | "TimeField" | None: ...
+        ) -> time | TimeField | None: ...
 
     def __init__(self, **kwargs):
         super().__init__("TIME", **kwargs)
@@ -468,12 +467,12 @@ class DateField(Field):
     if TYPE_CHECKING:
 
         @overload
-        def __get__(self, obj: None, objtype: type = ...) -> "DateField": ...
+        def __get__(self, obj: None, objtype: type = ...) -> DateField: ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> date | None: ...
         def __get__(
             self, obj: object | None, objtype: type = ...
-        ) -> date | "DateField" | None: ...
+        ) -> date | DateField | None: ...
 
     def __init__(self, **kwargs):
         super().__init__("DATE", **kwargs)
@@ -521,45 +520,41 @@ class ArrayField(Field):
     if TYPE_CHECKING:
 
         @overload
-        def __get__(self, obj: None, objtype: type = ...) -> "ArrayField": ...
+        def __get__(self, obj: None, objtype: type = ...) -> ArrayField: ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> list[Any] | None: ...
         def __get__(
             self, obj: object | None, objtype: type = ...
-        ) -> list[Any] | "ArrayField" | None: ...
+        ) -> list[Any] | ArrayField | None: ...
 
     def __init__(self, item_type: Field, **kwargs):
         super().__init__(f"{item_type.db_type}[]", **kwargs)
         self.item_type = item_type
 
-    async def validate(self, value: list) -> None:
+    async def validate(self, value: list[Any] | None) -> None:
         await super().validate(value)
         if value is not None:
-            if not isinstance(value, list):
-                raise ValueError("Value must be a list")
             for item in value:
                 await self.item_type.validate(item)
 
-    def to_python(self, value) -> list:
+    def to_python(self, value: list[Any] | None) -> list[Any] | None:
         if value is None:
-            return value
-        return [self.item_type.to_python(item) for item in value]  # Fixed: Expect list
+            return None
+        return [self.item_type.to_python(item) for item in value]
 
-    def get_db_prep_value(self, value: list):
+    def get_db_prep_value(self, value: list[Any] | None) -> list[Any] | None:
         if value is None:
-            return value
-        return [
-            self.item_type.get_db_prep_value(item) for item in value
-        ]  # Fixed: Return list
+            return None
+        return [self.item_type.get_db_prep_value(item) for item in value]
 
 
 class EnumField(Field):
     def __init__(
         self,
-        enum_class: Type[PythonEnum] = None,
-        choices: List[str] = None,
+        enum_class: type[PythonEnum] | None = None,
+        choices: list[str] | None = None,
         max_length: int = 255,
-        **kwargs,
+        **kwargs: Any,
     ):
         """
         An Enum field that can work with either a Python Enum class or a list of string choices.
@@ -581,15 +576,13 @@ class EnumField(Field):
 
         # Handle enum_class or choices
         if enum_class:
-            if not issubclass(enum_class, PythonEnum):
-                raise ValueError("enum_class must be a subclass of enum.Enum")
-            self.enum_class = enum_class
-            self.choices = [e.value for e in enum_class]
+            self.enum_class: type[PythonEnum] | None = enum_class
+            self.choices: list[str] = [e.value for e in enum_class]
         else:
             self.enum_class = None
-            self.choices = choices
+            self.choices = choices or []
 
-    def get_db_prep_value(self, value: Union[str, PythonEnum, None]) -> str:
+    def get_db_prep_value(self, value: str | PythonEnum | None) -> str | None:
         """Convert Python value to database string."""
         if value is None:
             return None
@@ -597,7 +590,7 @@ class EnumField(Field):
             return value.value
         return str(value)
 
-    def to_python(self, value: Union[str, None]) -> Union[PythonEnum, str, None]:
+    def to_python(self, value: str | None) -> PythonEnum | str | None:
         """Convert database value to Python object."""
         if value is None:
             return None
@@ -612,7 +605,7 @@ class EnumField(Field):
                 )
         return value
 
-    async def validate(self, value: Union[str, PythonEnum, None]) -> None:
+    async def validate(self, value: str | PythonEnum | None) -> None:
         """Validate the value against available choices."""
         await super().validate(value)
         if value is None:
@@ -689,14 +682,14 @@ class DecimalField(Field):
     if TYPE_CHECKING:
 
         @overload
-        def __get__(self, obj: None, objtype: type = ...) -> "DecimalField": ...
+        def __get__(self, obj: None, objtype: type = ...) -> DecimalField: ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> Decimal | None: ...
         def __get__(
             self, obj: object | None, objtype: type = ...
-        ) -> Decimal | "DecimalField" | None: ...
+        ) -> Decimal | DecimalField | None: ...
 
-    def __init__(self, max_digits: int = None, decimal_places: int = 2, **kwargs):
+    def __init__(self, max_digits: int | None = None, decimal_places: int = 2, **kwargs: Any):
         column_type = "NUMERIC"
         if max_digits is not None:
             column_type = f"NUMERIC({max_digits},{decimal_places})"
@@ -721,7 +714,7 @@ class DecimalField(Field):
         except InvalidOperation:
             raise ValueError(f"Field {self.name} must be convertible to Decimal")
 
-    async def validate(self, value) -> None:
+    async def validate(self, value: Decimal | int | float | str | None) -> None:
         await super().validate(value)
         if value is not None:
             str_value = str(value)
@@ -743,12 +736,12 @@ class BigIntegerField(Field):
     if TYPE_CHECKING:
 
         @overload
-        def __get__(self, obj: None, objtype: type = ...) -> "BigIntegerField": ...
+        def __get__(self, obj: None, objtype: type = ...) -> BigIntegerField: ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> int | None: ...
         def __get__(
             self, obj: object | None, objtype: type = ...
-        ) -> int | "BigIntegerField" | None: ...
+        ) -> int | BigIntegerField | None: ...
 
     def __init__(self, **kwargs):
         super().__init__("BIGINT", **kwargs)
@@ -769,22 +762,20 @@ class BigIntegerField(Field):
         except (TypeError, ValueError):
             raise ValueError(f"Field {self.name} must be convertible to integer")
 
-    async def validate(self, value: int) -> None:
+    async def validate(self, value: int | None) -> None:
         await super().validate(value)
-        if value is not None and not isinstance(value, int):
-            raise ValueError("Value must be a big integer")
 
 
 class SmallIntegerField(Field):
     if TYPE_CHECKING:
 
         @overload
-        def __get__(self, obj: None, objtype: type = ...) -> "SmallIntegerField": ...
+        def __get__(self, obj: None, objtype: type = ...) -> SmallIntegerField: ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> int | None: ...
         def __get__(
             self, obj: object | None, objtype: type = ...
-        ) -> int | "SmallIntegerField" | None: ...
+        ) -> int | SmallIntegerField | None: ...
 
     def __init__(self, **kwargs):
         super().__init__("SMALLINT", **kwargs)
@@ -805,37 +796,33 @@ class SmallIntegerField(Field):
         except (TypeError, ValueError):
             raise ValueError(f"Field {self.name} must be convertible to integer")
 
-    async def validate(self, value: int) -> None:
+    async def validate(self, value: int | None) -> None:
         await super().validate(value)
-        if value is not None and not isinstance(value, int):
-            raise ValueError("Value must be a small integer")
 
 
 class BinaryField(Field):
     if TYPE_CHECKING:
 
         @overload
-        def __get__(self, obj: None, objtype: type = ...) -> "BinaryField": ...
+        def __get__(self, obj: None, objtype: type = ...) -> BinaryField: ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> bytes | None: ...
         def __get__(
             self, obj: object | None, objtype: type = ...
-        ) -> bytes | "BinaryField" | None: ...
+        ) -> bytes | BinaryField | None: ...
 
     def __init__(self, **kwargs):
         super().__init__("BYTEA", **kwargs)
 
-    async def validate(self, value: bytes) -> None:
+    async def validate(self, value: bytes | bytearray | None) -> None:
         await super().validate(value)
-        if value is not None and not isinstance(value, (bytes, bytearray)):
-            raise ValueError("Value must be binary data")
 
 
 class SlugField(CharField):
     def __init__(self, max_length: int = 200, **kwargs):
         super().__init__(max_length=max_length, **kwargs)
 
-    async def validate(self, value: str) -> None:
+    async def validate(self, value: str | None) -> None:
         await super().validate(value)
         if value is not None and not re.match(r"^[-a-zA-Z0-9_]+$", value):
             raise ValueError(
@@ -864,14 +851,14 @@ class HStoreField(Field):
     if TYPE_CHECKING:
 
         @overload
-        def __get__(self, obj: None, objtype: type = ...) -> "HStoreField": ...
+        def __get__(self, obj: None, objtype: type = ...) -> HStoreField: ...
         @overload
         def __get__(
             self, obj: object, objtype: type = ...
         ) -> dict[str, str | None] | None: ...
         def __get__(
             self, obj: object | None, objtype: type = ...
-        ) -> dict[str, str | None] | "HStoreField" | None: ...
+        ) -> dict[str, str | None] | HStoreField | None: ...
 
     def __init__(self, **kwargs):
         super().__init__("HSTORE", **kwargs)
@@ -891,10 +878,8 @@ class HStoreField(Field):
         # asyncpg expects all hstore values as strings
         return {str(k): str(v) if v is not None else None for k, v in value.items()}
 
-    async def validate(self, value: dict) -> None:
+    async def validate(self, value: dict[str, str | None] | None) -> None:
         await super().validate(value)
-        if value is not None and not isinstance(value, dict):
-            raise ValueError("Value must be a dictionary")
 
 
 class JSONBField(Field, Generic[_JT]):
@@ -929,22 +914,20 @@ class FileField(CharField):
     def __init__(self, max_length: int = 100, **kwargs):
         super().__init__(max_length=max_length, **kwargs)
 
-    async def validate(self, value: str) -> None:
+    async def validate(self, value: str | None) -> None:
         await super().validate(value)
-        if value and not isinstance(value, str):
-            raise ValueError("File path must be a string")
 
 
 class TimeDeltaField(Field):
     if TYPE_CHECKING:
 
         @overload
-        def __get__(self, obj: None, objtype: type = ...) -> "TimeDeltaField": ...
+        def __get__(self, obj: None, objtype: type = ...) -> TimeDeltaField: ...
         @overload
         def __get__(self, obj: object, objtype: type = ...) -> timedelta | None: ...
         def __get__(
             self, obj: object | None, objtype: type = ...
-        ) -> timedelta | "TimeDeltaField" | None: ...
+        ) -> timedelta | TimeDeltaField | None: ...
 
     def __init__(self, **kwargs):
         super().__init__("INTERVAL", **kwargs)
@@ -1030,10 +1013,8 @@ class PrimitiveArrayField(Field):
     def __init__(self, element_type: str, **kwargs):
         super().__init__(f"{element_type}[]", **kwargs)
 
-    async def validate(self, value: list) -> None:
+    async def validate(self, value: list[Any] | None) -> None:
         await super().validate(value)
-        if not isinstance(value, list):
-            raise ValueError("Value must be a list of primitive elements")
 
 
 class JSONBArrayField(ArrayField):
@@ -1092,7 +1073,7 @@ class ImageField(FileField):
     def __init__(self, max_length: int = 100, **kwargs):
         super().__init__(max_length=max_length, **kwargs)
 
-    async def validate(self, value: str) -> None:
+    async def validate(self, value: str | None) -> None:
         await super().validate(value)
         if value and not value.lower().endswith(
             (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg")
@@ -1125,12 +1106,12 @@ class ForeignKey(Field):
         self,
         to_model: str | type,
         to_column: str,
-        related_name: str = None,
+        related_name: str | None = None,
         on_delete: str = "CASCADE",
         on_update: str = "CASCADE",
-        to_db: str = None,
-        to_schema: str = None,
-        **kwargs,
+        to_db: str | None = None,
+        to_schema: str | None = None,
+        **kwargs: Any,
     ):
         super().__init__("UUID", **kwargs)
         self.to_model = to_model
@@ -1172,12 +1153,12 @@ class CompositeField(Field):
         self.fields = fields
         self.primary_key = True
 
-    async def validate(self, value: tuple) -> None:
+    async def validate(self, value: tuple[Any, ...] | None) -> None:
         await super().validate(value)
         if value is not None and len(value) != len(self.fields):
             raise ValueError(f"Composite key must have {len(self.fields)} values")
 
-    def to_python(self, value) -> tuple:
+    def to_python(self, value) -> tuple | None:
         if isinstance(value, str):
             return tuple(json.loads(value))
         return tuple(value) if value else None
