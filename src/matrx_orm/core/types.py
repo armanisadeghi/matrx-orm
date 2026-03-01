@@ -66,6 +66,13 @@ class ForeignKeyResults(Generic[ModelT]):
     def items(self):
         return self.data.items()
 
+    def to_dict(self) -> dict[str, dict[str, Any] | None]:
+        """Serialise each FK model instance via its own ``to_dict()``.
+
+        ``None`` values (null FK or failed fetch) are preserved as-is.
+        """
+        return {k: v.to_dict() if v is not None else None for k, v in self.data.items()}
+
 
 @dataclass(frozen=True, slots=True)
 class InverseForeignKeyResults(Generic[ModelT]):
@@ -101,6 +108,17 @@ class InverseForeignKeyResults(Generic[ModelT]):
 
     def items(self):
         return self.data.items()
+
+    def to_dict(self) -> dict[str, list[dict[str, Any]] | None]:
+        """Serialise each IFK model list element-wise via ``to_dict()``.
+
+        ``None`` (failed fetch) is preserved; an empty list (successful but no
+        rows) serialises to ``[]``.
+        """
+        return {
+            k: [m.to_dict() for m in v] if v is not None else None
+            for k, v in self.data.items()
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,6 +156,13 @@ class ManyToManyResults(Generic[ModelT]):
     def items(self):
         return self.data.items()
 
+    def to_dict(self) -> dict[str, list[dict[str, Any]]]:
+        """Serialise each M2M model list element-wise via ``to_dict()``.
+
+        Values are always lists (never ``None``); an empty list serialises to ``[]``.
+        """
+        return {k: [m.to_dict() for m in v] for k, v in self.data.items()}
+
 
 @dataclass(frozen=True, slots=True)
 class AllRelatedResults(Generic[ModelT]):
@@ -165,18 +190,18 @@ class AllRelatedResults(Generic[ModelT]):
     @staticmethod
     def empty() -> AllRelatedResults:
         """Return an ``AllRelatedResults`` with no data in any category."""
-        return AllRelatedResults(
-            foreign_keys=ForeignKeyResults(data={}),
-            inverse_foreign_keys=InverseForeignKeyResults(data={}),
-            many_to_many=ManyToManyResults(data={}),
+        return AllRelatedResults[ModelT](
+            foreign_keys=ForeignKeyResults[ModelT](data={}),
+            inverse_foreign_keys=InverseForeignKeyResults[ModelT](data={}),
+            many_to_many=ManyToManyResults[ModelT](data={}),
         )
 
     def to_dict(self) -> dict[str, dict[str, Any]]:
         """Serialise to the legacy dict shape for JSON / API boundaries."""
         return {
-            "foreign_keys": dict(self.foreign_keys.data),
-            "inverse_foreign_keys": dict(self.inverse_foreign_keys.data),
-            "many_to_many": dict(self.many_to_many.data),
+            "foreign_keys": self.foreign_keys.to_dict(),
+            "inverse_foreign_keys": self.inverse_foreign_keys.to_dict(),
+            "many_to_many": self.many_to_many.to_dict(),
         }
 
 

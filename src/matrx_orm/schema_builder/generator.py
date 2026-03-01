@@ -237,6 +237,6 @@ class {name_camel}Manager(BaseManager):
     def _initialize_manager(self):
         super()._initialize_manager()
 
-    async def _initialize_runtime_data(self, {name}):
+    async def _initialize_runtime_data(self, item: {name_camel}) -> None:
         pass
     """

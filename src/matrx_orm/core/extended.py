@@ -886,7 +886,7 @@ class BaseManager(Generic[ModelT]):
 
         if use_join:
             pk_field = self.model._meta.primary_keys[0]
-            items = (
+            items: list[ModelT] = (
                 await self.model.filter(**{pk_field: item_id})
                 .select_related(fk_name)
                 .all()
