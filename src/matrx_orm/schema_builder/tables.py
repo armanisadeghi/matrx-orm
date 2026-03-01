@@ -1121,7 +1121,7 @@ class Table:
             inverse_foreign_keys.update(ifk_field)
 
         # Add _inverse_foreign_keys to the model fields
-        py_fields.append(f"_inverse_foreign_keys = {inverse_foreign_keys}")
+        py_fields.append(f"_inverse_foreign_keys: ClassVar[dict[str, dict[str, str]]] = {inverse_foreign_keys}")
 
         # Process many-to-many relationships
         m2m_config = self.to_python_many_to_many_config()

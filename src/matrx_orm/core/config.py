@@ -336,6 +336,7 @@ def get_code_config(db_project: str) -> dict[str, Any]:
             "from matrx_orm import Model, model_registry, BaseDTO, BaseManager",
             "from enum import Enum",
             "from dataclasses import dataclass",
+            "from typing import ClassVar",
         ],
         "additional_top_lines": [],
         "additional_bottom_lines": [],
