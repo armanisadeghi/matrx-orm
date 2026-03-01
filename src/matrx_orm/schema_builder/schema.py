@@ -856,6 +856,7 @@ class Schema:
         if has_enums:
             dynamic_import_lines.append("from enum import Enum")
         dynamic_import_lines.append("from dataclasses import dataclass")
+        dynamic_import_lines.append("from typing import ClassVar")
         models_config["import_lines"] = dynamic_import_lines
 
         self.code_handler.generate_and_save_code_from_object(
