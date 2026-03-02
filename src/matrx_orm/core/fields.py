@@ -900,8 +900,11 @@ class JSONBField(Field, Generic[_JT]):
     def __set__(self, obj: object, value: _JT | None) -> None:
         # Always store the parsed form so setattr() on update paths never
         # leaves a raw JSON string sitting on the instance.
-        if self.name is not None:
-            object.__setattr__(obj, self.name, self.to_python(value))
+        # Guard: skip if this is class-level setup (no name yet) or if the
+        # value being set is itself a Field (descriptor being assigned to class).
+        if self.name is None or isinstance(value, Field):
+            return
+        object.__setattr__(obj, self.name, self.to_python(value))
 
     def to_python(self, value: Any) -> _JT | None:
         """Deserialise to a Python object.
