@@ -892,21 +892,44 @@ class JSONBField(Field, Generic[_JT]):
         def __get__(
             self, obj: object | None, objtype: type = ...
         ) -> _JT | None | "JSONBField[_JT]": ...
-        def __set__(self, obj: object, value: _JT | None) -> None: ...
 
     def __init__(self, **kwargs):
         super().__init__("JSONB", **kwargs)
 
-    def to_python(self, value):
+    def __set__(self, obj: object, value: _JT | None) -> None:
+        # Always store the parsed form so setattr() on update paths never
+        # leaves a raw JSON string sitting on the instance.
+        if self.name is not None:
+            object.__setattr__(obj, self.name, self.to_python(value))
+
+    def to_python(self, value: Any) -> _JT | None:
+        """Deserialise to a Python object.
+
+        asyncpg returns JSONB columns as already-decoded Python dicts/lists, so
+        the common path is a no-op passthrough.  The str branch handles values
+        arriving from raw SQL queries or test fixtures as JSON strings.
+        """
+        if value is None:
+            return None
         if isinstance(value, str):
             return json.loads(value)
         return value
 
-    def get_db_prep_value(self, value):
+    def get_db_prep_value(self, value: _JT | None) -> str | None:
+        """Serialise to a JSON string for asyncpg.
+
+        asyncpg requires JSONB values to be passed as a JSON-encoded string
+        (not a raw Python dict/list) when using parameterised queries — it
+        does NOT auto-encode native Python objects for JSONB the way psycopg3
+        does.  An already-encoded string (e.g. from a raw-SQL round-trip) is
+        re-parsed then re-encoded to guarantee it is valid JSON.
+        """
         if value is None:
             return None
         if isinstance(value, str):
-            return value
+            # Re-validate: parse then re-encode so callers can't inject
+            # malformed JSON strings directly into the wire value.
+            return json.dumps(json.loads(value))
         return json.dumps(value)
 
 

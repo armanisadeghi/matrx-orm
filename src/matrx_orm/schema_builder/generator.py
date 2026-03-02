@@ -226,7 +226,7 @@ class {name_camel}DTO(BaseDTO):
     id: str
 
     @classmethod
-    async def from_model(cls, model: "Model"):
+    async def from_model(cls, model: {name_camel}):
         return cls(id=str(model.id))
 
 
