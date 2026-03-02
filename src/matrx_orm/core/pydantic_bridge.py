@@ -269,7 +269,15 @@ def validate_input(
     """
     schema_cls = build_input_schema(model_cls, partial=partial)
     validated = schema_cls(**data)
-    return validated.model_dump(exclude_none=True)
+    # Only return keys the caller actually supplied.  model_fields_set tracks
+    # exactly which fields were present in the input — this avoids two problems:
+    #   1. Fields with a DB-side default (e.g. created_at) not being stripped
+    #      when left unset (correct), while fields the caller set to None
+    #      (intentional null) ARE kept (also correct).
+    #   2. exclude_none=True would drop legitimate None values for nullable
+    #      fields the caller explicitly nulled out.
+    dumped = validated.model_dump()
+    return {k: v for k, v in dumped.items() if k in validated.model_fields_set}
 
 
 def model_json_schema(model_cls: type, *, mode: str = "input") -> dict[str, Any]:
