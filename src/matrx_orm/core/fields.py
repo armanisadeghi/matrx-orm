@@ -1027,10 +1027,16 @@ class JSONBField(Field, Generic[_JT]):
                     break
         if name is None:
             return  # Cannot determine attribute name; bail rather than corrupt state.
-        if isinstance(value, Field):
-            object.__setattr__(obj, name, None)
-            return
-        object.__setattr__(obj, name, self.to_python(value))
+        coerced = None if isinstance(value, Field) else self.to_python(value)
+        # Model uses RuntimeMixin which routes all attribute writes through
+        # self._data.  We must write there to avoid triggering this __set__
+        # again via object.__setattr__ (which re-invokes the data descriptor).
+        _data = obj.__dict__.get("_data")
+        if _data is not None:
+            _data[name] = coerced
+        else:
+            # Fallback for non-Model objects or before _data is initialised.
+            obj.__dict__[name] = coerced
 
     def to_python(self, value: Any) -> _JT | None:
         """Deserialise to a Python object.
