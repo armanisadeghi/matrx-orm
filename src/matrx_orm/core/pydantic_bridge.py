@@ -68,46 +68,59 @@ def _field_annotation(field: Any, *, partial: bool) -> tuple[Any, Any]:
     -----
     - Primary-key fields are always optional (the DB or ORM supplies them).
     - Nullable fields are always optional.
-    - Fields with a default are optional (default is carried over).
-    - Everything else is required unless ``partial=True``.
-    - ``ForeignKey`` fields are excluded from the schema (they carry internal
-      IDs and are validated by the DB's referential integrity, not by Pydantic).
+    - Fields with a Python-side default are optional.
+    - Timestamp/date/time fields are always optional on input — DB DEFAULT
+      expressions (e.g. ``DEFAULT NOW()``) supply their value and are invisible
+      to the ORM's Python-side ``default`` attribute.
+    - ForeignKey fields are always optional — FK constraint is enforced by the DB.
+    - All other fields without a Python default are also made optional because
+      the DB may have a server-side default (sequences, generated columns, etc.).
+      Pydantic's role here is to catch wrong *types* and unknown field names, not
+      to replicate DB NOT NULL constraints which are enforced at the DB layer.
+    - In ``partial=True`` mode every field is optional (PATCH semantics).
     """
     from typing import Optional  # noqa: PLC0415
-    from pydantic import Field as PydanticField  # noqa: PLC0415
-    from matrx_orm.core.fields import ForeignKey  # noqa: PLC0415
-
-    if isinstance(field, ForeignKey):
-        # FK columns accept str | None; they're optional (may be null).
-        if field.null:
-            return (Optional[str], None)
-        return (Optional[str], PydanticField(default=None))
+    from matrx_orm.core.fields import ForeignKey, DateTimeField, DateField, TimeField  # noqa: PLC0415
 
     py_type = field.python_type()
 
-    # Wrap nullable types in Optional.
-    if field.null or field.nullable:
-        annotation = Optional[py_type]
-    else:
-        annotation = py_type
-
-    # Determine default.
-    if field.primary_key:
-        # PK is server-generated; always optional on input.
+    # ForeignKey — always optional; DB enforces referential integrity.
+    if isinstance(field, ForeignKey):
         return (Optional[str], None)
 
+    # Primary key — always optional; DB or ORM supplies it.
+    if field.primary_key:
+        return (Optional[str], None)
+
+    # Partial update — everything optional with None sentinel.
     if partial:
-        # For partial updates every field is optional with None sentinel.
         return (Optional[py_type], None)
 
-    if field.has_default() or field.null or field.nullable:
+    # Nullable column — optional by definition.
+    if field.null or field.nullable:
         default_val = field.get_default()
-        # Callables (e.g. uuid4) have already been resolved by get_default();
-        # use None as the schema default so Pydantic doesn't call it again.
-        return (annotation, default_val)
+        return (Optional[py_type], default_val)
 
-    # Required field.
-    return (annotation, ...)
+    # Timestamp/date/time columns — almost always DB-defaulted (NOW(), etc.).
+    # Even when declared null=False, the caller never supplies these on create.
+    if isinstance(field, (DateTimeField, DateField, TimeField)):
+        return (Optional[py_type], None)
+
+    # Field has an explicit Python-side default.
+    if field.has_default():
+        default_val = field.get_default()
+        return (Optional[py_type], default_val)
+
+    # All remaining fields: make optional so DB server-side defaults can fire.
+    # The DB's NOT NULL constraint is the authoritative enforcer; Pydantic's job
+    # is type-checking and unknown-field detection, not constraint duplication.
+    return (Optional[py_type], None)
+
+
+def clear_schema_cache() -> None:
+    """Invalidate the schema cache.  Useful in tests or after hot-reloading models."""
+    _cached_input_schema.cache_clear()
+    _cached_output_schema.cache_clear()
 
 
 @functools.lru_cache(maxsize=256)

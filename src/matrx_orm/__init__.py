@@ -21,6 +21,7 @@ from .core.pydantic_bridge import (
     build_output_schema,
     validate_input as validate_model_input,
     model_json_schema,
+    clear_schema_cache,
 )
 from .core.registry import model_registry
 from .core.types import (
@@ -208,6 +209,7 @@ __all__ = [
     "build_output_schema",
     "validate_model_input",
     "model_json_schema",
+    "clear_schema_cache",
     # ── Query API ─────────────────────────────────────────────────────────────
     "QueryBuilder",
     # ── Typed result containers ────────────────────────────────────────────────
