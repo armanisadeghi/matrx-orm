@@ -34,6 +34,7 @@ class Field:
         "index",
     }
 
+
     def __init__(
         self,
         db_type: str,
