@@ -33,7 +33,7 @@ def generate_base_manager_class(
 from dataclasses import dataclass
 from typing import Any
 
-from matrx_orm import BaseManager, BaseDTO, ModelView
+from matrx_orm import BaseManager, BaseDTO, ModelView, build_output_schema
 from matrx_utils import vcprint
 
 from {models_module_path} import {model_pascal}
@@ -74,6 +74,26 @@ class {model_pascal}View(ModelView[{model_pascal}]):
     # Errors in computed fields are logged and stored as None —           #
     # they never abort the load.                                          #
     # ------------------------------------------------------------------ #
+
+
+# ---------------------------------------------------------------------------
+# Pydantic output schema (optional, requires pydantic v2).
+# Auto-generated from the model's field definitions.  Useful for:
+#   - FastAPI response_model type annotation
+#   - JSON Schema generation: {model_pascal}Schema.model_json_schema()
+#   - Typed API responses: {model_pascal}Schema.model_validate(item.to_dict())
+#
+# Usage example:
+#   @app.get("/{{id}}", response_model={model_pascal}Schema)
+#   async def get_{model_name}(id: str):
+#       item = await {model_name}_manager_instance.load_by_id(id)
+#       return item.to_dict()
+# ---------------------------------------------------------------------------
+
+try:
+    {model_pascal}Schema = build_output_schema({model_pascal})
+except ImportError:
+    {model_pascal}Schema = None  # type: ignore[assignment]  # pydantic not installed
 
 
 # ---------------------------------------------------------------------------

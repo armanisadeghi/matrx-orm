@@ -16,6 +16,12 @@ from .core.extended import BaseManager
 from .core.model_dto import BaseDTO
 from .core.model_view import ModelView
 from .core.base import Model
+from .core.pydantic_bridge import (
+    build_input_schema,
+    build_output_schema,
+    validate_input as validate_model_input,
+    model_json_schema,
+)
 from .core.registry import model_registry
 from .core.types import (
     AggregateResult,
@@ -197,6 +203,11 @@ __all__ = [
     "BaseDTO",
     "ModelView",
     "model_registry",
+    # ── Pydantic integration (requires pydantic v2) ────────────────────────────
+    "build_input_schema",
+    "build_output_schema",
+    "validate_model_input",
+    "model_json_schema",
     # ── Query API ─────────────────────────────────────────────────────────────
     "QueryBuilder",
     # ── Typed result containers ────────────────────────────────────────────────

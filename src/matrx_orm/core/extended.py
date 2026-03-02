@@ -27,6 +27,10 @@ class BaseManager(Generic[ModelT]):
     fetch_on_init_limit: int
     _fetch_on_init_with_warnings_off: str | None
 
+    # Set to False on a subclass to disable Pydantic input validation globally
+    # for that manager.  Has no effect when Pydantic is not installed.
+    validate_input: bool = True
+
     def __init__(
         self,
         model: type[ModelT],
@@ -72,6 +76,29 @@ class BaseManager(Generic[ModelT]):
                     color="yellow",
                 )
                 self._auto_fetch_on_init_sync()
+
+    def _validate_input_data(
+        self,
+        data: dict[str, Any],
+        *,
+        partial: bool = False,
+    ) -> dict[str, Any]:
+        """Validate *data* against the model's Pydantic input schema.
+
+        Returns the validated, type-coerced dict.  If Pydantic is not installed,
+        or if ``self.validate_input`` is ``False``, the original dict is returned
+        unchanged (zero-cost passthrough).
+
+        Raises ``pydantic.ValidationError`` on schema violations so callers get
+        field-level error detail without hitting the database.
+        """
+        if not getattr(self, "validate_input", True):
+            return data
+        try:
+            from matrx_orm.core.pydantic_bridge import validate_input  # noqa: PLC0415
+            return validate_input(self.model, data, partial=partial)
+        except ImportError:
+            return data
 
     def _get_error_context(self) -> dict[str, str]:
         return {
@@ -250,6 +277,7 @@ class BaseManager(Generic[ModelT]):
     @handle_errors
     async def _create_item(self, **data: Any) -> ModelT:
         """Create a new item."""
+        data = self._validate_input_data(data, partial=False)
         item = await self.model.create(**data)
         return await self._initialize_item_runtime(item)
 
@@ -296,6 +324,7 @@ class BaseManager(Generic[ModelT]):
                 error_type="NotFoundError",
                 client_visible="The item to update could not be found.",
             )
+        updates = self._validate_input_data(updates, partial=True)
         await item.update(**updates)
         return await self._initialize_item_runtime(item)
 

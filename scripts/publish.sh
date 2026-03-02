@@ -2,13 +2,13 @@
 # update_package.sh — Bump version, update README, commit, tag, and push.
 #
 # Usage (run from anywhere inside the repo):
-#   ./scripts/update_package.sh              # patch bump  1.2.3 → 1.2.4  (default)
-#   ./scripts/update_package.sh --patch      # patch bump  1.2.3 → 1.2.4
-#   ./scripts/update_package.sh --minor      # minor bump  1.2.3 → 1.3.0
-#   ./scripts/update_package.sh --major      # major bump  1.2.3 → 2.0.0
-#   ./scripts/update_package.sh --message "fix: something"   # custom commit message
-#   ./scripts/update_package.sh --minor --message "feat: new stuff"
-#   ./scripts/update_package.sh --dry-run    # preview changes without committing
+#   ./scripts/publish.sh              # patch bump  1.2.3 → 1.2.4  (default)
+#   ./scripts/publish.sh --patch      # patch bump  1.2.3 → 1.2.4
+#   ./scripts/publish.sh --minor      # minor bump  1.2.3 → 1.3.0
+#   ./scripts/publish.sh --major      # major bump  1.2.3 → 2.0.0
+#   ./scripts/publish.sh --message "fix: something"   # custom commit message
+#   ./scripts/publish.sh --minor --message "feat: new stuff"
+#   ./scripts/publish.sh --dry-run    # preview changes without committing
 
 set -euo pipefail
 

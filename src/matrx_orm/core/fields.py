@@ -77,6 +77,18 @@ class Field:
             return self.default()
         return self.default
 
+    def has_default(self) -> bool:
+        """Return True if this field has an explicit default value or factory."""
+        return self.default is not None
+
+    def python_type(self) -> type:
+        """Return the canonical Python type for this field.
+
+        Used by the Pydantic bridge to auto-generate input validation schemas.
+        Subclasses should override to return the most specific applicable type.
+        """
+        return Any  # type: ignore[return-value]
+
     async def validate(self, value) -> None:
         """
         Validate the field value.
@@ -194,6 +206,12 @@ class UUIDField(Field):
             return str(uuid.uuid4())
         return self.default
 
+    def has_default(self) -> bool:
+        return self.default is not None or self.default == "gen_random_uuid()"
+
+    def python_type(self) -> type:
+        return str
+
     def to_python(self, value):
         return str(value) if value is not None else None
 
@@ -209,6 +227,9 @@ class UUIDFieldREAL(Field):
         if self.default == "gen_random_uuid()":
             return str(uuid.uuid4())
         return str(self.default) if self.default else None
+
+    def python_type(self) -> type:
+        return str
 
     def to_python(self, value):
         if value is None:
@@ -244,6 +265,9 @@ class CharField(Field):
         super().__init__(f"VARCHAR({max_length})", **kwargs)
         self.max_length = max_length
 
+    def python_type(self) -> type:
+        return str
+
     def get_db_prep_value(self, value):
         if value is None:
             return None
@@ -271,6 +295,9 @@ class TextField(Field):
     def __init__(self, **kwargs):
         super().__init__("TEXT", **kwargs)
 
+    def python_type(self) -> type:
+        return str
+
     def get_db_prep_value(self, value):
         if value is None:
             return None
@@ -293,6 +320,9 @@ class IntegerField(Field):
 
     def __init__(self, **kwargs):
         super().__init__("INTEGER", **kwargs)
+
+    def python_type(self) -> type:
+        return int
 
     def to_python(self, value):
         if value is None:
@@ -333,6 +363,9 @@ class FloatField(Field):
     def __init__(self, **kwargs):
         super().__init__("FLOAT", **kwargs)
 
+    def python_type(self) -> type:
+        return float
+
     def get_db_prep_value(self, value):
         if value is None:
             return None
@@ -358,6 +391,9 @@ class BooleanField(Field):
 
     def __init__(self, **kwargs):
         super().__init__("BOOLEAN", **kwargs)
+
+    def python_type(self) -> type:
+        return bool
 
     async def validate(self, value: bool | None) -> None:
         await super().validate(value)
@@ -424,6 +460,9 @@ class DateTimeField(Field):
         self.auto_now = auto_now
         self.auto_now_add = auto_now_add
 
+    def python_type(self) -> type:
+        return datetime
+
     def to_python(self, value):
         if isinstance(value, str):
             return datetime.fromisoformat(value)
@@ -451,6 +490,9 @@ class TimeField(Field):
     def __init__(self, **kwargs):
         super().__init__("TIME", **kwargs)
 
+    def python_type(self) -> type:
+        return time
+
     def to_python(self, value):
         if isinstance(value, str):
             return time.fromisoformat(value)
@@ -477,6 +519,9 @@ class DateField(Field):
 
     def __init__(self, **kwargs):
         super().__init__("DATE", **kwargs)
+
+    def python_type(self) -> type:
+        return date
 
     def to_python(self, value):
         if isinstance(value, str):
@@ -506,6 +551,9 @@ class JSONField(Field, Generic[_JT]):
     def __init__(self, **kwargs):
         super().__init__("JSONB", **kwargs)
 
+    def python_type(self) -> type:
+        return dict
+
     def to_python(self, value):
         if isinstance(value, str):
             return json.loads(value)
@@ -531,6 +579,9 @@ class ArrayField(Field):
     def __init__(self, item_type: Field, **kwargs):
         super().__init__(f"{item_type.db_type}[]", **kwargs)
         self.item_type = item_type
+
+    def python_type(self) -> type:
+        return list
 
     async def validate(self, value: list[Any] | None) -> None:
         await super().validate(value)
@@ -582,6 +633,9 @@ class EnumField(Field):
         else:
             self.enum_class = None
             self.choices = choices or []
+
+    def python_type(self) -> type:
+        return self.enum_class if self.enum_class is not None else str
 
     def get_db_prep_value(self, value: str | PythonEnum | None) -> str | None:
         """Convert Python value to database string."""
@@ -699,6 +753,9 @@ class DecimalField(Field):
         self.max_digits = max_digits
         self.decimal_places = decimal_places
 
+    def python_type(self) -> type:
+        return Decimal
+
     def to_python(self, value):
         if value is None:
             return None
@@ -747,6 +804,9 @@ class BigIntegerField(Field):
     def __init__(self, **kwargs):
         super().__init__("BIGINT", **kwargs)
 
+    def python_type(self) -> type:
+        return int
+
     def to_python(self, value):
         if value is None:
             return None
@@ -781,6 +841,9 @@ class SmallIntegerField(Field):
     def __init__(self, **kwargs):
         super().__init__("SMALLINT", **kwargs)
 
+    def python_type(self) -> type:
+        return int
+
     def to_python(self, value):
         if value is None:
             return None
@@ -814,6 +877,9 @@ class BinaryField(Field):
 
     def __init__(self, **kwargs):
         super().__init__("BYTEA", **kwargs)
+
+    def python_type(self) -> type:
+        return bytes
 
     async def validate(self, value: bytes | bytearray | None) -> None:
         await super().validate(value)
@@ -864,6 +930,9 @@ class HStoreField(Field):
     def __init__(self, **kwargs):
         super().__init__("HSTORE", **kwargs)
 
+    def python_type(self) -> type:
+        return dict
+
     def to_python(self, value):
         if value is None:
             return None
@@ -884,6 +953,30 @@ class HStoreField(Field):
 
 
 class JSONBField(Field, Generic[_JT]):
+    """JSONB field with optional Pydantic schema validation.
+
+    When ``schema`` is provided (a Pydantic ``BaseModel`` subclass), values are
+    automatically deserialized to that model on load and serialized back to a
+    dict on write.  Pydantic validates structure and types at both boundaries.
+
+    Without ``schema``, behaviour is identical to the original implementation —
+    Pydantic is not required and this field remains a zero-dependency passthrough.
+
+    Example::
+
+        from pydantic import BaseModel
+
+        class MetadataSchema(BaseModel):
+            source: str
+            tags: list[str] = []
+
+        class Document(Model):
+            metadata = JSONBField(schema=MetadataSchema)
+
+        doc = await Document.get(id=some_id)
+        doc.metadata.source  # fully typed MetadataSchema instance
+    """
+
     if TYPE_CHECKING:
 
         @overload
@@ -894,15 +987,35 @@ class JSONBField(Field, Generic[_JT]):
             self, obj: object | None, objtype: type = ...
         ) -> _JT | None | "JSONBField[_JT]": ...
 
-    def __init__(self, **kwargs):
+    def __init__(self, schema: type | None = None, **kwargs: Any) -> None:
         super().__init__("JSONB", **kwargs)
+        self._pydantic_schema: type | None = schema
+        if schema is not None:
+            try:
+                from pydantic import BaseModel  # noqa: PLC0415
+                if not (isinstance(schema, type) and issubclass(schema, BaseModel)):
+                    raise TypeError(
+                        f"JSONBField schema must be a pydantic BaseModel subclass, got {schema!r}"
+                    )
+            except ImportError:
+                raise ImportError(
+                    "JSONBField(schema=...) requires pydantic. "
+                    "Install it with: pip install pydantic"
+                )
+
+    def python_type(self) -> type:
+        return self._pydantic_schema if self._pydantic_schema is not None else dict
 
     def __set__(self, obj: object, value: _JT | None) -> None:
         # Always store the parsed form so setattr() on update paths never
         # leaves a raw JSON string sitting on the instance.
-        # Guard: skip if this is class-level setup (no name yet) or if the
-        # value being set is itself a Field (descriptor being assigned to class).
-        if self.name is None or isinstance(value, Field):
+        # When value is a Field descriptor (can happen if the instance attribute
+        # was never set and getattr falls back to the class), store None so the
+        # attribute always exists on the instance dict.
+        if self.name is None:
+            return
+        if isinstance(value, Field):
+            object.__setattr__(obj, self.name, None)
             return
         object.__setattr__(obj, self.name, self.to_python(value))
 
@@ -912,12 +1025,19 @@ class JSONBField(Field, Generic[_JT]):
         asyncpg returns JSONB columns as already-decoded Python dicts/lists, so
         the common path is a no-op passthrough.  The str branch handles values
         arriving from raw SQL queries or test fixtures as JSON strings.
+
+        When a Pydantic ``schema`` is configured, the decoded dict is further
+        validated and coerced into the schema model instance.
         """
         if value is None:
             return None
+        if isinstance(value, Field):
+            return None  # type: ignore[return-value]
         if isinstance(value, str):
-            return json.loads(value)
-        return value
+            value = json.loads(value)
+        if self._pydantic_schema is not None and isinstance(value, dict):
+            return self._pydantic_schema.model_validate(value)  # type: ignore[return-value]
+        return value  # type: ignore[return-value]
 
     def get_db_prep_value(self, value: _JT | None) -> str | None:
         """Serialise to a JSON string for asyncpg.
@@ -927,9 +1047,26 @@ class JSONBField(Field, Generic[_JT]):
         does NOT auto-encode native Python objects for JSONB the way psycopg3
         does.  An already-encoded string (e.g. from a raw-SQL round-trip) is
         re-parsed then re-encoded to guarantee it is valid JSON.
+
+        When a Pydantic ``schema`` is configured, model instances are serialised
+        via ``model_dump()`` before JSON-encoding so nested types are correctly
+        converted (e.g. ``datetime``, ``UUID``).
         """
         if value is None:
             return None
+        # Safety guard: if the descriptor itself leaked through (can happen when
+        # __get__ is defined only under TYPE_CHECKING and the instance attribute
+        # was never set), treat it as a missing value rather than crashing.
+        if isinstance(value, Field):
+            return None
+        # Pydantic BaseModel instance → dict first
+        if self._pydantic_schema is not None:
+            try:
+                from pydantic import BaseModel  # noqa: PLC0415
+                if isinstance(value, BaseModel):
+                    return json.dumps(value.model_dump(mode="json"))
+            except ImportError:
+                pass
         if isinstance(value, str):
             # Re-validate: parse then re-encode so callers can't inject
             # malformed JSON strings directly into the wire value.
@@ -958,6 +1095,9 @@ class TimeDeltaField(Field):
 
     def __init__(self, **kwargs):
         super().__init__("INTERVAL", **kwargs)
+
+    def python_type(self) -> type:
+        return timedelta
 
     def to_python(self, value):
         if value is None:
@@ -996,6 +1136,9 @@ class PointField(Field):
     def __init__(self, **kwargs):
         super().__init__("POINT", **kwargs)
 
+    def python_type(self) -> type:
+        return tuple
+
     def to_python(self, value):
         if value is None:
             return None
@@ -1024,6 +1167,9 @@ class RangeField(Field):
     def __init__(self, range_type: str, **kwargs):
         super().__init__(range_type, **kwargs)
 
+    def python_type(self) -> type:
+        return tuple
+
     async def validate(self, value):
         await super().validate(value)
         if value is not None and not (isinstance(value, tuple) and len(value) == 2):
@@ -1039,6 +1185,9 @@ class CITextField(CharField):
 class PrimitiveArrayField(Field):
     def __init__(self, element_type: str, **kwargs):
         super().__init__(f"{element_type}[]", **kwargs)
+
+    def python_type(self) -> type:
+        return list
 
     async def validate(self, value: list[Any] | None) -> None:
         await super().validate(value)
@@ -1149,6 +1298,9 @@ class ForeignKey(Field):
         self.to_db = to_db  # target database project name (cross-database FK)
         self.to_schema = to_schema  # target schema hint (e.g. 'auth' for auth.users)
 
+    def python_type(self) -> type:
+        return str
+
     def to_python(self, value):
         """Convert database UUID value to Python string (consistent with UUIDField)"""
         return str(value) if value else None
@@ -1179,6 +1331,9 @@ class CompositeField(Field):
         super().__init__("COMPOSITE", **kwargs)
         self.fields = fields
         self.primary_key = True
+
+    def python_type(self) -> type:
+        return tuple
 
     async def validate(self, value: tuple[Any, ...] | None) -> None:
         await super().validate(value)
@@ -1223,6 +1378,9 @@ class VersionField(Field):
         super().__init__("INTEGER", **kwargs)
         self.is_version_field = True
 
+    def python_type(self) -> type:
+        return int
+
     def to_python(self, value) -> int:
         if value is None:
             return 1
@@ -1259,6 +1417,9 @@ class VectorField(Field):
         self.dtype = dtype
         super().__init__(f"vector({dimensions})", **kwargs)
         self.is_vector_field = True
+
+    def python_type(self) -> type:
+        return list
 
     def to_python(self, value) -> list[float] | None:
         if value is None:
