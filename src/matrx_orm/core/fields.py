@@ -64,6 +64,10 @@ class Field:
         self.model = None
         self._order_direction = None
 
+    def __set_name__(self, owner: type, name: str) -> None:
+        """Called automatically by Python when the descriptor is assigned to a class attribute."""
+        self.name = name
+
     def contribute_to_class(self, model, name):
         """
         Hook for performing additional initialization when the field is added to a model.
@@ -1012,12 +1016,21 @@ class JSONBField(Field, Generic[_JT]):
         # When value is a Field descriptor (can happen if the instance attribute
         # was never set and getattr falls back to the class), store None so the
         # attribute always exists on the instance dict.
-        if self.name is None:
-            return
+        name = self.name
+        if name is None:
+            # __set_name__ wasn't called (dynamically attached field); find the
+            # name by scanning the class's _fields registry.
+            for attr_name, field in getattr(obj.__class__, "_fields", {}).items():
+                if field is self:
+                    name = attr_name
+                    self.name = name
+                    break
+        if name is None:
+            return  # Cannot determine attribute name; bail rather than corrupt state.
         if isinstance(value, Field):
-            object.__setattr__(obj, self.name, None)
+            object.__setattr__(obj, name, None)
             return
-        object.__setattr__(obj, self.name, self.to_python(value))
+        object.__setattr__(obj, name, self.to_python(value))
 
     def to_python(self, value: Any) -> _JT | None:
         """Deserialise to a Python object.
