@@ -560,13 +560,19 @@ class JSONField(Field, Generic[_JT]):
 
     def to_python(self, value):
         if isinstance(value, str):
+            if not value.strip():
+                return None
             return json.loads(value)
         return value
 
     def get_db_prep_value(self, value):
-        if value is not None and not isinstance(value, str):
-            return json.dumps(value)
-        return value
+        if value is None:
+            return None
+        if isinstance(value, str):
+            if not value.strip():
+                return None
+            return value
+        return json.dumps(value)
 
 
 class ArrayField(Field):
@@ -1053,6 +1059,8 @@ class JSONBField(Field, Generic[_JT]):
         if isinstance(value, Field):
             return None  # type: ignore[return-value]
         if isinstance(value, str):
+            if not value.strip():
+                return None
             value = json.loads(value)
         if self._pydantic_schema is not None and isinstance(value, dict):
             return self._pydantic_schema.model_validate(value)  # type: ignore[return-value]
@@ -1089,6 +1097,8 @@ class JSONBField(Field, Generic[_JT]):
         if isinstance(value, str):
             # Re-validate: parse then re-encode so callers can't inject
             # malformed JSON strings directly into the wire value.
+            if not value.strip():
+                return None
             return json.dumps(json.loads(value))
         return json.dumps(value)
 

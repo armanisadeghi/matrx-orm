@@ -364,6 +364,14 @@ class TestJSONField:
     def test_get_db_prep_value_none(self):
         assert JSONField().get_db_prep_value(None) is None
 
+    def test_to_python_empty_string_returns_none(self):
+        assert JSONField().to_python("") is None
+        assert JSONField().to_python("   ") is None
+
+    def test_get_db_prep_value_empty_string_returns_none(self):
+        assert JSONField().get_db_prep_value("") is None
+        assert JSONField().get_db_prep_value("   ") is None
+
 
 # ---------------------------------------------------------------------------
 # ArrayField
