@@ -1027,7 +1027,10 @@ class JSONBField(Field, Generic[_JT]):
                 )
 
     def python_type(self) -> type:
-        return self._pydantic_schema if self._pydantic_schema is not None else dict
+        if self._pydantic_schema is not None:
+            return self._pydantic_schema
+        from typing import Any  # noqa: PLC0415
+        return Any  # type: ignore[return-value]
 
     def __set__(self, obj: object, value: _JT | None) -> None:
         # Always store the parsed form so setattr() on update paths never
