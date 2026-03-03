@@ -1795,6 +1795,7 @@ When you run the schema builder against a database that has `vector(n)` columns,
 
 | Version | Highlights |
 |---|---|
+| **v3.0.11** | Patch release |
 | **v3.0.10** | Patch release |
 | **v3.0.1** | Patch release |
 | **v3.0.0** | Major release |
