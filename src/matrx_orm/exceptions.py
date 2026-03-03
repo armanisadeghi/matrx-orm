@@ -9,6 +9,9 @@ _RESET = "\033[0m"
 _ORM_PACKAGE = "matrx_orm"
 
 
+_EXCLUDED_FRAME_MARKERS = (_ORM_PACKAGE, "site-packages", "<frozen ", "runpy.py")
+
+
 def _capture_caller_frames() -> list[str]:
     """Walk the stack to find frames outside the matrx_orm package.
 
@@ -18,11 +21,13 @@ def _capture_caller_frames() -> list[str]:
         File "/home/user/app/views.py", line 42, in handle_request
         File "/home/user/app/db/persistence.py", line 204, in persist
 
-    Returns an empty list when no external caller is found.
+    Returns an empty list when no external caller is found.  Frames from
+    site-packages (pytest, pluggy, etc.) are excluded so that the caller
+    section only contains application code written by the user.
     """
     frames: list[str] = []
     for fi in reversed(_tb.extract_stack()[:-1]):
-        if _ORM_PACKAGE in fi.filename:
+        if any(marker in fi.filename for marker in _EXCLUDED_FRAME_MARKERS):
             continue
         frames.append(f'  File "{fi.filename}", line {fi.lineno}, in {fi.name}')
         if len(frames) >= 3:
@@ -119,7 +124,7 @@ class ORMException(Exception):
         return self._message or "An error occurred in the ORM"
 
     def format_message(self):
-        """Format the complete error message with all details"""
+        """Format the complete error message with all details, including caller frames."""
         error_msg = ["\n" + "=" * 80 + "\n"]
 
         if self.class_name and self.method_name:
@@ -141,22 +146,16 @@ class ORMException(Exception):
                     str_val = str_val[:300] + "..."
                 error_msg.append(f"  {key}: {str_val}")
 
+        caller_section = self._format_caller_section()
+        if caller_section:
+            error_msg.append(f"\n{caller_section}")
+
         error_msg.append("\n" + "=" * 80 + "\n")
 
         return "\n".join(error_msg)
 
     def __str__(self):
-        msg = self.format_message()
-        caller_section = self._format_caller_section()
-        if not caller_section:
-            return msg
-        # Inject caller section before the closing separator line
-        # Subclass format_message outputs end with "-" * 80 or "=" * 80
-        for sep in ("-" * 80, "=" * 80):
-            last_sep_idx = msg.rfind(sep)
-            if last_sep_idx > 0:
-                return msg[:last_sep_idx] + caller_section + "\n" + msg[last_sep_idx:]
-        return msg + "\n" + caller_section
+        return self.format_message()
 
 
 class ValidationError(ORMException):

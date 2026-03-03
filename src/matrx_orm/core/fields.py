@@ -281,6 +281,8 @@ class CharField(Field):
     async def validate(self, value: str | None) -> None:
         await super().validate(value)
         if value is not None:
+            if not isinstance(value, str):
+                raise ValueError(f"Field {self.name} must be a string, got {type(value).__name__}")
             if len(value) > self.max_length:
                 raise ValueError(f"Value exceeds maximum length of {self.max_length}")
 
@@ -309,6 +311,8 @@ class TextField(Field):
 
     async def validate(self, value: str | None) -> None:
         await super().validate(value)
+        if value is not None and not isinstance(value, str):
+            raise ValueError(f"Field {self.name} must be a string, got {type(value).__name__}")
 
 
 class IntegerField(Field):
@@ -380,6 +384,8 @@ class FloatField(Field):
 
     async def validate(self, value: float | int | None) -> None:
         await super().validate(value)
+        if value is not None and not isinstance(value, (float, int)):
+            raise ValueError(f"Field {self.name} must be a float, got {type(value).__name__}")
 
 
 class BooleanField(Field):
@@ -596,6 +602,8 @@ class ArrayField(Field):
     async def validate(self, value: list[Any] | None) -> None:
         await super().validate(value)
         if value is not None:
+            if not isinstance(value, list):
+                raise ValueError(f"Field {self.name} must be a list, got {type(value).__name__}")
             for item in value:
                 await self.item_type.validate(item)
 
