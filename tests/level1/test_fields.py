@@ -21,6 +21,7 @@ from matrx_orm.core.fields import (
     FloatField,
     ForeignKey,
     IntegerField,
+    JSONBField,
     JSONField,
     TextField,
     TimeField,
@@ -372,6 +373,19 @@ class TestJSONField:
         assert JSONField().get_db_prep_value("") is None
         assert JSONField().get_db_prep_value("   ") is None
 
+    def test_to_python_bare_string_passthrough(self):
+        # asyncpg decodes a JSONB string value like "[transcription]" to the
+        # Python str "[transcription]".  Trying to re-parse that as JSON fails
+        # (it's not valid JSON), so we must pass it through unchanged.
+        f = JSONField()
+        assert f.to_python("[transcription]") == "[transcription]"
+
+    def test_to_python_valid_json_string_still_parsed(self):
+        # A proper JSON string coming in as a str should still be decoded.
+        f = JSONField()
+        assert f.to_python('["a", "b"]') == ["a", "b"]
+        assert f.to_python('{"k": 1}') == {"k": 1}
+
 
 # ---------------------------------------------------------------------------
 # ArrayField
@@ -543,3 +557,69 @@ class TestEmailField:
         f.name = "email"
         with pytest.raises(ValueError):
             _run(f.validate("not_an_email"))
+
+
+# ---------------------------------------------------------------------------
+# JSONBField
+# ---------------------------------------------------------------------------
+
+class TestJSONBField:
+    def test_db_type(self):
+        assert JSONBField().db_type == "JSONB"
+
+    def test_to_python_none(self):
+        assert JSONBField().to_python(None) is None
+
+    def test_to_python_passthrough_dict(self):
+        d = {"key": "val"}
+        assert JSONBField().to_python(d) is d
+
+    def test_to_python_passthrough_list(self):
+        lst = [1, 2, 3]
+        assert JSONBField().to_python(lst) is lst
+
+    def test_to_python_valid_json_string(self):
+        f = JSONBField()
+        assert f.to_python('{"a": 1}') == {"a": 1}
+        assert f.to_python('[1, 2]') == [1, 2]
+
+    def test_to_python_empty_string_returns_none(self):
+        assert JSONBField().to_python("") is None
+        assert JSONBField().to_python("   ") is None
+
+    def test_to_python_bare_string_passthrough(self):
+        # Real-world case: Postgres JSONB stored a bare string value like
+        # "[transcription]" (valid JSONB).  asyncpg decodes it to the Python
+        # str "[transcription]".  Re-parsing that as JSON fails because
+        # [transcription] is not valid JSON (unquoted identifier inside array).
+        # The ORM must pass it through rather than crash — if Postgres accepted
+        # it, so do we.
+        f = JSONBField()
+        f.name = "capabilities"
+        assert f.to_python("[transcription]") == "[transcription]"
+
+    def test_to_python_other_non_json_strings_passthrough(self):
+        f = JSONBField()
+        f.name = "data"
+        assert f.to_python("some plain text") == "some plain text"
+        assert f.to_python("{bad json") == "{bad json"
+
+    def test_get_db_prep_value_none(self):
+        assert JSONBField().get_db_prep_value(None) is None
+
+    def test_get_db_prep_value_dict(self):
+        f = JSONBField()
+        result = f.get_db_prep_value({"x": [1, 2]})
+        assert json.loads(result) == {"x": [1, 2]}
+
+    def test_get_db_prep_value_empty_string_returns_none(self):
+        assert JSONBField().get_db_prep_value("") is None
+        assert JSONBField().get_db_prep_value("   ") is None
+
+    def test_get_db_prep_value_bare_string_encodes_as_json_string(self):
+        # A bare string that came from the DB and is being written back should
+        # be encoded as a JSON string so Postgres accepts it.
+        f = JSONBField()
+        f.name = "capabilities"
+        result = f.get_db_prep_value("[transcription]")
+        assert result == json.dumps("[transcription]")

@@ -568,7 +568,12 @@ class JSONField(Field, Generic[_JT]):
         if isinstance(value, str):
             if not value.strip():
                 return None
-            return json.loads(value)
+            try:
+                return json.loads(value)
+            except json.JSONDecodeError:
+                # Postgres accepted it; pass it through as a raw string rather
+                # than crashing — the app can decide what to do with it.
+                return value
         return value
 
     def get_db_prep_value(self, value):
@@ -1059,6 +1064,11 @@ class JSONBField(Field, Generic[_JT]):
         the common path is a no-op passthrough.  The str branch handles values
         arriving from raw SQL queries or test fixtures as JSON strings.
 
+        If the string cannot be parsed as JSON (e.g. Postgres stored a bare
+        string value like ``"[transcription]"`` which is valid JSONB but decodes
+        to a Python str that we then try to re-parse), the raw string is returned
+        unchanged rather than crashing — Postgres accepted it, so we do too.
+
         When a Pydantic ``schema`` is configured, the decoded dict is further
         validated and coerced into the schema model instance.
         """
@@ -1069,10 +1079,26 @@ class JSONBField(Field, Generic[_JT]):
         if isinstance(value, str):
             if not value.strip():
                 return None
-            value = json.loads(value)
+            try:
+                value = json.loads(value)
+            except json.JSONDecodeError:
+                # The DB contained a string value that is not re-parseable as
+                # JSON (e.g. a bare string stored as JSONB).  Pass it through
+                # as-is — the app can decide what to do with it.
+                return value  # type: ignore[return-value]
         if self._pydantic_schema is not None and isinstance(value, dict):
-            return self._pydantic_schema.model_validate(value)  # type: ignore[return-value]
+            try:
+                return self._pydantic_schema.model_validate(value)  # type: ignore[return-value]
+            except Exception as e:
+                from matrx_utils import vcprint
+                vcprint(value, f"[MATRX ORM JSONField] Error deserializing JSON field {self.name}: {e}", color="red")
+                print("=" * 40, "EXACT VALUE", "=" * 40)
+                print(value)
+                print("=" * 40,  "END OF EXACT VALUE", "=" * 40)
+                return value  # type: ignore[return-value]
         return value  # type: ignore[return-value]
+
+
 
     def get_db_prep_value(self, value: _JT | None) -> str | None:
         """Serialise to a JSON string for asyncpg.
@@ -1103,11 +1129,15 @@ class JSONBField(Field, Generic[_JT]):
             except ImportError:
                 pass
         if isinstance(value, str):
-            # Re-validate: parse then re-encode so callers can't inject
-            # malformed JSON strings directly into the wire value.
             if not value.strip():
                 return None
-            return json.dumps(json.loads(value))
+            # If the string is already valid JSON, round-trip it to normalise
+            # formatting.  If it is not (e.g. a bare string value stored in a
+            # JSONB column), encode it as a JSON string so Postgres accepts it.
+            try:
+                return json.dumps(json.loads(value))
+            except json.JSONDecodeError:
+                return json.dumps(value)
         return json.dumps(value)
 
 

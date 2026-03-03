@@ -667,7 +667,7 @@ wheels = [
 
 [[package]]
 name = "matrx-orm"
-version = "3.0.10"
+version = "3.0.11"
 source = { editable = "." }
 dependencies = [
     { name = "asyncpg" },
