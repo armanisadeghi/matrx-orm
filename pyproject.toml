@@ -44,7 +44,7 @@ dependencies = [
     "gitpython>=3.1.40",
     "psycopg[binary]>=3.2.5",
     "psycopg-pool>=3.2.5",
-    "matrx-utils>=1.0.9",
+    "matrx-utils>=1.0.13",
     "pyyaml>=6.0.3",
 ]
 
