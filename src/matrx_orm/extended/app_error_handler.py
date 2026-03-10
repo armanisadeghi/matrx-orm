@@ -47,7 +47,7 @@ def handle_errors(func: _F) -> _F:
     def _handle_exception(e: Exception, cls_or_self: object, func_name: str) -> None:
         """Common error handling logic for both sync and async."""
         if isinstance(e, AppError):
-            raise
+            raise e
 
         from matrx_orm.exceptions import ORMException
 

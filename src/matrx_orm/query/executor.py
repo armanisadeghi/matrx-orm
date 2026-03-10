@@ -8,6 +8,7 @@ from matrx_orm.core.async_db_manager import AsyncDatabaseManager
 from matrx_orm.core.types import AggregateResult, UpdateResult
 from matrx_orm.exceptions import (
     DatabaseError,
+    ParameterError,
     ValidationError,
     IntegrityError,
     QueryError,
@@ -754,7 +755,7 @@ class QueryExecutor:
             result = await self.db.execute_query(self.database, sql + " RETURNING *", *params)
             return UpdateResult(rows_affected=len(result), updated_rows=result)
 
-        except (ValidationError, IntegrityError, DatabaseError):
+        except (ValidationError, IntegrityError, DatabaseError, ParameterError):
             raise
         except Exception as e:
             raise QueryError(

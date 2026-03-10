@@ -809,14 +809,18 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
             )
             raise ValueError(error_message)
 
+        original_values = {field: getattr(self, field, None) for field in kwargs}
         try:
             for field, value in kwargs.items():
                 setattr(self, field, value)
 
             await update.update_instance(self, fields=kwargs.keys())
             return self
-        except ORMException as e:
-            e.enrich(model=self.__class__, operation="update", args=kwargs)
+        except Exception as e:
+            for field, original_value in original_values.items():
+                setattr(self, field, original_value)
+            if isinstance(e, ORMException):
+                e.enrich(model=self.__class__, operation="update", args=kwargs)
             raise
 
     @classmethod
