@@ -113,16 +113,23 @@ class ORMException(Exception):
             if isinstance(value, ORMException):
                 sanitized[key] = value.message
             elif isinstance(value, Exception) and hasattr(value, "message"):
+                # Other exception types that carry a .message attribute (e.g. AppError subclasses)
                 sanitized[key] = value.message  # type: ignore[attr-defined]
             elif isinstance(value, str) and (_sep_80 in value or _eq_80 in value):
-                # Strip the banner formatting and keep only the first meaningful line.
-                for line in value.splitlines():
-                    stripped = line.strip()
-                    if stripped and stripped not in ("-" * 80, "=" * 80) and not stripped.startswith("Matrx ORM"):
-                        sanitized[key] = stripped
-                        break
-                else:
-                    sanitized[key] = "(see chained exception below)"
+                # str(ORM exception) contains the formatted banner — extract the first
+                # meaningful line so the chained detail remains readable.
+                meaningful = next(
+                    (
+                        line.strip()
+                        for line in value.splitlines()
+                        if line.strip()
+                        and line.strip() not in (_sep_80, _eq_80)
+                        and not line.strip().startswith("Matrx ORM")
+                        and not line.strip().startswith("[ERROR")
+                    ),
+                    None,
+                )
+                sanitized[key] = meaningful if meaningful else "(see chained exception below)"
             else:
                 sanitized[key] = value
         return sanitized

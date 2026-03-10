@@ -44,11 +44,8 @@ def handle_errors(func: _F) -> _F:
     Preserves the decorated function's type signature for static analysis.
     """
 
-    def _handle_exception(e: Exception, cls_or_self: object, func_name: str) -> None:
-        """Common error handling logic for both sync and async."""
-        if isinstance(e, AppError):
-            raise e
-
+    def _make_app_error(e: Exception, cls_or_self: object, func_name: str) -> AppError:
+        """Wrap an exception in an AppError. Returns (never raises) the AppError."""
         from matrx_orm.exceptions import ORMException
 
         if isinstance(cls_or_self, type):
@@ -84,20 +81,22 @@ def handle_errors(func: _F) -> _F:
         else:
             error_message = f"{type(e).__name__}: {e}"
 
-        raise AppError(
+        return AppError(
             message=error_message,
             error_type=e.__class__.__name__,
             client_visible=DEFAULT_CLIENT_MESSAGE,
             context=context,
-        ) from e
+        )
 
     if inspect.iscoroutinefunction(func):
         @wraps(func)
         async def async_wrapper(cls_or_self: object, *args: object, **kwargs: object) -> object:
             try:
                 return await func(cls_or_self, *args, **kwargs)
+            except AppError:
+                raise
             except Exception as e:
-                _handle_exception(e, cls_or_self, func.__name__)
+                raise _make_app_error(e, cls_or_self, func.__name__) from e
 
         return async_wrapper  # type: ignore[return-value]
     else:
@@ -105,7 +104,9 @@ def handle_errors(func: _F) -> _F:
         def sync_wrapper(cls_or_self: object, *args: object, **kwargs: object) -> object:
             try:
                 return func(cls_or_self, *args, **kwargs)
+            except AppError:
+                raise
             except Exception as e:
-                _handle_exception(e, cls_or_self, func.__name__)
+                raise _make_app_error(e, cls_or_self, func.__name__) from e
 
         return sync_wrapper  # type: ignore[return-value]
