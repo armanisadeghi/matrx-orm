@@ -288,3 +288,4 @@ For batch-heavy workloads on any tier: the transaction pooler (port 6543\) is fr
 | Pool exhausted | Circuit break, 503, alert | Circuit break, 503, alert | ORM raises PoolExhaustedError |
 
 Document generated from live Supabase MCP data — March 2026\. Update ProjectConnectionConfig entries if plans, compute tier, or IPv4 add-ons change.
+
