@@ -1315,6 +1315,33 @@ class TimeArrayField(ArrayField):
         super().__init__(TimeField(), **kwargs)
 
 
+class FloatArrayField(ArrayField):
+    def __init__(self, **kwargs):
+        super().__init__(FloatField(), **kwargs)
+
+
+class BigIntegerArrayField(ArrayField):
+    def __init__(self, **kwargs):
+        super().__init__(BigIntegerField(), **kwargs)
+
+
+class SmallIntegerArrayField(ArrayField):
+    def __init__(self, **kwargs):
+        super().__init__(SmallIntegerField(), **kwargs)
+
+
+class NumericArrayField(ArrayField):
+    """Array of arbitrary-precision numeric values (Postgres ``numeric[]``).
+
+    Uses ``DecimalField`` with no precision constraints so it mirrors the bare
+    ``numeric`` type in Postgres — precision is enforced by the database, not
+    the ORM layer.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(DecimalField(), **kwargs)
+
+
 class ImageField(FileField):
     def __init__(self, max_length: int = 100, **kwargs):
         super().__init__(max_length=max_length, **kwargs)

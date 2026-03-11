@@ -203,6 +203,14 @@ class Column:
 
         self.python_field_type = self.utils.to_python_models_field(self.base_type)
 
+        # The base_type lookup above uses Postgres internal type codes (e.g.
+        # "_text", "_varchar") which are mapped incorrectly in some cases.
+        # When the column is an array, derive the field class directly from
+        # full_type (information_schema format) so the generated model always
+        # matches what Postgres actually stores.
+        if self.is_array:
+            self.python_field_type = self._resolve_array_field_type()
+
         self.generate_unique_name_lookups()
         self.generate_name_variations()
         self.to_reverse_column_lookup_entry()
@@ -1326,9 +1334,100 @@ class Column:
                 dims = 0
             dims_arg = f"dimensions={dims}, " if dims else ""
             field_def = f"{self.name} = VectorField({dims_arg}{options_str})"
+        elif self.python_field_type == "PrimitiveArrayField":
+            # PrimitiveArrayField requires element_type as first positional arg.
+            # Derive it from full_type by stripping the trailing "[]".
+            element_type = self.full_type.rstrip("[]").strip() or "text"
+            sep = ", " if options_str else ""
+            field_def = f"{self.name} = PrimitiveArrayField('{element_type}'{sep}{options_str})"
         else:
             field_def = f"{self.name} = {self.python_field_type}({options_str})"
         return field_def
+
+    # ------------------------------------------------------------------
+    # Postgres internal type codes for arrays use a leading underscore
+    # (e.g. _text, _varchar, _int4).  The DataTransformer mapping uses
+    # these codes and some are incorrect (e.g. _text → JSONBField).
+    # This method derives the correct ORM field class from full_type
+    # (the information_schema representation, e.g. "text[]") which is
+    # unambiguous and always available when is_array is True.
+    # ------------------------------------------------------------------
+    _ARRAY_FULL_TYPE_MAP: dict[str, str] = {
+        # text family
+        "text[]": "TextArrayField",
+        "character varying[]": "TextArrayField",
+        "varchar[]": "TextArrayField",
+        "char[]": "TextArrayField",
+        "citext[]": "TextArrayField",
+        # integer family
+        "integer[]": "IntegerArrayField",
+        "int[]": "IntegerArrayField",
+        "int4[]": "IntegerArrayField",
+        "bigint[]": "BigIntegerArrayField",
+        "int8[]": "BigIntegerArrayField",
+        "smallint[]": "SmallIntegerArrayField",
+        "int2[]": "SmallIntegerArrayField",
+        # float/numeric family
+        "real[]": "FloatArrayField",
+        "float4[]": "FloatArrayField",
+        "double precision[]": "FloatArrayField",
+        "float8[]": "FloatArrayField",
+        "numeric[]": "NumericArrayField",
+        "decimal[]": "NumericArrayField",
+        # boolean
+        "boolean[]": "BooleanArrayField",
+        "bool[]": "BooleanArrayField",
+        # uuid
+        "uuid[]": "UUIDArrayField",
+        # json
+        "jsonb[]": "JSONBArrayField",
+        "json[]": "JSONBArrayField",
+        # date/time
+        "date[]": "DateArrayField",
+        "time[]": "TimeArrayField",
+        "time without time zone[]": "TimeArrayField",
+        "time with time zone[]": "TimeArrayField",
+        "timestamp[]": "DateArrayField",
+        "timestamp without time zone[]": "DateArrayField",
+        "timestamp with time zone[]": "DateArrayField",
+        "timestamptz[]": "DateArrayField",
+        # network
+        "inet[]": "IPNetworkArrayField",
+        "cidr[]": "IPNetworkArrayField",
+        "macaddr[]": "TextArrayField",
+        # hstore
+        "hstore[]": "HStoreArrayField",
+    }
+
+    def _resolve_array_field_type(self) -> str:
+        """Return the correct ORM field class name for an array column.
+
+        Uses ``full_type`` (the information_schema representation) as the
+        authoritative source.  Falls back to ``PrimitiveArrayField`` for any
+        type not in the explicit map rather than silently generating a wrong
+        field.
+        """
+        normalised = self.full_type.lower().strip()
+        field_class = self._ARRAY_FULL_TYPE_MAP.get(normalised)
+        if field_class:
+            return field_class
+
+        # character varying(N)[] — strip the precision qualifier
+        if normalised.startswith("character varying(") and normalised.endswith("[]"):
+            return "TextArrayField"
+
+        # numeric(p,s)[] — strip the precision/scale qualifier
+        if normalised.startswith("numeric(") and normalised.endswith("[]"):
+            return "NumericArrayField"
+
+        # Unknown array type — PrimitiveArrayField is a safe passthrough that
+        # still binds as a Python list without attempting JSON serialisation.
+        vcprint(
+            f"[ORM] Unknown array full_type '{self.full_type}' on column "
+            f"'{self.table_name}.{self.name}' — falling back to PrimitiveArrayField.",
+            color="yellow",
+        )
+        return "PrimitiveArrayField"
 
     def to_dict(self):
         return {
