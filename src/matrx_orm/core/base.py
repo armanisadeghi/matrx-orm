@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import sys
 from collections.abc import Sequence
 from dataclasses import dataclass, field as dc_field
 from typing import Any, ClassVar, cast
@@ -662,6 +663,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         except DoesNotExist:
             return None
         except Exception as e:
+            print(f"\n[ORM ERROR] {type(e).__name__} in {cls.__name__}.get_or_none(): {e}", file=sys.stderr)
             vcprint(f"Error in get_or_none for {cls.__name__}: {str(e)}", color="red")
             return None
 

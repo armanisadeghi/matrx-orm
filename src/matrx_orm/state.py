@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from enum import Enum
 import asyncio
+import sys
 from matrx_utils import vcprint
 from matrx_orm.exceptions import (
     ORMException,
@@ -348,6 +349,7 @@ class StateManager:
             except DoesNotExist:
                 return None
             except Exception as e:
+                print(f"\n[ORM ERROR] {type(e).__name__} in StateManager.get_or_none({model_class.__name__}): {e}", file=sys.stderr)
                 vcprint(
                     f"Database error in get_or_none for {model_class.__name__}: {str(e)}",
                     color="red",
@@ -357,6 +359,7 @@ class StateManager:
         except StateError:
             return None
         except Exception as e:
+            print(f"\n[ORM ERROR] {type(e).__name__} in StateManager.get_or_none({model_class.__name__}): {e}", file=sys.stderr)
             vcprint(
                 f"Unexpected error in get_or_none for {model_class.__name__}: {str(e)}",
                 color="red",

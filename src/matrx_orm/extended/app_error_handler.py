@@ -1,6 +1,7 @@
 from collections.abc import Mapping
 from functools import wraps
 import inspect
+import sys
 import traceback
 from typing import Callable, Protocol, TypeVar, runtime_checkable
 
@@ -81,12 +82,25 @@ def handle_errors(func: _F) -> _F:
         else:
             error_message = f"{type(e).__name__}: {e}"
 
-        return AppError(
+        app_error = AppError(
             message=error_message,
             error_type=e.__class__.__name__,
             client_visible=DEFAULT_CLIENT_MESSAGE,
             context=context,
         )
+        # Always print — the caller may swallow the exception, but the error
+        # must never be invisible.
+        print(
+            f"\n[ORM ERROR] {e.__class__.__name__} in {class_name}.{func_name}(): {error_message}",
+            file=sys.stderr,
+        )
+        if context.get("query"):
+            print(f"  Query:  {context['query']}", file=sys.stderr)
+        if context.get("args"):
+            print(f"  Args:   {context['args']}", file=sys.stderr)
+        if context.get("operation"):
+            print(f"  Op:     {context['operation']}", file=sys.stderr)
+        return app_error
 
     if inspect.iscoroutinefunction(func):
         @wraps(func)
