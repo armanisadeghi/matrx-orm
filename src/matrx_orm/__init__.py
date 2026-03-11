@@ -191,6 +191,12 @@ from .migrations import (
     migrate_and_rebuild,
 )
 
+# ── Desktop API (optional — requires `pip install matrx-orm[api]`) ─────────
+# Imports are deferred to avoid hard dependency on aiohttp.
+def _lazy_api():
+    from matrx_orm.api import APIServer, APIConfig, TokenAuth
+    return APIServer, APIConfig, TokenAuth
+
 __all__ = [
     # ── Configuration ──────────────────────────────────────────────────────────
     "DatabaseProjectConfig",
@@ -385,4 +391,15 @@ __all__ = [
     "create_empty",
     "rollback",
     "migrate_and_rebuild",
+    # ── Desktop API (optional) ────────────────────────────────────────────────
+    "APIServer",
+    "APIConfig",
+    "TokenAuth",
 ]
+
+# Lazy imports for optional API module
+def __getattr__(name: str):
+    if name in ("APIServer", "APIConfig", "TokenAuth"):
+        from matrx_orm import api as _api
+        return getattr(_api, name)
+    raise AttributeError(f"module 'matrx_orm' has no attribute {name!r}")
