@@ -972,3 +972,94 @@ class OptimisticLockError(ORMException):
             model=model,
             details={"pk": pk, "expected_version": expected_version},
         )
+
+
+class WriteQueueFullError(DatabaseError):
+    """Raised when the async write queue has reached its maximum capacity.
+
+    This is a backpressure signal — the application is producing writes faster
+    than the connection pool can drain them. Either increase ``write_queue_size``
+    in the database config, increase ``pool_max``, or reduce write concurrency.
+    """
+
+    def __init__(
+        self,
+        config_name: str | None = None,
+        queue_size: int | None = None,
+        message: str | None = None,
+    ) -> None:
+        msg = message or (
+            f"Write queue full for '{config_name}' "
+            f"(max {queue_size} pending writes). "
+            "Writes are arriving faster than the pool can execute them."
+        )
+        super().__init__(
+            message=msg,
+            model=None,
+            details={"config_name": config_name, "queue_size": queue_size},
+        )
+
+    def format_message(self):
+        config_name = self.details.get("config_name", "")
+        queue_size = self.details.get("queue_size", "?")
+        lines = ["\n" + "-" * 80]
+        lines.append("Matrx ORM  |  WriteQueueFullError")
+        lines.append("")
+        lines.append(self.message)
+        if config_name:
+            lines.append(f"  Database:   {config_name}")
+        lines.append(f"  Queue size: {queue_size}")
+        lines.append("")
+        lines.append("Hint:")
+        lines.append("  - The write queue is full — writes are arriving faster than the pool can drain.")
+        lines.append("  - Increase write_queue_size in your DatabaseProjectConfig for more buffer.")
+        lines.append("  - Increase pool_max to allow more concurrent connections.")
+        lines.append("  - Reduce application-level write concurrency (fewer concurrent tasks).")
+        lines.append("  - If on Supabase, consider upgrading to a paid plan for more connections.")
+        lines.append("-" * 80 + "\n")
+        body = "\n".join(lines)
+        return f"{_RED}{body}{_RESET}"
+
+
+class WriteQueueTimeoutError(DatabaseError):
+    """Raised when a write operation waited too long in the queue without executing.
+
+    The operation was enqueued but the pool was saturated for longer than
+    ``write_queue_timeout`` seconds. The write was **not** applied to the database.
+    """
+
+    def __init__(
+        self,
+        config_name: str | None = None,
+        timeout: float | None = None,
+        message: str | None = None,
+    ) -> None:
+        msg = message or (
+            f"Write timed out after {timeout}s in queue for '{config_name}'. "
+            "The operation was NOT applied to the database."
+        )
+        super().__init__(
+            message=msg,
+            model=None,
+            details={"config_name": config_name, "timeout": timeout},
+        )
+
+    def format_message(self):
+        config_name = self.details.get("config_name", "")
+        timeout = self.details.get("timeout", "?")
+        lines = ["\n" + "-" * 80]
+        lines.append("Matrx ORM  |  WriteQueueTimeoutError")
+        lines.append("")
+        lines.append(self.message)
+        if config_name:
+            lines.append(f"  Database: {config_name}")
+        lines.append(f"  Timeout:  {timeout}s")
+        lines.append("")
+        lines.append("Hint:")
+        lines.append("  - The write was enqueued but the pool stayed saturated too long.")
+        lines.append("  - The write was NOT applied — the caller should retry or fail gracefully.")
+        lines.append("  - Increase write_queue_timeout for longer tolerance under heavy load.")
+        lines.append("  - Increase pool_max or write_concurrency to drain the queue faster.")
+        lines.append("-" * 80 + "\n")
+        body = "\n".join(lines)
+        return f"{_RED}{body}{_RESET}"

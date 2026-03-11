@@ -505,7 +505,7 @@ class QueryExecutor:
         )
 
         try:
-            rows = await self.db.execute_query(self.database, sql, *values)
+            rows = await self.db.execute_write(self.database, sql, *values)
             if not rows:
                 raise ValidationError(message="Insert succeeded but returned no data")
             return rows[0]
@@ -566,7 +566,7 @@ class QueryExecutor:
         )
 
         try:
-            results = await self.db.execute_query(self.database, sql, *all_values)
+            results = await self.db.execute_write(self.database, sql, *all_values)
             return [self.model(**row) for row in results]
         except DatabaseError as e:
             if "unique constraint" in str(e).lower():
@@ -609,7 +609,7 @@ class QueryExecutor:
         )
 
         try:
-            rows = await self.db.execute_query(self.database, sql, *values)
+            rows = await self.db.execute_write(self.database, sql, *values)
             if not rows:
                 raise ValidationError(message="Upsert succeeded but returned no data")
             return rows[0]
@@ -665,7 +665,7 @@ class QueryExecutor:
         )
 
         try:
-            results = await self.db.execute_query(self.database, sql, *all_values)
+            results = await self.db.execute_write(self.database, sql, *all_values)
             return [self.model(**row) for row in results]
         except DatabaseError as e:
             if "unique constraint" in str(e).lower():
@@ -752,7 +752,7 @@ class QueryExecutor:
                 vcprint(sql, "Built SQL", verbose=debug, color="cyan")
                 vcprint(params, "With params", verbose=debug, color="cyan")
 
-            result = await self.db.execute_query(self.database, sql + " RETURNING *", *params)
+            result = await self.db.execute_write(self.database, sql + " RETURNING *", *params)
             return UpdateResult(rows_affected=len(result), updated_rows=result)
 
         except (ValidationError, IntegrityError, DatabaseError, ParameterError):
@@ -773,7 +773,7 @@ class QueryExecutor:
             sql += f" WHERE {where_clause}"
 
         try:
-            result = await self.db.execute_query(self.database, sql, *where_params)
+            result = await self.db.execute_write(self.database, sql, *where_params)
             return len(result)
         except DatabaseError as e:
             raise DatabaseError(f"Delete failed: {str(e)}") from e

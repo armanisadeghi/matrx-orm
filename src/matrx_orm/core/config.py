@@ -38,6 +38,20 @@ class DatabaseProjectConfig:
     # These schemas live in the same database but outside the default "public" schema.
     additional_schemas: list = field(default_factory=list)
 
+    # Connection pool settings — "session" uses prepared statements (port 5432),
+    # "transaction" disables statement caching for Supavisor transaction pooler (port 6543).
+    pool_mode: str = "session"
+    pool_min: int = 5
+    pool_max: int = 20
+    command_timeout: int = 10
+
+    # Write queue — gates write operations behind an async queue so they wait in
+    # order instead of racing for pool connections and timing out under load.
+    write_queue_enabled: bool = True
+    write_concurrency: int = 10
+    write_queue_size: int = 200
+    write_queue_timeout: float = 30.0
+
 
 class DatabaseRegistry:
     _instance = None
@@ -130,6 +144,14 @@ class DatabaseRegistry:
             "password": config.password,
             "alias": config.alias,
             "additional_schemas": config.additional_schemas,
+            "pool_mode": config.pool_mode,
+            "pool_min": config.pool_min,
+            "pool_max": config.pool_max,
+            "command_timeout": config.command_timeout,
+            "write_queue_enabled": config.write_queue_enabled,
+            "write_concurrency": config.write_concurrency,
+            "write_queue_size": config.write_queue_size,
+            "write_queue_timeout": config.write_queue_timeout,
         }
 
     def get_config_dataclass(self, config_name: str) -> DatabaseProjectConfig:
@@ -210,6 +232,14 @@ def register_database_from_env(
     field_overrides: dict[str, Any] | None = None,
     manager_config_overrides: dict[str, Any] | None = None,
     env_var_overrides: dict[str, str] | None = None,
+    pool_mode: str | None = None,
+    pool_min: int | None = None,
+    pool_max: int | None = None,
+    command_timeout: int | None = None,
+    write_queue_enabled: bool | None = None,
+    write_concurrency: int | None = None,
+    write_queue_size: int | None = None,
+    write_queue_timeout: float | None = None,
 ) -> bool:
     """
     Read database connection details from environment variables, validate them,
@@ -219,6 +249,11 @@ def register_database_from_env(
         {env_prefix}_HOST, {env_prefix}_PORT, {env_prefix}_NAME,
         {env_prefix}_USER, {env_prefix}_PASSWORD
         {env_prefix}_PROTOCOL  (optional, defaults to "postgresql")
+
+    Pool and write-queue settings can be passed as keyword arguments or read from
+    env vars ({env_prefix}_POOL_MODE, _POOL_MIN, _POOL_MAX, _COMMAND_TIMEOUT,
+    _WRITE_QUEUE_ENABLED, _WRITE_CONCURRENCY, _WRITE_QUEUE_SIZE, _WRITE_QUEUE_TIMEOUT).
+    Keyword arguments take precedence over env vars.
 
     env_var_overrides lets you remap any key to a different env var name.
     Example: {"NAME": "SUPABASE_MATRIX_DATABASE_NAME"} reads that env var
@@ -264,6 +299,69 @@ def register_database_from_env(
             vcprint(f"    • {var}", color="red")
         return False
 
+    _INT_POOL_OPTS: dict[str, tuple[str, int]] = {
+        "POOL_MIN": ("pool_min", 5),
+        "POOL_MAX": ("pool_max", 20),
+        "COMMAND_TIMEOUT": ("command_timeout", 10),
+        "WRITE_CONCURRENCY": ("write_concurrency", 10),
+        "WRITE_QUEUE_SIZE": ("write_queue_size", 200),
+    }
+    _FLOAT_POOL_OPTS: dict[str, tuple[str, float]] = {
+        "WRITE_QUEUE_TIMEOUT": ("write_queue_timeout", 30.0),
+    }
+
+    pool_kwargs: dict[str, Any] = {}
+
+    if pool_mode is not None:
+        pool_kwargs["pool_mode"] = pool_mode
+    else:
+        env_var = _overrides.get("POOL_MODE", f"{env_prefix}_POOL_MODE")
+        val = os.environ.get(env_var, "").strip()
+        if val:
+            pool_kwargs["pool_mode"] = val
+
+    if write_queue_enabled is not None:
+        pool_kwargs["write_queue_enabled"] = write_queue_enabled
+    else:
+        env_var = _overrides.get("WRITE_QUEUE_ENABLED", f"{env_prefix}_WRITE_QUEUE_ENABLED")
+        val = os.environ.get(env_var, "").strip().lower()
+        if val in ("0", "false", "no", "off"):
+            pool_kwargs["write_queue_enabled"] = False
+        elif val in ("1", "true", "yes", "on"):
+            pool_kwargs["write_queue_enabled"] = True
+
+    local_overrides = {
+        "pool_min": pool_min,
+        "pool_max": pool_max,
+        "command_timeout": command_timeout,
+        "write_concurrency": write_concurrency,
+        "write_queue_size": write_queue_size,
+    }
+    for env_key, (attr, default) in _INT_POOL_OPTS.items():
+        local_val = local_overrides.get(attr)
+        if local_val is not None:
+            pool_kwargs[attr] = local_val
+        else:
+            env_var = _overrides.get(env_key, f"{env_prefix}_{env_key}")
+            val = os.environ.get(env_var, "").strip()
+            if val:
+                try:
+                    pool_kwargs[attr] = int(val)
+                except ValueError:
+                    pass
+
+    if write_queue_timeout is not None:
+        pool_kwargs["write_queue_timeout"] = write_queue_timeout
+    else:
+        for env_key, (attr, default) in _FLOAT_POOL_OPTS.items():
+            env_var = _overrides.get(env_key, f"{env_prefix}_{env_key}")
+            val = os.environ.get(env_var, "").strip()
+            if val:
+                try:
+                    pool_kwargs[attr] = float(val)
+                except ValueError:
+                    pass
+
     try:
         config = DatabaseProjectConfig(
             name=name,
@@ -278,6 +376,7 @@ def register_database_from_env(
             entity_overrides=entity_overrides or {},
             field_overrides=field_overrides or {},
             manager_config_overrides=manager_config_overrides or {},
+            **pool_kwargs,
         )
         registry.register(config)
         vcprint(name, "Database registered successfully", color="green")

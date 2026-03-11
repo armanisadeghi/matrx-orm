@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import asyncio
 import traceback
@@ -20,6 +21,8 @@ from matrx_orm.exceptions import (
     UnknownDatabaseError,
 )
 from matrx_orm.error_handling import handle_orm_operation
+
+logger = logging.getLogger("matrx_orm.async_db_manager")
 
 
 async def _init_vector_codec(conn: asyncpg.Connection) -> None:
@@ -105,6 +108,10 @@ class AsyncDatabaseManager:
                     config_name=config_name,
                 ):
                     config = get_database_config(config_name)
+
+                    pool_mode = config.get("pool_mode", "session")
+                    cache_size = 0 if pool_mode in ("transaction", "session") else 100
+
                     try:
                         pool = await asyncpg.create_pool(
                             host=config["host"],
@@ -112,15 +119,24 @@ class AsyncDatabaseManager:
                             database=config["database_name"],
                             user=config["user"],
                             password=config["password"],
-                            min_size=5,
-                            max_size=20,
-                            command_timeout=10,
+                            min_size=config.get("pool_min", 5),
+                            max_size=config.get("pool_max", 20),
+                            command_timeout=config.get("command_timeout", 10),
                             ssl="require",
-                            statement_cache_size=0,
+                            statement_cache_size=cache_size,
                             init=_init_vector_codec,
                         )
                         cls._pools[config_name] = pool
-                        
+
+                        if config.get("write_queue_enabled", True):
+                            from matrx_orm.core.write_queue import get_write_queue_registry
+                            get_write_queue_registry().get_or_create(
+                                config_name=config_name,
+                                write_concurrency=config.get("write_concurrency", 10),
+                                write_queue_size=config.get("write_queue_size", 200),
+                                write_queue_timeout=config.get("write_queue_timeout", 30.0),
+                            )
+
                         try:
                             current_loop = asyncio.get_running_loop()
                             cls._pool_loops[config_name] = id(current_loop)
@@ -161,17 +177,20 @@ class AsyncDatabaseManager:
                 finally:
                     await pool.release(conn)
         except asyncio.TimeoutError:
+            from matrx_orm.core.write_queue import maybe_activate_queue
+            _timeout_err = DatabaseError(
+                model=None,
+                message=f"Timeout acquiring connection after {timeout}s",
+                details={"config_name": config_name, "timeout": timeout},
+            )
+            maybe_activate_queue(config_name, _timeout_err)
             async with handle_orm_operation(
                 operation_name="acquire_connection",
                 model=None,
                 config_name=config_name,
                 timeout=timeout,
             ):
-                raise DatabaseError(
-                    model=None,
-                    message=f"Timeout acquiring connection after {timeout}s",
-                    details={"config_name": config_name, "timeout": timeout},
-                ) from None
+                raise _timeout_err from None
         except asyncpg.exceptions.InterfaceError as e:
             async with handle_orm_operation(
                 operation_name="acquire_connection",
@@ -274,8 +293,77 @@ class AsyncDatabaseManager:
                     ) from e
 
     @classmethod
+    async def execute_write(
+        cls,
+        config_name: str,
+        query: str,
+        *args: Any,
+        timeout: float = 10.0,
+        max_retries: int = 2,
+    ) -> list[dict[str, Any]]:
+        """Execute a write query, routing through the write queue when enabled.
+
+        If a write queue exists for ``config_name`` the operation is submitted
+        to the queue (which gates concurrency via a semaphore and retries on
+        transient pool-saturation errors).  Otherwise falls through to the
+        normal ``execute_query`` path.
+        """
+        from matrx_orm.core.write_queue import get_write_queue_registry
+        wq = get_write_queue_registry().get(config_name)
+
+        if wq is not None:
+            return await wq.submit(
+                lambda: cls._execute_with_retry(config_name, query, *args, timeout=timeout, max_retries=max_retries)
+            )
+
+        return await cls.execute_query(config_name, query, *args, timeout=timeout)
+
+    @classmethod
+    async def _execute_with_retry(
+        cls,
+        config_name: str,
+        query: str,
+        *args: Any,
+        timeout: float = 10.0,
+        max_retries: int = 2,
+    ) -> list[dict[str, Any]]:
+        """Execute a query with exponential-backoff retry on transient errors.
+
+        Retries on ``DatabaseError`` whose message contains "Timeout" and on
+        ``ConnectionError`` (lost connection).  All other exceptions propagate
+        immediately.
+        """
+        last_exc: BaseException | None = None
+        for attempt in range(1 + max_retries):
+            try:
+                return await cls.execute_query(config_name, query, *args, timeout=timeout)
+            except (DatabaseError, ConnectionError) as exc:
+                err_msg = str(exc).lower()
+                is_transient = "timeout" in err_msg or "too many connections" in err_msg or isinstance(exc, ConnectionError)
+                if not is_transient or attempt >= max_retries:
+                    raise
+                last_exc = exc
+                backoff = 0.5 * (2 ** attempt)
+                logger.info(
+                    "[matrx_orm] Write retry %d/%d for '%s' after %s (backoff %.1fs)",
+                    attempt + 1,
+                    max_retries,
+                    config_name,
+                    type(exc).__name__,
+                    backoff,
+                )
+                await asyncio.sleep(backoff)
+
+        if last_exc is not None:
+            raise last_exc
+        return []
+
+    @classmethod
     async def cleanup(cls):
-        """Close all connection pools with error handling."""
+        """Close all connection pools and write queues."""
+        from matrx_orm.core.write_queue import get_write_queue_registry
+        get_write_queue_registry().clear()
+
         async with handle_orm_operation(operation_name="cleanup_pools", model=None, active_pools=len(cls._pools)):
             for config_name, pool in list(cls._pools.items()):
                 try:

@@ -169,6 +169,8 @@ from .exceptions import (
     ParameterError,
     UnknownDatabaseError,
     OptimisticLockError,
+    WriteQueueFullError,
+    WriteQueueTimeoutError,
 )
 from .state import CachePolicy, StateManager
 from .query.builder import QueryBuilder
@@ -366,6 +368,8 @@ __all__ = [
     "ParameterError",
     "UnknownDatabaseError",
     "OptimisticLockError",
+    "WriteQueueFullError",
+    "WriteQueueTimeoutError",
     # ── Migrations ─────────────────────────────────────────────────────────────
     "MigrationDB",
     "MigrationLoader",
