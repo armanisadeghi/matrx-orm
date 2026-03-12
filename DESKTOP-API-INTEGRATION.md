@@ -1,31 +1,54 @@
-# Desktop App API Integration Guide
+# Desktop App — Supabase Client Integration Guide
 
-> Complete guide for integrating matrx-orm with desktop applications
-> (Electron, Tauri, or any local HTTP client).
+> How to securely read/write to a shared Supabase database from a Python
+> desktop application distributed to end users.
 
 ---
 
-## Overview
+## The Problem
 
-The `matrx_orm.api` module provides a **localhost-only HTTP + WebSocket server**
-that exposes your ORM managers as JSON-RPC endpoints. Your desktop frontend
-communicates with this server using standard HTTP requests.
+Your desktop Python app needs to read/write to a shared Supabase PostgreSQL
+database, but you **cannot ship your service_role key** — that would give
+every user full, unrestricted access to every table and every row.
+
+## The Solution
+
+Use the **Supabase anon (publishable) key** + **user JWT** + **Row-Level Security (RLS)**.
 
 ```
-Desktop App (Electron/Tauri)
-    │
-    ├── POST /auth/token      → Get bearer token
-    ├── POST /rpc             → CRUD operations
-    ├── GET  /ws              → WebSocket (streaming)
-    ├── GET  /health          → Health check
-    └── GET  /methods         → List available methods
-    │
-    ▼
-Python Backend (matrx-orm API Server)
-    │
-    ▼
-PostgreSQL
+┌─── User's Machine ──────────────────────────────┐
+│                                                   │
+│  Python Desktop App                               │
+│  ├── SupabaseAuth   → sign in, get JWT           │
+│  ├── SupabaseManager → CRUD via PostgREST        │
+│  │     (anon key = safe to embed)                │
+│  │     (JWT = identifies the user)               │
+│  └── ML models, scraping, etc.                   │
+│                                                   │
+└─────────────────┬─────────────────────────────────┘
+                  │ HTTPS (PostgREST API)
+                  ▼
+┌─── Supabase Cloud ──────────────────────────────┐
+│                                                   │
+│  PostgREST (REST API)                            │
+│  ├── Validates JWT                               │
+│  ├── Sets auth.uid() from token                  │
+│  └── Enforces RLS policies                       │
+│                                                   │
+│  PostgreSQL                                      │
+│  └── RLS: WHERE user_id = auth.uid()             │
+│      (user can ONLY see/modify their own rows)   │
+│                                                   │
+└───────────────────────────────────────────────────┘
 ```
+
+**What's safe to embed in the desktop app:**
+- Supabase project URL (public)
+- Anon key (publishable — designed for client-side use)
+
+**What stays on your server only:**
+- `service_role` key (bypasses RLS — NEVER ship this)
+- Database connection string (host, port, password)
 
 ---
 
@@ -35,460 +58,328 @@ PostgreSQL
 pip install matrx-orm[api]
 ```
 
-This adds `aiohttp` as an optional dependency.
+This adds `aiohttp` for the HTTP client.
 
 ---
 
-## 2. Python Backend Setup
+## 2. Supabase Setup (One-Time)
 
-### Minimal Server
+### 2a. Enable RLS on every table
+
+In the Supabase dashboard (or via SQL):
+
+```sql
+-- Enable RLS
+ALTER TABLE notes ENABLE ROW LEVEL SECURITY;
+
+-- Users can only see their own notes
+CREATE POLICY "Users read own notes"
+  ON notes FOR SELECT
+  USING (user_id = auth.uid());
+
+-- Users can only insert their own notes
+CREATE POLICY "Users insert own notes"
+  ON notes FOR INSERT
+  WITH CHECK (user_id = auth.uid());
+
+-- Users can only update their own notes
+CREATE POLICY "Users update own notes"
+  ON notes FOR UPDATE
+  USING (user_id = auth.uid());
+
+-- Users can only delete their own notes
+CREATE POLICY "Users delete own notes"
+  ON notes FOR DELETE
+  USING (user_id = auth.uid());
+```
+
+### 2b. Auto-set user_id on insert
+
+So the desktop app doesn't need to know the user's ID:
+
+```sql
+ALTER TABLE notes
+  ALTER COLUMN user_id SET DEFAULT auth.uid();
+```
+
+### 2c. Repeat for every table
+
+Every table that users read/write must have:
+1. RLS enabled
+2. Policies that check `auth.uid()`
+3. Default `user_id = auth.uid()` on insert
+
+**Tables WITHOUT RLS are invisible to anon key requests by default.**
+This is safe — it means tables without policies are simply inaccessible.
+
+---
+
+## 3. Python Desktop App Code
+
+### 3a. Configuration
 
 ```python
-import asyncio
-import os
-from matrx_orm import register_database, DatabaseProjectConfig, BaseManager, Model
-from matrx_orm.api import APIServer, APIConfig
+from matrx_orm.client import SupabaseClientConfig, SupabaseAuth, SupabaseManager
 
-# 1. Register your database
-register_database(DatabaseProjectConfig(
-    name="myapp",
-    host=os.getenv("DB_HOST", "localhost"),
-    port=os.getenv("DB_PORT", "5432"),
-    database_name=os.getenv("DB_NAME", "myapp"),
-    user=os.getenv("DB_USER", "postgres"),
-    password=os.getenv("DB_PASSWORD", "postgres"),
-))
-
-# 2. Import or define your models and managers
-# (Typically these are auto-generated by schema introspection)
-from myapp.models import User, Note
-from myapp.managers import UserManager, NoteManager
-
-user_mgr = UserManager(model=User)
-note_mgr = NoteManager(model=Note)
-
-# 3. Create and configure the API server
-server = APIServer(config=APIConfig(
-    secret=os.getenv("API_SECRET", ""),   # Auto-generates if empty
-    port=8745,
-))
-
-server.register_manager("users", user_mgr)
-server.register_manager("notes", note_mgr)
-
-# 4. Start
-asyncio.run(server.start())
+# Safe to embed — these are public values
+config = SupabaseClientConfig(
+    url="https://your-project.supabase.co",
+    anon_key="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+)
 ```
 
-### Configuration Options
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `host` | `"127.0.0.1"` | Bind address. **Keep this as localhost.** |
-| `port` | `8745` | TCP port |
-| `secret` | Auto-generated | Shared secret for token auth |
-| `token_ttl` | `86400` (24h) | Token lifetime in seconds |
-| `max_payload_bytes` | `10MB` | Maximum request body size |
-| `cors_origins` | localhost:3000/5173 | Allowed CORS origins |
-| `enable_websocket` | `True` | Enable `/ws` endpoint |
-| `log_requests` | `True` | Log each incoming RPC call |
-
-### Custom Methods
-
-You can register arbitrary async functions as RPC methods:
+### 3b. Authentication
 
 ```python
-async def search_notes(query: str, limit: int = 10, **params):
-    # Custom logic using raw SQL, multiple managers, etc.
-    results = await Note.filter(title__icontains=query).limit(limit).all()
-    return [r.to_dict() for r in results]
+auth = SupabaseAuth(config)
 
-server.register_method("notes.search", search_notes)
+# Email + password
+session = await auth.sign_in_with_password("user@example.com", "password")
+
+# Magic link
+await auth.sign_in_with_otp(email="user@example.com")
+session = await auth.verify_otp(email="user@example.com", token="123456")
+
+# Sign up
+session = await auth.sign_up(
+    email="new@example.com",
+    password="secure-password",
+    user_metadata={"display_name": "Alice"},
+)
+
+# Token auto-refresh
+session = await auth.ensure_valid_session()  # refreshes if expired
 ```
 
-### Background Mode
-
-For embedding in a larger application:
+### 3c. CRUD Operations
 
 ```python
-await server.start_background()
+notes = SupabaseManager("notes", config=config, auth=auth)
 
-# ... your app runs ...
+# CREATE — user_id is set automatically by the DB default
+note = await notes.create_item(
+    title="My Note",
+    content="Written from desktop app",
+)
 
-await server.stop()
+# READ — RLS ensures you only see YOUR notes
+my_notes = await notes.load_items(order=["-created_at"], limit=20)
+note = await notes.load_item(note["id"])
+note = await notes.load_item_or_none(note["id"])
+
+# FILTER — same operators as the ORM
+recent = await notes.load_items(
+    created_at__gte="2025-01-01",
+    title__icontains="meeting",
+)
+
+# UPDATE
+updated = await notes.update_item(note["id"], title="New Title")
+
+# DELETE
+await notes.delete_item(note["id"])
+
+# COUNT
+total = await notes.count()
+
+# EXISTS
+found = await notes.exists(note["id"])
+
+# UPSERT
+await notes.upsert_item(
+    {"id": note["id"], "title": "Upserted"},
+    conflict_fields=["id"],
+)
+
+# GET OR CREATE
+tag, created = await notes.get_or_create(
+    defaults={"color": "blue"},
+    name="important",
+)
+```
+
+### 3d. Bulk Operations
+
+```python
+# Bulk insert
+new_notes = await notes.create_items([
+    {"title": "Note 1", "content": "..."},
+    {"title": "Note 2", "content": "..."},
+])
+
+# Bulk update
+await notes.update_where(
+    {"status": "archived"},
+    created_at__lt="2024-01-01",
+)
+
+# Bulk delete
+count = await notes.delete_where(status="draft")
+```
+
+### 3e. Related Data (PostgREST Foreign Key Embedding)
+
+```python
+# Load notes with author profile embedded
+notes_with_author = await notes.load_items_with_related(
+    "author:profiles(id,display_name,avatar_url)",
+    limit=10,
+)
+# Each note has: {"id": ..., "title": ..., "author": {"display_name": "Alice", ...}}
+```
+
+### 3f. RPC (Server-Side Functions)
+
+For complex operations, define a PostgreSQL function and call it:
+
+```sql
+-- In Supabase SQL editor
+CREATE OR REPLACE FUNCTION search_notes(query text, max_results int DEFAULT 10)
+RETURNS SETOF notes AS $$
+  SELECT * FROM notes
+  WHERE user_id = auth.uid()
+    AND (title ILIKE '%' || query || '%' OR content ILIKE '%' || query || '%')
+  LIMIT max_results;
+$$ LANGUAGE sql SECURITY DEFINER;
+```
+
+```python
+results = await notes.rpc("search_notes", query="meeting", max_results=5)
 ```
 
 ---
 
-## 3. Authentication Flow
+## 4. Filter Operators
 
-### Step 1: Obtain Token
+The same filter operators work as in the server-side ORM:
 
-```
-POST /auth/token
-Content-Type: application/json
-
-{
-  "secret": "your-shared-secret",
-  "client_id": "electron"
-}
-```
-
-Response:
-```json
-{
-  "token": "eyJ...<base64>.<hex-signature>",
-  "expires_in": 86400
-}
-```
-
-### Step 2: Use Token on All Requests
-
-```
-POST /rpc
-Authorization: Bearer eyJ...<base64>.<hex-signature>
-Content-Type: application/json
-
-{
-  "method": "users.load_items",
-  "params": {},
-  "id": 1
-}
-```
-
-### Step 3: Revoke Token (Optional)
-
-```
-POST /auth/revoke
-Authorization: Bearer <current-token>
-Content-Type: application/json
-
-{
-  "token": "<token-to-revoke>"
-}
-```
+| Operator | Example | PostgREST |
+|----------|---------|-----------|
+| `eq` (default) | `status="active"` | `status=eq.active` |
+| `ne` | `status__ne="draft"` | `status=neq.draft` |
+| `gt` | `age__gt=18` | `age=gt.18` |
+| `gte` | `age__gte=18` | `age=gte.18` |
+| `lt` | `age__lt=65` | `age=lt.65` |
+| `lte` | `age__lte=65` | `age=lte.65` |
+| `in` | `status__in=["a","b"]` | `status=in.(a,b)` |
+| `contains` | `title__contains="note"` | `title=like.*note*` |
+| `icontains` | `title__icontains="note"` | `title=ilike.*note*` |
+| `startswith` | `title__startswith="My"` | `title=like.My*` |
+| `endswith` | `title__endswith="txt"` | `title=like.*txt` |
+| `isnull` | `deleted_at__isnull=True` | `deleted_at=is.null` |
 
 ---
 
-## 4. RPC Protocol
+## 5. Security Checklist
 
-### Request Format
+- [x] **Anon key only** — service_role key never leaves your server
+- [x] **RLS enforced** — PostgreSQL policies check `auth.uid()` on every query
+- [x] **User JWT required** — every request is authenticated via Supabase Auth
+- [x] **Token auto-refresh** — expired tokens are refreshed transparently
+- [x] **No direct DB connection** — all access through PostgREST (HTTPS)
+- [x] **No raw SQL** — users can only call PostgREST endpoints, not arbitrary SQL
+- [ ] **RLS policies on all tables** — YOU must set these up (see Section 2)
+- [ ] **Default user_id** — YOU must add `DEFAULT auth.uid()` on user_id columns
 
-```json
-{
-  "method": "namespace.operation",
-  "params": { "key": "value" },
-  "id": 1
-}
-```
+### What a malicious user CANNOT do (even with the anon key):
 
-### Success Response
+- Read or modify other users' data (RLS prevents it)
+- Drop tables, alter schema, or run DDL (PostgREST doesn't support it)
+- Execute arbitrary SQL (PostgREST only exposes defined tables/functions)
+- Access tables without RLS policies (they're invisible to anon)
+- Use the service_role key (it's not in the app)
 
-```json
-{
-  "result": { "id": "...", "username": "alice" },
-  "error": null,
-  "id": 1
-}
-```
+### What a malicious user CAN do:
 
-### Error Response
-
-```json
-{
-  "result": null,
-  "error": {
-    "code": 1001,
-    "message": "No User found matching: id=abc-123",
-    "data": { "model": "User" }
-  },
-  "id": 1
-}
-```
-
-### Batch Requests
-
-Send an array of requests to execute them concurrently:
-
-```json
-[
-  { "method": "users.count", "params": {}, "id": 1 },
-  { "method": "notes.count", "params": {}, "id": 2 },
-  { "method": "notes.load_items", "params": { "user_id": "..." }, "id": 3 }
-]
-```
-
-Response is an array of responses in the same order.
+- Read/write their OWN data (that's the point)
+- Call any RPC function exposed in your schema (secure these with `auth.uid()` checks)
+- See your Supabase project URL and anon key (they're public by design)
+- Make lots of requests (add rate limiting in Supabase if needed)
 
 ---
 
-## 5. Available Methods
+## 6. Limitations vs Server-Side ORM
 
-Every registered manager exposes these methods under its namespace:
+The client-side `SupabaseManager` does NOT support:
 
-### CRUD — Single Item
+| Feature | Why | Workaround |
+|---------|-----|------------|
+| CTEs / Window functions | PostgREST doesn't support them | Use RPC (server-side functions) |
+| Complex JOINs | PostgREST uses FK embedding, not SQL JOINs | Define views or functions |
+| Raw SQL | Security — can't allow arbitrary SQL from clients | Use RPC functions |
+| Transactions | PostgREST doesn't support multi-statement transactions | Use RPC with `SECURITY DEFINER` |
+| `Q()` objects | Complex OR/AND logic isn't directly translatable | Use PostgREST `or` syntax or RPC |
+| Vector search | pgvector operators not exposed via PostgREST | Use RPC wrapping the vector query |
+| Signals/hooks | Client-side, no ORM lifecycle | Use database triggers instead |
 
-| Method | Params | Returns |
-|--------|--------|---------|
-| `load_item` | `id=...` (or any PK filter) | `dict` |
-| `load_item_or_none` | `id=...` | `dict \| null` |
-| `load_by_id` | `item_id=...` | `dict` |
-| `create_item` | field=value pairs | `dict` |
-| `update_item` | `item_id=..., field=value` | `dict` |
-| `delete_item` | `item_id=...` | `bool` |
-| `exists` | `item_id=...` | `bool` |
-
-### CRUD — Bulk
-
-| Method | Params | Returns |
-|--------|--------|---------|
-| `load_items` | filter kwargs | `list[dict]` |
-| `load_items_by_ids` | `ids=[...]` | `list[dict]` |
-| `count` | filter kwargs | `int` |
-| `create_items` | `items_data=[{...}, ...]` | `list[dict]` |
-| `update_where` | `filters={...}, field=value` | `UpdateResult` |
-| `delete_where` | filter kwargs | `int` |
-| `upsert_item` | `data={...}, conflict_fields=[...], update_fields=[...]` | `dict` |
-| `get_or_create` | `defaults={...}, lookup_field=value` | `dict` |
-
-### Relationships
-
-| Method | Params | Returns |
-|--------|--------|---------|
-| `get_item_with_fk` | `item_id=..., fk_field="..."` | `[item, related]` |
-| `get_item_with_ifk` | `item_id=..., ifk_name="..."` | `[item, [related...]]` |
-| `get_item_with_m2m` | `item_id=..., m2m_name="..."` | `[item, [related...]]` |
-| `get_item_with_all_related` | `item_id=...` | `[item, all_relations]` |
-| `add_m2m` | `item_id=..., m2m_name="...", *target_ids` | `int` |
-| `remove_m2m` | `item_id=..., m2m_name="...", *target_ids` | `int` |
-| `set_m2m` | `item_id=..., m2m_name="...", target_ids=[...]` | `null` |
-| `clear_m2m` | `item_id=..., m2m_name="..."` | `int` |
-
-### Dict Variants
-
-| Method | Returns |
-|--------|---------|
-| `get_item_dict` | `dict` |
-| `create_item_get_dict` | `dict` |
-| `update_item_get_dict` | `dict` |
+For any operation too complex for PostgREST, create a PostgreSQL function
+and call it via `await manager.rpc("function_name", ...)`.
 
 ---
 
-## 6. Error Codes
+## 7. Integration with matrx-local
 
-| Code | Name | When |
-|------|------|------|
-| `-32700` | `PARSE_ERROR` | Invalid JSON |
-| `-32600` | `INVALID_REQUEST` | Missing method or bad format |
-| `-32601` | `METHOD_NOT_FOUND` | Unknown namespace or method |
-| `-32602` | `INVALID_PARAMS` | Wrong parameter types |
-| `-32603` | `INTERNAL_ERROR` | Unhandled server error |
-| `1001` | `NOT_FOUND` | Record does not exist |
-| `1002` | `VALIDATION_ERROR` | Data validation failed |
-| `1003` | `INTEGRITY_ERROR` | DB constraint violation |
-| `1004` | `AUTH_REQUIRED` | No token provided |
-| `1005` | `AUTH_INVALID` | Token expired or invalid |
-| `1008` | `CONNECTION_ERROR` | Database connection failed |
-| `1009` | `QUERY_ERROR` | SQL query error |
+### What to do in the matrx-local desktop app:
 
----
+1. **Install**: `pip install matrx-orm[api]`
 
-## 7. WebSocket Usage
+2. **Store config**: Put the Supabase URL and anon key in the app's config
+   (these are public, so no special protection needed).
 
-The WebSocket endpoint provides the same RPC interface with lower overhead
-for high-frequency calls.
+3. **Auth flow**: On app launch, prompt for login or load saved refresh token.
+   Use `SupabaseAuth` for all auth operations.
 
-### Connection Flow
+4. **Create managers**: One `SupabaseManager` per table the app needs.
 
-```javascript
-const ws = new WebSocket("ws://127.0.0.1:8745/ws");
-
-ws.onopen = () => {
-  // First message: authenticate
-  ws.send(JSON.stringify({ token: "your-bearer-token" }));
-};
-
-ws.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-
-  if (data.type === "auth_ok") {
-    // Authenticated — now send RPC calls
-    ws.send(JSON.stringify({
-      method: "users.load_items",
-      params: {},
-      id: 1,
-    }));
-  }
-
-  if (data.result !== undefined) {
-    // RPC response
-    console.log("Result:", data.result);
-  }
-};
-```
-
----
-
-## 8. Client Libraries
-
-### TypeScript (Electron / Tauri)
-
-See `tests/sample_project_desktop/client_example.ts` for a complete,
-zero-dependency TypeScript client with both HTTP and WebSocket support.
-
-### Python
-
-See `tests/sample_project_desktop/client_example.py` for an `aiohttp`-based
-Python client.
-
----
-
-## 9. Security Checklist
-
-- [x] Server binds to `127.0.0.1` only — not reachable from network
-- [x] HMAC-SHA256 signed tokens — tamper-proof
-- [x] Token expiry (configurable TTL, default 24h)
-- [x] Token revocation support
-- [x] CORS restricted to specific origins
-- [x] Only allow-listed manager methods are callable (no arbitrary code exec)
-- [x] ORM errors mapped to safe error codes (no stack traces leaked)
-- [x] Maximum payload size enforced
-
-### For Production Desktop Apps
-
-Additional steps to implement in your application layer:
-
-1. **Secret delivery**: Write the auto-generated secret to a file readable
-   only by the current user (`chmod 600`), then read it from the desktop app.
-2. **Process isolation**: Run the Python backend as a child process of the
-   desktop app. Kill it on app exit.
-3. **Port discovery**: If port 8745 is taken, use port 0 (OS-assigned) and
-   communicate the actual port back to the parent process.
-4. **Scoped tokens**: Issue tokens with limited scopes (e.g. `["users.read"]`)
-   to restrict what the frontend can do.
-
----
-
-## 10. Integration with matrx-local
-
-If you're using the [matrx-local](https://github.com/armanisadeghi/matrx-local)
-desktop application, here's what needs to happen on that side:
-
-### Required Changes in matrx-local
-
-1. **Install the Python backend** — The Electron app should bundle or spawn
-   a Python process that runs the matrx-orm API server.
-
-2. **Process management** — Add a module to spawn the Python backend on app
-   start and kill it on app quit:
-
-   ```typescript
-   // main/python-backend.ts
-   import { spawn, ChildProcess } from "child_process";
-   import { app } from "electron";
-   import path from "path";
-
-   let pythonProcess: ChildProcess | null = null;
-
-   export function startPythonBackend(secret: string): void {
-     const scriptPath = path.join(__dirname, "../python/server.py");
-
-     pythonProcess = spawn("python", [scriptPath], {
-       env: {
-         ...process.env,
-         API_SECRET: secret,
-         API_PORT: "8745",
-       },
-     });
-
-     pythonProcess.stdout?.on("data", (data) => {
-       console.log(`[python] ${data}`);
-     });
-
-     pythonProcess.stderr?.on("data", (data) => {
-       console.error(`[python] ${data}`);
-     });
-   }
-
-   export function stopPythonBackend(): void {
-     pythonProcess?.kill();
-     pythonProcess = null;
-   }
-
-   app.on("will-quit", stopPythonBackend);
+5. **Use in your ML pipeline**: The managers work like any async Python code:
+   ```python
+   # In your model runner
+   results = await jobs.load_items(status="pending", limit=5)
+   for job in results:
+       output = run_ml_model(job["input_data"])
+       await jobs.update_item(job["id"], status="complete", output=output)
    ```
 
-3. **Client initialization** — Use the `MatrxClient` class from
-   `client_example.ts`:
-
-   ```typescript
-   // renderer/api.ts
-   import { MatrxClient } from "./matrx-client";
-
-   export const api = new MatrxClient(
-     "http://127.0.0.1:8745",
-     window.__MATRX_SECRET__ // Passed from main process
-   );
-
-   // Call on app startup
-   await api.authenticate();
-   ```
-
-4. **React hooks** (if using React):
-
-   ```typescript
-   // hooks/useMatrx.ts
-   import { useEffect, useState } from "react";
-   import { api } from "../api";
-
-   export function useMatrxQuery<T>(
-     method: string,
-     params: Record<string, unknown> = {},
-     deps: unknown[] = []
-   ) {
-     const [data, setData] = useState<T | null>(null);
-     const [loading, setLoading] = useState(true);
-     const [error, setError] = useState<Error | null>(null);
-
-     useEffect(() => {
-       let cancelled = false;
-       setLoading(true);
-
-       api.call<T>(method, params)
-         .then((result) => {
-           if (!cancelled) {
-             setData(result);
-             setLoading(false);
-           }
-         })
-         .catch((err) => {
-           if (!cancelled) {
-             setError(err);
-             setLoading(false);
-           }
-         });
-
-       return () => { cancelled = true; };
-     }, deps);
-
-     return { data, loading, error };
-   }
-
-   // Usage in a component:
-   function UserList() {
-     const { data: users, loading } = useMatrxQuery<User[]>("users.load_items");
-     if (loading) return <div>Loading...</div>;
-     return <ul>{users?.map(u => <li key={u.id}>{u.username}</li>)}</ul>;
-   }
-   ```
-
-### Files to Create in matrx-local
+### Files to create in matrx-local
 
 | File | Purpose |
 |------|---------|
-| `python/server.py` | Copy of your API server script |
-| `python/requirements.txt` | `matrx-orm[api]` |
-| `src/main/python-backend.ts` | Process spawner |
-| `src/renderer/matrx-client.ts` | Copy of `client_example.ts` |
-| `src/renderer/hooks/useMatrx.ts` | React hooks for data fetching |
-| `src/renderer/api.ts` | Client singleton |
+| `backend/db.py` | Config + auth initialization |
+| `backend/managers.py` | SupabaseManager instances per table |
+| `backend/auth_flow.py` | Login/logout/token persistence |
+
+### Example `backend/db.py`:
+
+```python
+import os
+from matrx_orm.client import SupabaseClientConfig, SupabaseAuth, SupabaseManager
+
+config = SupabaseClientConfig(
+    url=os.getenv("SUPABASE_URL", "https://your-project.supabase.co"),
+    anon_key=os.getenv("SUPABASE_ANON_KEY", "eyJ..."),
+)
+
+auth = SupabaseAuth(config)
+
+# Managers — one per table
+users = SupabaseManager("profiles", config=config, auth=auth)
+jobs = SupabaseManager("ml_jobs", config=config, auth=auth)
+results = SupabaseManager("ml_results", config=config, auth=auth)
+files = SupabaseManager("user_files", config=config, auth=auth)
+```
+
+---
+
+## 8. Server-Side API (Optional)
+
+The `matrx_orm.api` module (from the previous commit) is still useful for
+a **different scenario**: when you run a Python backend on YOUR server and
+expose ORM operations via a local HTTP API. This is the right choice when:
+
+- You need the full ORM (CTEs, transactions, complex queries)
+- The database credentials stay on your server
+- The desktop app talks to your server, not directly to Supabase
+
+Use `matrx_orm.api.APIServer` for that. Use `matrx_orm.client.SupabaseManager`
+for the client-side approach described in this document. They solve different
+problems and can coexist in the same project.
