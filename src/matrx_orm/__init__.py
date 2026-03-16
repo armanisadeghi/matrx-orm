@@ -149,6 +149,8 @@ from .core.signals import (
     post_delete,
 )
 from .core.transaction import transaction
+from .adapters import AdapterRegistry, BaseAdapter, AsyncPostgreSQLAdapter
+from .adapters.supabase_adapter import SupabaseAdapter
 from .exceptions import (
     ORMException,
     ValidationError,
@@ -351,6 +353,11 @@ __all__ = [
     "post_delete",
     # ── Transactions ───────────────────────────────────────────────────────────
     "transaction",
+    # ── Adapter layer ──────────────────────────────────────────────────────────
+    "AdapterRegistry",
+    "BaseAdapter",
+    "AsyncPostgreSQLAdapter",
+    "SupabaseAdapter",
     # ── Cache ──────────────────────────────────────────────────────────────────
     "CachePolicy",
     "StateManager",

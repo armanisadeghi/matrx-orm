@@ -52,6 +52,20 @@ class DatabaseProjectConfig:
     write_queue_size: int = 200
     write_queue_timeout: float = 30.0
 
+    # Adapter selection — controls which BaseAdapter implementation is used.
+    # Built-in values: "postgresql" (default), "supabase".
+    # Custom adapters: provide a dotted import path, e.g. "myapp.db.MyAdapter",
+    # or call AdapterRegistry.register() directly before the first query.
+    adapter_type: str = "postgresql"
+
+    # Supabase-specific fields.  Required when adapter_type == "supabase".
+    # supabase_url:         e.g. "https://abc123.supabase.co"
+    # supabase_anon_key:    public anon key (safe for client-side use)
+    # supabase_service_key: service-role key (server-side only, full DB access)
+    supabase_url: str = ""
+    supabase_anon_key: str = ""
+    supabase_service_key: str = ""
+
 
 class DatabaseRegistry:
     _instance = None
@@ -152,6 +166,10 @@ class DatabaseRegistry:
             "write_concurrency": config.write_concurrency,
             "write_queue_size": config.write_queue_size,
             "write_queue_timeout": config.write_queue_timeout,
+            "adapter_type": config.adapter_type,
+            "supabase_url": config.supabase_url,
+            "supabase_anon_key": config.supabase_anon_key,
+            "supabase_service_key": config.supabase_service_key,
         }
 
     def get_config_dataclass(self, config_name: str) -> DatabaseProjectConfig:
@@ -240,6 +258,10 @@ def register_database_from_env(
     write_concurrency: int | None = None,
     write_queue_size: int | None = None,
     write_queue_timeout: float | None = None,
+    adapter_type: str | None = None,
+    supabase_url: str | None = None,
+    supabase_anon_key: str | None = None,
+    supabase_service_key: str | None = None,
 ) -> bool:
     """
     Read database connection details from environment variables, validate them,
@@ -362,6 +384,19 @@ def register_database_from_env(
                 except ValueError:
                     pass
 
+    # Adapter fields — keyword args take precedence over env vars.
+    _adapter_env_key = _overrides.get("ADAPTER_TYPE", f"{env_prefix}_ADAPTER_TYPE")
+    _resolved_adapter_type = adapter_type or os.environ.get(_adapter_env_key, "").strip() or "postgresql"
+
+    _supabase_url_env = _overrides.get("SUPABASE_URL", f"{env_prefix}_SUPABASE_URL")
+    _resolved_supabase_url = supabase_url or os.environ.get(_supabase_url_env, "").strip()
+
+    _supabase_anon_env = _overrides.get("SUPABASE_ANON_KEY", f"{env_prefix}_SUPABASE_ANON_KEY")
+    _resolved_supabase_anon_key = supabase_anon_key or os.environ.get(_supabase_anon_env, "").strip()
+
+    _supabase_svc_env = _overrides.get("SUPABASE_SERVICE_KEY", f"{env_prefix}_SUPABASE_SERVICE_KEY")
+    _resolved_supabase_service_key = supabase_service_key or os.environ.get(_supabase_svc_env, "").strip()
+
     try:
         config = DatabaseProjectConfig(
             name=name,
@@ -376,6 +411,10 @@ def register_database_from_env(
             entity_overrides=entity_overrides or {},
             field_overrides=field_overrides or {},
             manager_config_overrides=manager_config_overrides or {},
+            adapter_type=_resolved_adapter_type,
+            supabase_url=_resolved_supabase_url,
+            supabase_anon_key=_resolved_supabase_anon_key,
+            supabase_service_key=_resolved_supabase_service_key,
             **pool_kwargs,
         )
         registry.register(config)

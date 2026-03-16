@@ -4,7 +4,8 @@ import json
 from typing import Any, TYPE_CHECKING
 
 from matrx_utils import vcprint
-from matrx_orm.core.async_db_manager import AsyncDatabaseManager
+from matrx_orm.adapters import AdapterRegistry
+from matrx_orm.adapters.base_adapter import BaseAdapter
 from matrx_orm.core.types import AggregateResult, UpdateResult
 from matrx_orm.exceptions import (
     DatabaseError,
@@ -25,7 +26,7 @@ _SKIP_PARAM = object()
 class QueryExecutor:
     model: type[Model]
     database: str
-    db: AsyncDatabaseManager
+    db: BaseAdapter
     _full_query_dict: dict[str, Any]
     query: str
     params: list[Any]
@@ -40,7 +41,7 @@ class QueryExecutor:
             )
         self.model = query["model"]
         self.database = query["database"]
-        self.db = AsyncDatabaseManager()
+        self.db = AdapterRegistry.get(self.database)
         self._full_query_dict = query
         self.query, self.params = self._build_query()
 
@@ -436,10 +437,19 @@ class QueryExecutor:
         return where_clause, where_params
 
     async def _execute(self) -> list[dict[str, Any]]:
-        """Execute the built SELECT SQL with error handling."""
+        """Execute the built SELECT SQL with error handling.
+
+        Checks whether the adapter implements ``execute_query_dict`` first
+        (for non-SQL backends). Falls through to ``execute_query(sql)`` when
+        the adapter returns ``NotImplemented``.
+        """
         from matrx_orm.exceptions import ORMException
         try:
-            results = await self.db.execute_query(self.database, self.query, *self.params)
+            # Give the adapter a chance to handle the raw query dict (e.g. PostgREST).
+            result = await self.db.execute_query_dict(self._full_query_dict)
+            if result is not NotImplemented:
+                return result  # type: ignore[return-value]
+            results = await self.db.execute_query(self.query, *self.params)
             return results
         except ORMException as e:
             e.enrich(model=self.model, query=self.query, params=self.params)
@@ -505,7 +515,7 @@ class QueryExecutor:
         )
 
         try:
-            rows = await self.db.execute_write(self.database, sql, *values)
+            rows = await self.db.execute_write(sql, *values)
             if not rows:
                 raise ValidationError(message="Insert succeeded but returned no data")
             return rows[0]
@@ -566,7 +576,7 @@ class QueryExecutor:
         )
 
         try:
-            results = await self.db.execute_write(self.database, sql, *all_values)
+            results = await self.db.execute_write(sql, *all_values)
             return [self.model(**row) for row in results]
         except DatabaseError as e:
             if "unique constraint" in str(e).lower():
@@ -609,7 +619,7 @@ class QueryExecutor:
         )
 
         try:
-            rows = await self.db.execute_write(self.database, sql, *values)
+            rows = await self.db.execute_write(sql, *values)
             if not rows:
                 raise ValidationError(message="Upsert succeeded but returned no data")
             return rows[0]
@@ -665,7 +675,7 @@ class QueryExecutor:
         )
 
         try:
-            results = await self.db.execute_write(self.database, sql, *all_values)
+            results = await self.db.execute_write(sql, *all_values)
             return [self.model(**row) for row in results]
         except DatabaseError as e:
             if "unique constraint" in str(e).lower():
@@ -752,7 +762,7 @@ class QueryExecutor:
                 vcprint(sql, "Built SQL", verbose=debug, color="cyan")
                 vcprint(params, "With params", verbose=debug, color="cyan")
 
-            result = await self.db.execute_write(self.database, sql + " RETURNING *", *params)
+            result = await self.db.execute_write(sql + " RETURNING *", *params)
             return UpdateResult(rows_affected=len(result), updated_rows=result)
 
         except (ValidationError, IntegrityError, DatabaseError, ParameterError):
@@ -773,7 +783,7 @@ class QueryExecutor:
             sql += f" WHERE {where_clause}"
 
         try:
-            result = await self.db.execute_write(self.database, sql, *where_params)
+            result = await self.db.execute_write(sql, *where_params)
             return len(result)
         except DatabaseError as e:
             raise DatabaseError(f"Delete failed: {str(e)}") from e
@@ -815,7 +825,7 @@ class QueryExecutor:
             count_sql += f" WHERE {where_clause}"
 
         try:
-            result = await self.db.execute_query(self.database, count_sql, *params)
+            result = await self.db.execute_query(count_sql, *params)
             return result[0]["count"] if result else 0
         except DatabaseError as e:
             raise DatabaseError(f"Count query failed: {str(e)}") from e

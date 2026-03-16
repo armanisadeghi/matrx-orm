@@ -1,69 +1,117 @@
+"""Abstract base class that every database adapter must implement.
+
+All adapters are scoped to a single ``config_name`` (database project).
+The interface mirrors ``AsyncDatabaseManager`` but removes the ``config_name``
+argument from every method — the adapter already knows which database it
+represents.
+
+The optional ``execute_query_dict`` hook lets adapters that cannot run raw SQL
+(e.g. a PostgREST adapter) intercept the pre-compiled query dict.
+``QueryExecutor`` calls ``execute_query_dict`` first; if an adapter returns
+``NotImplemented`` the executor falls through to the normal ``execute_query``
+path with the compiled SQL.
+"""
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Union
-from types import TracebackType
-from typing import Type, Optional
+from contextlib import asynccontextmanager
+from typing import Any, AsyncIterator
 
 
 class BaseAdapter(ABC):
-    @abstractmethod
-    async def execute_query(self, query: Dict[str, Any]) -> List[Dict[str, Any]]:
-        pass
+    """Per-database-project adapter interface."""
+
+    # ------------------------------------------------------------------
+    # Core execution methods
+    # ------------------------------------------------------------------
 
     @abstractmethod
-    async def fetch(self, query: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        pass
+    async def execute_query(
+        self,
+        sql: str,
+        *args: Any,
+        timeout: float = 10.0,
+    ) -> list[dict[str, Any]]:
+        """Execute a read (SELECT) query and return rows as dicts."""
 
     @abstractmethod
-    async def fetch_by_id(self, model: Any, record_id: Union[str, int]) -> Optional[Dict[str, Any]]:
-        pass
+    async def execute_write(
+        self,
+        sql: str,
+        *args: Any,
+        timeout: float = 10.0,
+        max_retries: int = 2,
+    ) -> list[dict[str, Any]]:
+        """Execute a write (INSERT/UPDATE/DELETE) query and return rows as dicts.
+
+        Implementations should handle retries and write-queue routing as needed.
+        """
+
+    # ------------------------------------------------------------------
+    # Connection management
+    # ------------------------------------------------------------------
 
     @abstractmethod
-    async def count(self, query: Dict[str, Any]) -> int:
-        pass
+    @asynccontextmanager
+    async def get_connection(self, timeout: float = 10.0) -> AsyncIterator[Any]:
+        """Async context manager that yields a raw connection for transaction use.
+
+        The returned object must support ``.execute(sql)`` and ``.fetch(sql, *args)``
+        so that ``TransactionContext`` can issue ``BEGIN``/``COMMIT``/``ROLLBACK``.
+        """
+        # Required to satisfy the abstract decorator; concrete subclasses must yield.
+        raise NotImplementedError
+        yield  # pragma: no cover — makes this an async generator stub
 
     @abstractmethod
-    async def exists(self, query: Dict[str, Any]) -> bool:
-        pass
+    def get_active_connection(self) -> Any | None:
+        """Return the connection bound to the current transaction context, or None.
+
+        Used by ``execute_query`` to reuse the transaction connection when one
+        is active in the current async task.
+        """
+
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
 
     @abstractmethod
-    async def insert(self, query: Dict[str, Any]) -> Dict[str, Any]:
-        pass
+    async def close(self) -> None:
+        """Release all connections and clean up resources."""
 
-    @abstractmethod
-    async def bulk_insert(self, query: Dict[str, Any]) -> List[Dict[str, Any]]:
-        pass
+    # ------------------------------------------------------------------
+    # Optional hook for non-SQL adapters
+    # ------------------------------------------------------------------
 
-    @abstractmethod
-    async def update(self, query: Dict[str, Any], data: Dict[str, Any]) -> int:
-        pass
+    async def execute_query_dict(
+        self,
+        query_dict: dict[str, Any],
+    ) -> list[dict[str, Any]] | type[NotImplemented]:
+        """Optional hook: receive the pre-compiled query dict instead of SQL.
 
-    @abstractmethod
-    async def bulk_update(self, query: Dict[str, Any]) -> int:
-        pass
+        Adapters that cannot execute raw SQL (e.g. PostgREST) should override
+        this method and translate the query dict to their native API calls.
 
-    @abstractmethod
-    async def delete(self, query: Dict[str, Any]) -> int:
-        pass
+        Return ``NotImplemented`` (the singleton, not ``NotImplementedError``)
+        to signal that the caller should fall through to ``execute_query``.
 
-    @abstractmethod
-    async def raw_sql(self, sql: str, params: List[Any] = None) -> Union[List[Dict[str, Any]], int]:
-        pass
+        The default implementation always returns ``NotImplemented``.
+        """
+        return NotImplemented
 
-    @abstractmethod
-    async def transaction(self):
-        pass
+    async def execute_write_dict(
+        self,
+        query_dict: dict[str, Any],
+    ) -> list[dict[str, Any]] | type[NotImplemented]:
+        """Optional write hook — same convention as ``execute_query_dict``."""
+        return NotImplemented
 
-    @abstractmethod
-    async def close(self):
-        pass
+    # ------------------------------------------------------------------
+    # Context manager support
+    # ------------------------------------------------------------------
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> BaseAdapter:
         return self
 
-    async def __aexit__(
-        self,
-        exc_type: Optional[Type[BaseException]],
-        exc_val: Optional[BaseException],
-        exc_tb: Optional[TracebackType],
-    ):
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         await self.close()

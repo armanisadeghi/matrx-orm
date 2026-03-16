@@ -18,28 +18,38 @@ Usage::
 Transactions are propagated via a ``contextvars.ContextVar`` so every
 ``execute_query`` call within the same async task (and its children)
 automatically uses the same connection without any manual passing.
+
+Adapter decoupling
+------------------
+The ``TransactionContext`` no longer imports asyncpg directly.  Instead it
+obtains its connection through ``AdapterRegistry.get(database).get_connection()``,
+which returns a raw asyncpg pool connection for the default adapter but can
+return any connection object for custom adapters, as long as that object
+supports ``.execute(sql)`` and ``.fetch(sql, *args)``.
+
+The ``_active_connection`` ContextVar is typed as ``Any`` so the rest of the
+ORM can hold a reference to the active connection without depending on asyncpg.
+``AsyncDatabaseManager.execute_query`` reads ``get_active_connection()`` and
+reuses the connection when present — this behaviour is unchanged.
 """
 from __future__ import annotations
 
 import os
 import uuid
-import asyncpg
-import asyncpg.pool
 from contextvars import ContextVar, Token
 from typing import Any
 
-from matrx_orm.core.async_db_manager import AsyncDatabaseManager
 from matrx_orm.exceptions import DatabaseError
 
 # ContextVar holding the active connection (if any) for the current task tree.
-_active_connection: ContextVar[asyncpg.Connection | None] = ContextVar(
+_active_connection: ContextVar[Any | None] = ContextVar(
     "_active_connection", default=None
 )
 # ContextVar tracking savepoint depth (0 = top-level transaction)
 _savepoint_depth: ContextVar[int] = ContextVar("_savepoint_depth", default=0)
 
 
-def get_active_connection() -> asyncpg.Connection | None:
+def get_active_connection() -> Any | None:
     """Return the connection bound to the current transaction context, or None."""
     return _active_connection.get()
 
@@ -47,20 +57,21 @@ def get_active_connection() -> asyncpg.Connection | None:
 class TransactionContext:
     """Async context manager returned by ``transaction()``.
 
-    On first entry (no active connection): acquires a connection, executes
-    BEGIN, and stores the connection in the ContextVar.
+    On first entry (no active connection): acquires a connection via the
+    adapter's ``get_connection()`` context manager, executes ``BEGIN``,
+    and stores the connection in the ContextVar.
 
     On nested entry (active connection exists): creates a SAVEPOINT instead.
     """
 
     def __init__(self, database: str) -> None:
         self.database = database
-        self._conn_token: Token[asyncpg.Connection | None] | None = None
+        self._conn_token: Token[Any | None] | None = None
         self._depth_token: Token[int] | None = None
         self._is_savepoint: bool = False
         self._savepoint_name: str = ""
-        self._pool_conn: asyncpg.pool.PoolConnectionProxy | None = None
-        self._pool: asyncpg.Pool | None = None
+        self._raw_conn: Any | None = None
+        self._adapter_cm: Any | None = None  # the async context manager from get_connection()
 
     async def __aenter__(self) -> TransactionContext:
         existing = _active_connection.get()
@@ -74,14 +85,17 @@ class TransactionContext:
         else:
             # Top-level → BEGIN
             self._is_savepoint = False
-            pool = await AsyncDatabaseManager.get_pool(self.database)
-            self._pool = pool
-            conn = await pool.acquire()
-            self._pool_conn = conn
+            from matrx_orm.adapters import AdapterRegistry
+            adapter = AdapterRegistry.get(self.database)
+            self._adapter_cm = adapter.get_connection()
+            conn = await self._adapter_cm.__aenter__()
+            self._raw_conn = conn
             try:
                 await conn.execute("BEGIN")
             except Exception as e:
-                await pool.release(conn)
+                await self._adapter_cm.__aexit__(type(e), e, e.__traceback__)
+                self._raw_conn = None
+                self._adapter_cm = None
                 raise DatabaseError(
                     message=f"Failed to begin transaction: {e}",
                     details={"database": self.database},
@@ -98,15 +112,12 @@ class TransactionContext:
     ) -> bool:
         conn = _active_connection.get()
         if self._is_savepoint:
-            # Restore savepoint depth
             if self._depth_token is not None:
                 _savepoint_depth.reset(self._depth_token)
             if exc_type is None:
-                # Release the savepoint (make it permanent within the outer tx)
                 if conn is not None:
                     await conn.execute(f"RELEASE SAVEPOINT {self._savepoint_name}")
             else:
-                # Roll back to the savepoint only
                 if conn is not None:
                     await conn.execute(f"ROLLBACK TO SAVEPOINT {self._savepoint_name}")
                     await conn.execute(f"RELEASE SAVEPOINT {self._savepoint_name}")
@@ -118,7 +129,7 @@ class TransactionContext:
             if self._depth_token is not None:
                 _savepoint_depth.reset(self._depth_token)
 
-            conn_to_use = self._pool_conn
+            conn_to_use = self._raw_conn
             if conn_to_use is None:
                 return False
 
@@ -128,8 +139,10 @@ class TransactionContext:
                 else:
                     await conn_to_use.execute("ROLLBACK")
             finally:
-                if self._pool is not None:
-                    await self._pool.release(conn_to_use)
+                if self._adapter_cm is not None:
+                    await self._adapter_cm.__aexit__(exc_type, exc_val, exc_tb)
+                    self._adapter_cm = None
+                    self._raw_conn = None
 
             if exc_type is not None:
                 return False  # re-raise
