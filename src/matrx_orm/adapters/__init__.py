@@ -40,6 +40,7 @@ __all__ = [
     "BaseAdapter",
     "AsyncPostgreSQLAdapter",
     "SupabaseAdapter",
+    "PostgRESTClientAdapter",
     "AdapterRegistry",
 ]
 

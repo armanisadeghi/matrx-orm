@@ -57,25 +57,42 @@ class BaseManager(Generic[ModelT]):
     def _initialize_manager(self) -> None:
         """Initialize the manager and trigger auto-fetch if configured.
 
-        Auto-fetch now works correctly in all contexts thanks to automatic
-        event loop detection and pool recreation in AsyncDatabaseManager.
+        Auto-fetch is skipped when no database configuration or adapter has been
+        registered yet (e.g. in client/PostgREST mode where asyncpg is not used
+        and the adapter is registered asynchronously after module import).
         """
-        if int(self.fetch_on_init_limit) > 0:
-            try:
-                asyncio.get_running_loop()
-                asyncio.create_task(coro=self._auto_fetch_on_init_async())
-                vcprint(
-                    f"[{self.model.__name__}] Auto-fetching on init (async)",
-                    verbose=info,
-                    color="yellow",
-                )
-            except RuntimeError:
-                vcprint(
-                    f"[{self.model.__name__}] Auto-fetching on init (sync)",
-                    verbose=info,
-                    color="yellow",
-                )
-                self._auto_fetch_on_init_sync()
+        if int(self.fetch_on_init_limit) <= 0:
+            return
+
+        # Skip auto-fetch if no adapter/database config is registered — avoids
+        # DatabaseConfigError in client mode where asyncpg is not configured.
+        try:
+            from matrx_orm.adapters import AdapterRegistry
+            from matrx_orm.core.config import registry as _db_registry
+            db_name = self.model.get_database_name() if hasattr(self.model, "get_database_name") else None
+            if db_name:
+                adapter_exists = AdapterRegistry.get_or_none(db_name) is not None
+                config_exists = db_name in _db_registry._configs
+                if not adapter_exists and not config_exists:
+                    return
+        except Exception:
+            return
+
+        try:
+            asyncio.get_running_loop()
+            asyncio.create_task(coro=self._auto_fetch_on_init_async())
+            vcprint(
+                f"[{self.model.__name__}] Auto-fetching on init (async)",
+                verbose=info,
+                color="yellow",
+            )
+        except RuntimeError:
+            vcprint(
+                f"[{self.model.__name__}] Auto-fetching on init (sync)",
+                verbose=info,
+                color="yellow",
+            )
+            self._auto_fetch_on_init_sync()
 
     def _validate_input_data(
         self,

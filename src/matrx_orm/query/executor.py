@@ -497,6 +497,18 @@ class QueryExecutor:
     # DML methods (INSERT / UPSERT / UPDATE / DELETE)
     # ------------------------------------------------------------------
 
+    async def _try_write_dict(
+        self, query: dict[str, Any]
+    ) -> list[dict[str, Any]] | type[NotImplemented]:
+        """Call execute_write_dict on the adapter.
+
+        Returns ``NotImplemented`` if the adapter does not override the hook
+        (default ``BaseAdapter`` behaviour) so callers can fall through to the
+        SQL path.
+        """
+        result = await self.db.execute_write_dict(query)
+        return result  # type: ignore[return-value]
+
     async def insert(self, query: dict[str, Any]) -> dict[str, Any]:
         """INSERT a single row, RETURNING *."""
         table = query["table"]
@@ -504,6 +516,16 @@ class QueryExecutor:
 
         if not data:
             raise ValidationError(message="No data provided for insert")
+
+        # Give non-SQL adapters (PostgREST) a chance to handle the insert.
+        write_query = dict(query)
+        write_query["operation"] = "insert"
+        dict_result = await self._try_write_dict(write_query)
+        if dict_result is not NotImplemented:
+            rows = dict_result  # type: ignore[assignment]
+            if not rows:
+                raise ValidationError(message="Insert succeeded but returned no data")
+            return rows[0] if isinstance(rows, list) else rows
 
         columns = list(data.keys())
         values = list(data.values())
@@ -538,6 +560,14 @@ class QueryExecutor:
                 reason="Data must be a list of dictionaries",
                 details={"provided_type": type(data_list).__name__},
             )
+
+        # Give non-SQL adapters a chance to handle the bulk insert.
+        write_query = dict(query)
+        write_query["operation"] = "bulk_insert"
+        dict_result = await self._try_write_dict(write_query)
+        if dict_result is not NotImplemented:
+            rows = dict_result  # type: ignore[assignment]
+            return [self.model(**row) for row in (rows or [])]
 
         try:
             columns = list(data_list[0].keys())
@@ -603,6 +633,16 @@ class QueryExecutor:
         if not conflict_fields:
             raise ValidationError(message="No conflict fields provided for upsert")
 
+        # Give non-SQL adapters a chance to handle the upsert.
+        write_query = dict(query)
+        write_query["operation"] = "upsert"
+        dict_result = await self._try_write_dict(write_query)
+        if dict_result is not NotImplemented:
+            rows = dict_result  # type: ignore[assignment]
+            if not rows:
+                raise ValidationError(message="Upsert succeeded but returned no data")
+            return rows[0] if isinstance(rows, list) else rows
+
         columns = list(data.keys())
         values = list(data.values())
         placeholders = [f"${i + 1}" for i in range(len(values))]
@@ -642,6 +682,14 @@ class QueryExecutor:
             return []
         if not conflict_fields:
             raise ValidationError(message="No conflict fields provided for bulk upsert")
+
+        # Give non-SQL adapters a chance to handle the bulk upsert.
+        write_query = dict(query)
+        write_query["operation"] = "bulk_upsert"
+        dict_result = await self._try_write_dict(write_query)
+        if dict_result is not NotImplemented:
+            rows = dict_result  # type: ignore[assignment]
+            return [self.model(**row) for row in (rows or [])]
 
         columns = list(data_list[0].keys())
         fields_to_update = update_fields or [c for c in columns if c not in conflict_fields]
@@ -762,6 +810,19 @@ class QueryExecutor:
                 vcprint(sql, "Built SQL", verbose=debug, color="cyan")
                 vcprint(params, "With params", verbose=debug, color="cyan")
 
+            # Give non-SQL adapters a chance to handle the update.
+            where_filters = self._full_query_dict.get("filters", {})
+            write_query = {
+                "operation": "update",
+                "table": table,
+                "data": update_data,
+                "filters": where_filters,
+            }
+            dict_result = await self._try_write_dict(write_query)
+            if dict_result is not NotImplemented:
+                rows = dict_result  # type: ignore[assignment]
+                return UpdateResult(rows_affected=len(rows or []), updated_rows=rows or [])
+
             result = await self.db.execute_write(sql + " RETURNING *", *params)
             return UpdateResult(rows_affected=len(result), updated_rows=result)
 
@@ -777,6 +838,17 @@ class QueryExecutor:
         """DELETE rows matching the WHERE clause."""
         table = self._full_query_dict["table"]
         where_clause, where_params = self._extract_where_clause()
+        where_filters = self._full_query_dict.get("filters", {})
+
+        # Give non-SQL adapters a chance to handle the delete.
+        write_query = {
+            "operation": "delete",
+            "table": table,
+            "filters": where_filters,
+        }
+        dict_result = await self._try_write_dict(write_query)
+        if dict_result is not NotImplemented:
+            return len(dict_result or [])  # type: ignore[arg-type]
 
         sql = f"DELETE FROM {table}"
         if where_clause:

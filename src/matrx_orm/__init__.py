@@ -151,6 +151,7 @@ from .core.signals import (
 from .core.transaction import transaction
 from .adapters import AdapterRegistry, BaseAdapter, AsyncPostgreSQLAdapter
 from .adapters.supabase_adapter import SupabaseAdapter
+from .adapters.postgrest_client_adapter import PostgRESTClientAdapter
 from .exceptions import (
     ORMException,
     ValidationError,
@@ -358,6 +359,7 @@ __all__ = [
     "BaseAdapter",
     "AsyncPostgreSQLAdapter",
     "SupabaseAdapter",
+    "PostgRESTClientAdapter",
     # ── Cache ──────────────────────────────────────────────────────────────────
     "CachePolicy",
     "StateManager",

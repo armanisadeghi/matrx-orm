@@ -335,7 +335,7 @@ class ManyToManyReference:
 
     async def fetch_related(self, instance: Model) -> list[Model]:
         """Single-query JOIN: junction table + target model in one round-trip."""
-        from matrx_orm.core.async_db_manager import AsyncDatabaseManager
+        from matrx_orm.adapters import AdapterRegistry
         from matrx_orm.exceptions import ORMException
 
         pk_field = instance._meta.primary_keys[0]
@@ -345,6 +345,7 @@ class ManyToManyReference:
 
         try:
             db_name = await self._get_db_name(instance)
+            adapter = AdapterRegistry.get(db_name)
             junction = self.qualified_junction_table
             target_model = self.resolved_model
             target_table = target_model._meta.qualified_table_name
@@ -357,7 +358,7 @@ class ManyToManyReference:
                 f"JOIN {junction} j ON j.{self.target_column} = t.{target_pk} "
                 f"WHERE j.{self.source_column} = $1"
             )
-            rows = await AsyncDatabaseManager.execute_query(db_name, sql, source_value)
+            rows = await adapter.execute_query(sql, source_value)
 
             if not rows:
                 return []
@@ -372,7 +373,7 @@ class ManyToManyReference:
         if not target_ids:
             return 0
 
-        from matrx_orm.core.async_db_manager import AsyncDatabaseManager
+        from matrx_orm.adapters import AdapterRegistry
         from matrx_orm.exceptions import ORMException
 
         pk_field = instance._meta.primary_keys[0]
@@ -380,6 +381,7 @@ class ManyToManyReference:
 
         try:
             db_name = await self._get_db_name(instance)
+            adapter = AdapterRegistry.get(db_name)
             junction = self.qualified_junction_table
 
             placeholders = ", ".join(
@@ -395,7 +397,7 @@ class ManyToManyReference:
             for tid in target_ids:
                 params.extend([source_value, tid])
 
-            rows = await AsyncDatabaseManager.execute_query(db_name, sql, *params)
+            rows = await adapter.execute_query(sql, *params)
             return len(rows) if rows else len(target_ids)
         except ORMException as e:
             e.enrich(model=instance.__class__, operation="add_m2m", **self._enrich_context())
@@ -406,7 +408,7 @@ class ManyToManyReference:
         if not target_ids:
             return 0
 
-        from matrx_orm.core.async_db_manager import AsyncDatabaseManager
+        from matrx_orm.adapters import AdapterRegistry
         from matrx_orm.exceptions import ORMException
 
         pk_field = instance._meta.primary_keys[0]
@@ -414,6 +416,7 @@ class ManyToManyReference:
 
         try:
             db_name = await self._get_db_name(instance)
+            adapter = AdapterRegistry.get(db_name)
             junction = self.qualified_junction_table
 
             sql = (
@@ -421,9 +424,7 @@ class ManyToManyReference:
                 f"WHERE {self.source_column} = $1 AND {self.target_column} = ANY($2) "
                 f"RETURNING *"
             )
-            rows = await AsyncDatabaseManager.execute_query(
-                db_name, sql, source_value, list(target_ids)
-            )
+            rows = await adapter.execute_query(sql, source_value, list(target_ids))
             return len(rows) if rows else 0
         except ORMException as e:
             e.enrich(model=instance.__class__, operation="remove_m2m", **self._enrich_context())
@@ -437,7 +438,7 @@ class ManyToManyReference:
 
     async def clear(self, instance: Model) -> int:
         """Remove all junction rows for this instance."""
-        from matrx_orm.core.async_db_manager import AsyncDatabaseManager
+        from matrx_orm.adapters import AdapterRegistry
         from matrx_orm.exceptions import ORMException
 
         pk_field = instance._meta.primary_keys[0]
@@ -445,10 +446,11 @@ class ManyToManyReference:
 
         try:
             db_name = await self._get_db_name(instance)
+            adapter = AdapterRegistry.get(db_name)
             junction = self.qualified_junction_table
 
             sql = f"DELETE FROM {junction} WHERE {self.source_column} = $1 RETURNING *"
-            rows = await AsyncDatabaseManager.execute_query(db_name, sql, source_value)
+            rows = await adapter.execute_query(sql, source_value)
             return len(rows) if rows else 0
         except ORMException as e:
             e.enrich(model=instance.__class__, operation="clear_m2m", **self._enrich_context())

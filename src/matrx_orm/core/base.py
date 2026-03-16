@@ -703,10 +703,12 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         Usage::
 
             users = await User.raw("SELECT * FROM users WHERE age > $1", 18)
-        """
-        from matrx_orm.core.async_db_manager import AsyncDatabaseManager
 
-        results = await AsyncDatabaseManager.execute_query(config_name=cls.get_database_name(), query=sql, *params)
+        Not supported in PostgREST (client) mode — raises ``NotImplementedError``.
+        """
+        from matrx_orm.adapters import AdapterRegistry
+        adapter = AdapterRegistry.get(cls.get_database_name())
+        results = await adapter.execute_query(sql, *params)
         instances = []
         for row in results:
             try:
@@ -724,10 +726,12 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
         Usage::
 
             rows = await User.raw_sql("SELECT count(*) as cnt, role FROM users GROUP BY role")
-        """
-        from matrx_orm.core.async_db_manager import AsyncDatabaseManager
 
-        results = await AsyncDatabaseManager.execute_query(cls.get_database_name(), sql, *params)
+        Not supported in PostgREST (client) mode — raises ``NotImplementedError``.
+        """
+        from matrx_orm.adapters import AdapterRegistry
+        adapter = AdapterRegistry.get(cls.get_database_name())
+        results = await adapter.execute_query(sql, *params)
         return [dict(row) for row in results]
 
     @classmethod
@@ -1376,13 +1380,18 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
 
     @classmethod
     async def ensure_m2m_tables(cls) -> None:
-        """Create any pending junction tables that don't yet exist in the database."""
+        """Create any pending junction tables that don't yet exist in the database.
+
+        Not supported in PostgREST (client) mode — DDL cannot be issued via the
+        REST API.  Schema migrations must be applied server-side.
+        """
         if not cls._pending_junction_tables:
             return
 
-        from matrx_orm.core.async_db_manager import AsyncDatabaseManager
+        from matrx_orm.adapters import AdapterRegistry
 
         db_name = cls.get_database_name()
+        adapter = AdapterRegistry.get(db_name)
         for jt in cls._pending_junction_tables:
             sql = (
                 f"CREATE TABLE IF NOT EXISTS {jt['junction_table']} ("
@@ -1391,7 +1400,7 @@ class Model(RuntimeMixin, metaclass=ModelMeta):
                 f"PRIMARY KEY ({jt['source_column']}, {jt['target_column']})"
                 f")"
             )
-            await AsyncDatabaseManager.execute_query(db_name, sql)
+            await adapter.execute_query(sql)
 
     @classmethod
     async def get_many(cls, **kwargs: Any) -> list[Self]:
