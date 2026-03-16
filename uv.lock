@@ -727,7 +727,7 @@ wheels = [
 
 [[package]]
 name = "matrx-orm"
-version = "3.0.22"
+version = "3.0.24"
 source = { editable = "." }
 dependencies = [
     { name = "asyncpg" },
@@ -760,7 +760,7 @@ requires-dist = [
     { name = "asyncpg", specifier = ">=0.30.0" },
     { name = "asyncpg-stubs", marker = "extra == 'dev'", specifier = ">=0.30.0" },
     { name = "gitpython", specifier = ">=3.1.40" },
-    { name = "matrx-utils", specifier = ">=1.0.17" },
+    { name = "matrx-utils", specifier = ">=1.0.19" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2.5" },
     { name = "psycopg-pool", specifier = ">=3.2.5" },
     { name = "pyright", marker = "extra == 'dev'", specifier = ">=1.1.408" },
@@ -775,7 +775,7 @@ dev = [{ name = "basedpyright", specifier = ">=1.38.2" }]
 
 [[package]]
 name = "matrx-utils"
-version = "1.0.17"
+version = "1.0.19"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "boto3" },
@@ -791,9 +791,9 @@ dependencies = [
     { name = "requests" },
     { name = "supabase" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e6/0f/d7f084071023e3afcdc4c089f08587871ece656efeb6601e09eceb760c31/matrx_utils-1.0.17.tar.gz", hash = "sha256:38593a784b06910f8a39e7a495762b06c7fdde53aa6d910e97e1417f6498755a", size = 4238213, upload-time = "2026-03-12T01:48:27.856Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c3/a8/b7fd4151485a30498bae99a9c25bdc8161bc49feea3e2edf7c616d126aeb/matrx_utils-1.0.19.tar.gz", hash = "sha256:4ea46f6e78eec1106d754393e81f468eb2579f8f664f9c9936ca63bf0c2f26cc", size = 4244067, upload-time = "2026-03-15T02:11:21.863Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/28/71/7ac905c69dcde206ec695f67a37387e90a610093129738081bf9795b79ef/matrx_utils-1.0.17-py3-none-any.whl", hash = "sha256:4a3eb5ccca048f251e66f10a98e8d6c7d5c08f4952679e50c6c19143d8859182", size = 4319136, upload-time = "2026-03-12T01:48:25.914Z" },
+    { url = "https://files.pythonhosted.org/packages/9f/ec/24c5bcc4e86a31eb6d4580a3df1a5e4544782d62a824fb66abea27491108/matrx_utils-1.0.19-py3-none-any.whl", hash = "sha256:70798accaf66c3088d8e64b498a5497023cf14847c1ed7e7f675f11a1f31358f", size = 4325582, upload-time = "2026-03-15T02:11:19.342Z" },
 ]
 
 [[package]]
