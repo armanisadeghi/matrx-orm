@@ -56,6 +56,7 @@ class Schema:
         self.initialized = False
         self._include_tables: set[str] | None = None
         self._exclude_tables: set[str] | None = None
+
         # Global manager flags — yaml-level defaults, per-table overrides stack on top
         self.manager_flags: dict = {**_MANAGER_FLAG_DEFAULTS, **(manager_flags or {})}
 
@@ -98,6 +99,20 @@ class Schema:
 
     def __repr__(self):
         return f"<Schema name={self.name}, tables={len(self.tables)}, views={len(self.views)}>"
+
+    @property
+    def _filtered_tables(self) -> dict:
+        """Return the table subset honoring include_tables / exclude_tables.
+
+        All introspection, relationship resolution, and topological sorting
+        operate on the full ``self.tables`` dict.  This property is used only
+        at *output-time* so generated files contain just the requested tables.
+        """
+        if self._include_tables is not None:
+            return {k: v for k, v in self.tables.items() if k in self._include_tables}
+        if self._exclude_tables is not None:
+            return {k: v for k, v in self.tables.items() if k not in self._exclude_tables}
+        return self.tables
 
     def initialize_code_generation(self):
         if self.initialized:
@@ -151,7 +166,7 @@ class Schema:
         const_structure = ""
         const_entries = []
 
-        for table in self.tables.values():
+        for table in self._filtered_tables.values():
             ts_table_entry, _, const_ts_structure = table.to_schema_entry()
             table_entries.append(ts_table_entry.strip())
             const_entries.append(const_ts_structure.strip())
@@ -167,7 +182,7 @@ class Schema:
     # export type MessageRecordMap = Record<MatrxRecordId, MessageData>;
     def generate_type_inference_entries(self):
         infer_entries = []
-        for table in self.tables.values():
+        for table in self._filtered_tables.values():
             table_infer_entry = (
                 f'export type {table.name_pascal}Type = AutomationEntity<"{table.name_camel}">;\n'
                 f'export type {table.name_pascal}DataRequired = Expand<EntityData<"{table.name_camel}">>;\n'
@@ -183,7 +198,7 @@ class Schema:
 
     def generate_initial_type_inference_entries(self):
         infer_entries = []
-        for table in self.tables.values():
+        for table in self._filtered_tables.values():
             table_infer_entry = f'export type {table.name_pascal}InitialType = ExpandedInitialTableType<"{table.name_camel}">;'
             infer_entries.append(table_infer_entry)
         return "\n".join(infer_entries)
@@ -194,7 +209,7 @@ class Schema:
         ts_views = []
         ts_entities = []
 
-        for table in self.tables.values():
+        for table in self._filtered_tables.values():
             ts_tables.append(table.name_camel)
 
         for view in self.views.values():
@@ -227,7 +242,7 @@ class Schema:
 
     def generate_primary_key_object(self):
         result = "export const primaryKeys = {\n"
-        for table in self.tables.values():
+        for table in self._filtered_tables.values():
             table_name = table.name_camel
             pk_entry = table.get_primary_key_fields_list()
 
@@ -482,7 +497,7 @@ class Schema:
 
         ts_common_close = "};"
 
-        for table in self.tables.values():
+        for table in self._filtered_tables.values():
             for key, value in table.unique_name_lookups.items():
                 ts_table_name_lookup.append(f'    {key}: "{value}",')
 
@@ -558,7 +573,7 @@ class Schema:
 
     def generate_entity_typescript_types_file(self):
         ts_type_entries = []
-        for table in self.tables.values():
+        for table in self._filtered_tables.values():
             ts_type_entries.append(table.to_typescript_type_entry())
 
         main_code = "\n".join(ts_type_entries)
@@ -637,7 +652,7 @@ class Schema:
 
     def generate_field_name_list(self):
         entity_field_names = {}
-        for table in self.tables.values():
+        for table in self._filtered_tables.values():
             entity_name = table.name_camel
             vcprint(
                 f"Processing entity: {entity_name}", verbose=self.verbose, color="blue"
@@ -660,7 +675,7 @@ class Schema:
 
     def generate_entity_overrides(self):
         entity_names = []
-        for table in self.tables.values():
+        for table in self._filtered_tables.values():
             entity_names.append(table.name_camel)
 
         schema_builder_overrides = get_schema_builder_overrides(self.database_project)
@@ -677,7 +692,7 @@ class Schema:
         self.generate_entity_field_overrides()
 
     def generate_entity_main_hooks(self):
-        all_table_snake_names = [table.name for table in self.tables.values()]
+        all_table_snake_names = [table.name for table in self._filtered_tables.values()]
         main_hook_code = generate_complete_main_hooks_file(all_table_snake_names)
         self.code_handler.generate_and_save_code_from_object(
             get_code_config(self.database_project)["typescript_entity_main_hooks"],
@@ -686,7 +701,7 @@ class Schema:
 
     def generate_entity_field_overrides(self):
         entity_names = []
-        for table in self.tables.values():
+        for table in self._filtered_tables.values():
             entity_names.append(table.name_camel)
 
         schema_builder_overrides = get_schema_builder_overrides(self.database_project)
@@ -712,7 +727,7 @@ class Schema:
         # Generate and save JSON structure for schema data
         json_code_temp_path = "initialSchemas.json"
         json_structure = {}
-        for table in self.tables.values():
+        for table in self._filtered_tables.values():
             _, json_table_entry, _ = table.to_schema_entry()
             json_structure.update(json_table_entry)
 
