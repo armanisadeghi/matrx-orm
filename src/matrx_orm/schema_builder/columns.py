@@ -1342,6 +1342,11 @@ class Column:
             field_def = f"{self.name} = PrimitiveArrayField('{element_type}'{sep}{options_str})"
         else:
             field_def = f"{self.name} = {self.python_field_type}({options_str})"
+
+        _OVERRIDE_SUPPRESS_NAMES = {"table_name"}
+        if self.name in _OVERRIDE_SUPPRESS_NAMES:
+            field_def += "  # type: ignore[override]"
+
         return field_def
 
     # ------------------------------------------------------------------
