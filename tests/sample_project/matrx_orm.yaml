@@ -90,6 +90,25 @@ generate:
     # This dramatically reduces git noise on large schemas. Default: false.
     # skip_unchanged_managers: true
     manager_flags:
+      # models_module_path — the Python import path used in each generated
+      # manager file to import the model class from models.py.
+      #
+      # Default: "db.models"  →  from db.models import MyModel
+      #
+      # Override this when the generated db/ package is not at the root of your
+      # Python path. For example, if your project is structured as a package:
+      #
+      #   mypackage/
+      #     db/
+      #       models.py
+      #       managers/
+      #
+      # and you import things as `from mypackage.db.models import ...`, set:
+      #
+      #   models_module_path: "mypackage.db.models"
+      #
+      # models_module_path: "db.models"
+      #
       include_core_relations: true      # FK/IFK fetch methods (load_by_*, fetch_fk, fetch_ifk)
       include_filter_fields: true       # filter_by_* methods for indexed/common lookup fields
       include_active_relations: false   # active-record style relation traversal
