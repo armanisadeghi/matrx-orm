@@ -1079,9 +1079,15 @@ class Table:
                 }
         return m2m_config
 
-    def to_python_model(self):
+    def to_python_model(self, forward_ref_tables: set[str] | None = None):
         """
         Builds the Python class model string with dynamic foreign keys.
+
+        *forward_ref_tables* is an optional set of PascalCase model names that
+        will be defined later in the file.  FKs targeting these models are
+        emitted as string forward references (``to_model='Foo'``) instead of
+        bare class references (``to_model=Foo``), avoiding ``NameError`` from
+        circular FK dependencies.
         """
         py_fields = []
         self.unique_field_types = set()
@@ -1090,7 +1096,7 @@ class Table:
 
         # Process regular fields for the model
         for column in self.columns:
-            py_field = column.to_python_model_field()
+            py_field = column.to_python_model_field(forward_ref_tables=forward_ref_tables)
             py_fields.append(py_field)
 
             if column.foreign_key_reference:

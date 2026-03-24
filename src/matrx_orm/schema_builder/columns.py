@@ -1266,7 +1266,7 @@ class Column:
         )
         return self.calc_max_length
 
-    def to_python_model_field(self):
+    def to_python_model_field(self, forward_ref_tables: set[str] | None = None):
         field_options = []
         if self.is_primary_key:
             field_options.append("primary_key=True")
@@ -1315,7 +1315,9 @@ class Column:
             to_schema_arg = ""
             if fk_schema and fk_schema != "public":
                 to_schema_arg = f", to_schema='{fk_schema}'"
-            if related_model == self.utils.to_pascal_case(self.table_name):
+            is_self_ref = related_model == self.utils.to_pascal_case(self.table_name)
+            is_forward_ref = forward_ref_tables is not None and related_model in forward_ref_tables
+            if is_self_ref or is_forward_ref:
                 field_def = f"{self.name} = ForeignKey(to_model='{related_model}', to_column='{self.foreign_key_reference['column']}'{to_schema_arg}, {options_str})"
             else:
                 field_def = f"{self.name} = ForeignKey(to_model={related_model}, to_column='{self.foreign_key_reference['column']}'{to_schema_arg}, {options_str})"

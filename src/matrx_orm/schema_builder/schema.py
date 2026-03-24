@@ -842,9 +842,26 @@ class Schema:
         py_structure = [self.get_string_user_model()]
         all_field_types = {"UUIDField", "CharField", "Model"}
 
+        # Build a position map so each table knows which models are defined
+        # after it in the file.  FKs to those models must use string forward
+        # references to avoid NameError from circular dependencies.
+        _table_positions = {name: i for i, name in enumerate(sorted_tables)}
+
         for table_name in sorted_tables:
             table = self.tables[table_name]
-            py_table_entry = table.to_python_model()
+            my_pos = _table_positions[table_name]
+            forward_ref_tables: set[str] = set()
+            for col in table.columns:
+                if col.foreign_key_reference:
+                    target_snake = col.foreign_key_reference["table"]
+                    target_pos = _table_positions.get(target_snake)
+                    if target_pos is None or target_pos > my_pos:
+                        target_pascal = table.utils.to_pascal_case(target_snake)
+                        if target_pascal != "Users":
+                            forward_ref_tables.add(target_pascal)
+            py_table_entry = table.to_python_model(
+                forward_ref_tables=forward_ref_tables or None
+            )
             py_structure.append(py_table_entry)
             all_field_types.update(table.unique_field_types)
 

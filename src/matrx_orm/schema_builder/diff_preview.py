@@ -361,6 +361,7 @@ def parse_models_file(path: str | Path) -> tuple[dict[str, TableSnapshot], dict[
         m2m_config: dict[str, dict[str, str]] = {}
         database: str | None = None
         table_name_override: str | None = None
+        db_schema: str | None = None
 
         for item in node.body:
             if isinstance(item, (ast.Assign, ast.AnnAssign)):
@@ -395,6 +396,13 @@ def parse_models_file(path: str | Path) -> tuple[dict[str, TableSnapshot], dict[
                         pass
                     continue
 
+                if attr_name == "_db_schema":
+                    try:
+                        db_schema = ast.literal_eval(value)
+                    except (ValueError, TypeError):
+                        pass
+                    continue
+
                 if attr_name == "_inverse_foreign_keys":
                     try:
                         ifk_config = ast.literal_eval(value)
@@ -415,6 +423,12 @@ def parse_models_file(path: str | Path) -> tuple[dict[str, TableSnapshot], dict[
                 if isinstance(value, ast.Call):
                     field_type, kwargs = _parse_field_call(value)
                     fields[attr_name] = _kwargs_to_field_snapshot(attr_name, field_type, kwargs)
+
+        # Skip cross-schema stub models (e.g. Users with _db_schema="auth").
+        # They are hardcoded in generate_models() and don't correspond to any
+        # introspected table in the target schema.
+        if db_schema is not None:
+            continue
 
         snake_name = table_name_override or _pascal_to_snake(class_name)
 
@@ -450,6 +464,33 @@ def _pascal_to_snake(name: str) -> str:
 # ---------------------------------------------------------------------------
 # Table-to-snapshot converter — extract TableSnapshot from a schema_builder Table
 # ---------------------------------------------------------------------------
+
+def _normalize_python_default(value: Any) -> Any:
+    """Apply the same default-value normalization as Column.to_python_model_field().
+
+    The generator converts raw ``clean_default["python"]`` values before writing
+    them into model source code (e.g. the string ``"false"`` becomes the Python
+    boolean ``False``).  This function mirrors that logic so the snapshot
+    produced from a Table object is directly comparable to what the AST parser
+    extracts from generated code.
+    """
+    if isinstance(value, (bool, int, float, dict, list)):
+        return value
+    if isinstance(value, str):
+        if value == "false":
+            return False
+        if value == "true":
+            return True
+        try:
+            import ast as _ast
+            parsed = _ast.literal_eval(value)
+            if isinstance(parsed, (bool, int, float, dict, list)):
+                return parsed
+            return value
+        except (ValueError, SyntaxError):
+            return value
+    return value
+
 
 def table_to_snapshot(table: Any) -> TableSnapshot:
     """Convert a schema_builder.tables.Table into a TableSnapshot."""
@@ -496,7 +537,7 @@ def table_to_snapshot(table: Any) -> TableSnapshot:
         if column.clean_default is not None:
             py_default = column.clean_default.get("python")
             if py_default is not None and py_default != "":
-                default_val = repr(py_default)
+                default_val = repr(_normalize_python_default(py_default))
 
         fields[column.name] = FieldSnapshot(
             name=column.name,
