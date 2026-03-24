@@ -84,6 +84,11 @@ generate:
     #   - other_table
     # exclude_tables:
     #   - internal_table
+    #
+    # skip_unchanged_managers: when true, manager files for tables whose model
+    # definition has not changed since the last generation are NOT rewritten.
+    # This dramatically reduces git noise on large schemas. Default: false.
+    # skip_unchanged_managers: true
     manager_flags:
       include_core_relations: true      # FK/IFK fetch methods (load_by_*, fetch_fk, fetch_ifk)
       include_filter_fields: true       # filter_by_* methods for indexed/common lookup fields

@@ -22,6 +22,7 @@ class SchemaManager:
         include_tables=None,
         exclude_tables=None,
         manager_flags: dict | None = None,
+        skip_unchanged_managers: bool = False,
     ):
         if additional_schemas is None:
             # Read from the registered database config if a project name is provided;
@@ -84,6 +85,7 @@ class SchemaManager:
         # write-time without touching any loading or relationship logic.
         self.schema._include_tables = self._include_tables
         self.schema._exclude_tables = self._exclude_tables
+        self.schema._skip_unchanged_managers = skip_unchanged_managers
 
     def _is_table_included(self, table_name: str) -> bool:
         """Return True if *table_name* should be processed given the current filter."""

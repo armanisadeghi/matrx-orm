@@ -1,5 +1,6 @@
 from collections import defaultdict
 import json
+import os
 from matrx_utils import vcprint
 from matrx_orm.schema_builder.helpers import (
     generate_full_typescript_file,
@@ -56,6 +57,7 @@ class Schema:
         self.initialized = False
         self._include_tables: set[str] | None = None
         self._exclude_tables: set[str] | None = None
+        self._skip_unchanged_managers: bool = False
 
         # Global manager flags — yaml-level defaults, per-table overrides stack on top
         self.manager_flags: dict = {**_MANAGER_FLAG_DEFAULTS, **(manager_flags or {})}
@@ -113,6 +115,38 @@ class Schema:
         if self._exclude_tables is not None:
             return {k: v for k, v in self.tables.items() if k not in self._exclude_tables}
         return self.tables
+
+    def _compute_unchanged_tables(self, sorted_tables: list[str]) -> set[str]:
+        """Diff the existing models.py against the live DB state and return
+        the set of table names whose model definitions have not changed.
+
+        Only tables in *sorted_tables* (the already-filtered list) are
+        considered — this respects include_tables / exclude_tables.
+        """
+        from matrx_orm.schema_builder.diff_preview import (
+            parse_models_file,
+            table_to_snapshot,
+            compute_diff,
+        )
+
+        python_root = os.environ.get("ADMIN_PYTHON_ROOT", "")
+        if not python_root:
+            return set()
+
+        models_path = os.path.join(python_root, "db", "models.py")
+        existing_tables, _ = parse_models_file(models_path)
+
+        desired_tables = {}
+        for table_name in sorted_tables:
+            table = self.tables[table_name]
+            snap = table_to_snapshot(table)
+            desired_tables[snap.table_name] = snap
+
+        table_set = set(sorted_tables)
+        existing_filtered = {k: v for k, v in existing_tables.items() if k in table_set}
+
+        result = compute_diff(existing_filtered, desired_tables)
+        return set(result.unchanged_tables)
 
     def initialize_code_generation(self):
         if self.initialized:
@@ -825,6 +859,14 @@ class Schema:
 
         py_all_manager_import_names_str = ""
 
+        # When skip_unchanged_managers is active, compute which models have
+        # actually changed so we can avoid rewriting manager files for tables
+        # that are identical to what's already on disk.
+        _unchanged_tables: set[str] = set()
+        if self._skip_unchanged_managers:
+            _unchanged_tables = self._compute_unchanged_tables(sorted_tables)
+
+        _skipped_count = 0
         for table_name in sorted_tables:
             table = self.tables[table_name]
             py_manager_entry = table.to_python_manager_string(self.manager_flags)
@@ -838,16 +880,25 @@ class Schema:
 
             py_base_manager_entry = table.model_base_class_str
 
-            default_manager_config = get_code_config(self.database_project)[
-                "python_base_manager"
-            ]
-            default_manager_config["temp_path"] += f"{table.name}.py"
-            default_manager_config["file_location"] += f"{table.name}.py"
+            if table_name in _unchanged_tables:
+                _skipped_count += 1
+            else:
+                default_manager_config = get_code_config(self.database_project)[
+                    "python_base_manager"
+                ]
+                default_manager_config["temp_path"] += f"{table.name}.py"
+                default_manager_config["file_location"] += f"{table.name}.py"
 
-            self.code_handler.generate_and_save_code_from_object(
-                default_manager_config, py_base_manager_entry
-            )
+                self.code_handler.generate_and_save_code_from_object(
+                    default_manager_config, py_base_manager_entry
+                )
             py_all_manager_import_names_str += f"from .{table.name} import {table.python_model_name}View, {table.python_model_name}DTO, {table.python_model_name}Base\n"
+
+        if _skipped_count:
+            vcprint(
+                f"[MATRX ORM] Skipped {_skipped_count} unchanged manager file(s).",
+                color="cyan",
+            )
 
         py_structure.append(self.get_string_model_registry(sorted_tables))
 

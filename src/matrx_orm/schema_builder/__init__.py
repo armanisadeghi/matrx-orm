@@ -20,6 +20,11 @@ from matrx_orm.schema_builder.schema_manager import (
 from matrx_orm.schema_builder.runner import (
     run_schema_generation,
 )
+from matrx_orm.schema_builder.diff_preview import (
+    preview_schema_changes,
+    run_schema_preview,
+    SchemaDiffResult,
+)
 
 
 __all__ = [
@@ -30,6 +35,9 @@ __all__ = [
     "schema_builder_verbose",
     "SchemaManager",
     "run_schema_generation",
+    "run_schema_preview",
+    "preview_schema_changes",
+    "SchemaDiffResult",
     "check_git_status",
     "get_schema_structure",
     "generate_dto_and_manager",

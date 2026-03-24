@@ -216,6 +216,11 @@ def run_schema_generation(config_path: str | Path = "matrx_orm.yaml") -> None:
         # Per-table manager_config_overrides (from the databases section) stack on top.
         manager_flags = entry.get("manager_flags") or None
 
+        # skip_unchanged_managers: when True, manager files for tables whose
+        # model definition has not changed are not rewritten. Default False
+        # preserves the existing behaviour of regenerating everything.
+        skip_unchanged_managers = bool(entry.get("skip_unchanged_managers", False))
+
         vcprint(f"[MATRX ORM] Generating schema... \n\n- Database: '{db_name}'\n- Schema: '{schema}'", verbose=DEBUG_CONFIG["verbose"], color="cyan")
 
         try:
@@ -226,6 +231,7 @@ def run_schema_generation(config_path: str | Path = "matrx_orm.yaml") -> None:
                 include_tables=include_tables,
                 exclude_tables=exclude_tables,
                 manager_flags=manager_flags,
+                skip_unchanged_managers=skip_unchanged_managers,
             )
             manager.initialize()
             manager.schema.generate_schema_files()
