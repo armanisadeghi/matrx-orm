@@ -778,12 +778,62 @@ class Schema:
     _database = \"{self.database_project}\"\n"""
         return users_model
 
-    def get_string_model_registry(self, sorted_tables: list[str]) -> str:
-        # Only register the models that are actually defined in this file.
-        # When include_tables / exclude_tables is active, sorted_tables is the
-        # filtered subset — registering the full schema would produce NameErrors
-        # for every class that wasn't generated.
+    def _utils_for_stubs(self):
+        return self.utils
+
+    def _generate_stub_model(self, table_name: str) -> str:
+        """Return a minimal Model stub for *table_name*.
+
+        If the table was introspected (i.e. exists in ``self.tables``), the
+        stub includes the real PK column(s) and their types.  Otherwise a
+        generic ``id = UUIDField(primary_key=True, null=False)`` is emitted.
+
+        The stub carries ``_unfetchable = True`` so the ORM never tries to
+        query through it (the real table may not be in scope).
+        """
+        utils = self._utils_for_stubs()
+        pascal_name = utils.to_pascal_case(table_name)
+
+        if table_name in self.tables:
+            table = self.tables[table_name]
+            pk_lines = []
+            for col in table.columns:
+                if col.is_primary_key:
+                    pk_lines.append(
+                        f"    {col.name} = {col.python_field_type}"
+                        f"(primary_key=True, null=False)"
+                    )
+            if not pk_lines:
+                pk_lines = ["    id = UUIDField(primary_key=True, null=False)"]
+        else:
+            pk_lines = ["    id = UUIDField(primary_key=True, null=False)"]
+
+        pk_block = "\n".join(pk_lines)
+        return (
+            f"class {pascal_name}(Model):\n"
+            f"{pk_block}\n"
+            f"    _table_name = \"{table_name}\"\n"
+            f"    _database = \"{self.database_project}\"\n"
+            f"    _unfetchable = True\n"
+        )
+
+    def get_string_model_registry(
+        self,
+        sorted_tables: list[str],
+        stub_model_names: set[str] | None = None,
+    ) -> str:
+        # Register every model class defined in the file: included tables,
+        # stub models for FK dependencies, and the Users stub.
         all_models = [self.tables[t].name_pascal for t in sorted_tables]
+        if stub_model_names:
+            utils = self._utils_for_stubs()
+            for sn in sorted(stub_model_names):
+                pascal = (
+                    self.tables[sn].name_pascal
+                    if sn in self.tables
+                    else utils.to_pascal_case(sn)
+                )
+                all_models.append(pascal)
         all_models.append("Users")  # Users stub is always generated
 
         model_registry_string = (
@@ -842,10 +892,40 @@ class Schema:
         py_structure = [self.get_string_user_model()]
         all_field_types = {"UUIDField", "CharField", "Model"}
 
-        # Build a position map so each table knows which models are defined
-        # after it in the file.  FKs to those models must use string forward
-        # references to avoid NameError from circular dependencies.
+        # --- Stub generation for FK targets outside the filtered set ----------
+        # When include_tables / exclude_tables is active, included tables may
+        # reference models that aren't being generated.  We emit minimal stub
+        # classes for those targets so FK declarations resolve without NameError
+        # and resolve_model() can find them in the registry at runtime.
+        sorted_set = set(sorted_tables)
+        _stub_model_names: set[str] = set()
+
+        if self._include_tables is not None or self._exclude_tables is not None:
+            for table_name in sorted_tables:
+                table = self.tables[table_name]
+                for col in table.columns:
+                    if col.foreign_key_reference:
+                        target_snake = col.foreign_key_reference["table"]
+                        fk_schema = col.foreign_key_reference.get("schema")
+                        if fk_schema and fk_schema != "public":
+                            continue  # cross-schema (e.g. auth.users) — stub already exists
+                        if target_snake not in sorted_set:
+                            _stub_model_names.add(target_snake)
+
+            for stub_table_name in sorted(_stub_model_names):
+                py_structure.append(
+                    self._generate_stub_model(stub_table_name)
+                )
+
+        # --- Build position map for forward-reference detection ---------------
+        # Stubs are defined before any included table (position -1 conceptually),
+        # so they never need forward references.
         _table_positions = {name: i for i, name in enumerate(sorted_tables)}
+        _defined_stubs = {
+            self.tables[s].name_pascal if s in self.tables
+            else self._utils_for_stubs().to_pascal_case(s)
+            for s in _stub_model_names
+        }
 
         for table_name in sorted_tables:
             table = self.tables[table_name]
@@ -855,9 +935,13 @@ class Schema:
                 if col.foreign_key_reference:
                     target_snake = col.foreign_key_reference["table"]
                     target_pos = _table_positions.get(target_snake)
-                    if target_pos is None or target_pos > my_pos:
+                    if target_pos is not None and target_pos > my_pos:
+                        forward_ref_tables.add(
+                            table.utils.to_pascal_case(target_snake)
+                        )
+                    elif target_pos is None:
                         target_pascal = table.utils.to_pascal_case(target_snake)
-                        if target_pascal != "Users":
+                        if target_pascal != "Users" and target_pascal not in _defined_stubs:
                             forward_ref_tables.add(target_pascal)
             py_table_entry = table.to_python_model(
                 forward_ref_tables=forward_ref_tables or None
@@ -917,7 +1001,9 @@ class Schema:
                 color="cyan",
             )
 
-        py_structure.append(self.get_string_model_registry(sorted_tables))
+        py_structure.append(
+            self.get_string_model_registry(sorted_tables, _stub_model_names)
+        )
 
         main_code = "\n".join(py_structure)
         additional_code = "\n".join(py_manager_structure)
